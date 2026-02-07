@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Auto Rune Settings</title>
+    <script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
+</head>
+<body>
+    <sdpi-item label="Your Role">
+        <sdpi-select setting="role">
+            <option value="top">Top</option>
+            <option value="jungle">Jungle</option>
+            <option value="middle">Mid</option>
+            <option value="bottom">Bot (ADC)</option>
+            <option value="utility">Support</option>
+        </sdpi-select>
+    </sdpi-item>
+    <sdpi-item label="Auto Apply">
+        <sdpi-checkbox setting="autoApply" label="Apply runes when champion is locked"></sdpi-checkbox>
+    </sdpi-item>
+    <sdpi-item label="Info">
+        <details>
+            <summary>How it works</summary>
+            <p style="font-size: 11px; color: #999; padding: 8px;">
+                During Champion Select, fetches the optimal rune page from Lolalytics for your locked champion.<br><br>
+                <b>Key/Touch:</b> Apply runes to the client.<br>
+                <b>Dial rotate:</b> Switch between "Highest WR" and "Most Popular" builds.<br>
+                <b>Auto Apply:</b> When enabled, runes are set automatically when you lock a champion.
+            </p>
+        </details>
+    </sdpi-item>
+</body>
+</html>

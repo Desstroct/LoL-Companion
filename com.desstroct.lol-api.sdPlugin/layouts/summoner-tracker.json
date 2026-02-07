@@ -1,0 +1,38 @@
+{
+	"$schema": "https://schemas.elgato.com/streamdeck/plugins/layout.json",
+	"id": "summoner-tracker",
+	"items": [
+		{
+			"key": "title",
+			"type": "text",
+			"rect": [0, 0, 200, 22],
+			"font": { "size": 13, "weight": 600 },
+			"alignment": "center",
+			"color": "#E74C3C"
+		},
+		{
+			"key": "spell_info",
+			"type": "text",
+			"rect": [0, 22, 200, 20],
+			"font": { "size": 11 },
+			"alignment": "center",
+			"color": "#AAAAAA"
+		},
+		{
+			"key": "cd_text",
+			"type": "text",
+			"rect": [0, 42, 200, 30],
+			"font": { "size": 18, "weight": 700 },
+			"alignment": "center"
+		},
+		{
+			"key": "cd_bar",
+			"type": "bar",
+			"rect": [10, 76, 180, 16],
+			"range": { "min": 0, "max": 100 },
+			"value": 0,
+			"bar_fill_c": "#E74C3C",
+			"bar_bg_c": "#333333"
+		}
+	]
+}

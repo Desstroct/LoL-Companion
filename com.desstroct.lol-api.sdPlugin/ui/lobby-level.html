@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Lobby Level Settings</title>
+    <script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
+</head>
+<body>
+    <sdpi-item label="Display">
+        <sdpi-select setting="view">
+            <option value="all">All (Both teams)</option>
+            <option value="allies">Allies only</option>
+            <option value="enemies">Enemies only</option>
+        </sdpi-select>
+    </sdpi-item>
+    <sdpi-item label="Info">
+        <details>
+            <summary>How it works</summary>
+            <p style="font-size: 11px; color: #999; padding: 8px;">
+                During Champion Select, fetches summoner levels and ranked tiers for all players and displays the average. Useful for gauging the overall experience level of the match.
+            </p>
+        </details>
+    </sdpi-item>
+</body>
+</html>

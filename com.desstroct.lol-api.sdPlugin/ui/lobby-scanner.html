@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<title>Lobby Scanner Settings</title>
+	<meta charset="utf-8" />
+	<script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
+</head>
+
+<body>
+	<sdpi-item label="Player Slot">
+		<sdpi-select setting="slot" placeholder="Select a slot">
+			<optgroup label="Allies">
+				<option value="1">Ally 1 (Top)</option>
+				<option value="2">Ally 2 (Jungle)</option>
+				<option value="3">Ally 3 (Mid)</option>
+				<option value="4">Ally 4 (Bot)</option>
+				<option value="5">Ally 5 (Support)</option>
+			</optgroup>
+			<optgroup label="Enemies">
+				<option value="6">Enemy 1 (Top)</option>
+				<option value="7">Enemy 2 (Jungle)</option>
+				<option value="8">Enemy 3 (Mid)</option>
+				<option value="9">Enemy 4 (Bot)</option>
+				<option value="10">Enemy 5 (Support)</option>
+			</optgroup>
+		</sdpi-select>
+	</sdpi-item>
+	<sdpi-item label="Info">
+		<details>
+			<summary>How it works</summary>
+			<p style="font-size: 11px; color: #999; padding: 8px;">
+				During Champion Select, shows each player's champion, rank, and win rate.<br><br>
+				<b>Dial:</b> Rotate to cycle through all 10 players. Press to refresh.
+			</p>
+		</details>
+	</sdpi-item>
+</body>
+
+</html>

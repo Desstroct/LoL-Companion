@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<title>Summoner Tracker Settings</title>
+	<meta charset="utf-8" />
+	<script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
+</head>
+
+<body>
+	<sdpi-item label="Enemy Position">
+		<sdpi-select setting="enemySlot" placeholder="Select enemy">
+			<option value="1">Enemy 1 (Top)</option>
+			<option value="2">Enemy 2 (Jungle)</option>
+			<option value="3">Enemy 3 (Mid)</option>
+			<option value="4">Enemy 4 (Bot)</option>
+			<option value="5">Enemy 5 (Support)</option>
+		</sdpi-select>
+	</sdpi-item>
+
+	<sdpi-item label="Spell">
+		<sdpi-select setting="spellSlot" placeholder="Select spell">
+			<option value="1">Spell 1 (D)</option>
+			<option value="2">Spell 2 (F)</option>
+		</sdpi-select>
+	</sdpi-item>
+	<sdpi-item label="Info">
+		<details>
+			<summary>How it works</summary>
+			<p style="font-size: 11px; color: #999; padding: 8px;">
+				Track enemy summoner spell cooldowns during a game. Press the key to mark a spell as used, press again to reset.<br><br>
+				<b>Dial:</b> Rotate to cycle enemies, tap to toggle D/F, press to mark used/reset, long touch to reset.
+			</p>
+		</details>
+	</sdpi-item>
+</body>
+
+</html>

@@ -1,0 +1,43 @@
+{
+	"$schema": "https://schemas.elgato.com/streamdeck/plugins/layout.json",
+	"id": "auto-rune",
+	"items": [
+		{
+			"key": "keystone_icon",
+			"type": "pixmap",
+			"rect": [4, 10, 72, 72]
+		},
+		{
+			"key": "title",
+			"type": "text",
+			"rect": [82, 0, 118, 22],
+			"font": { "size": 13, "weight": 600 },
+			"alignment": "left",
+			"color": "#9B59B6"
+		},
+		{
+			"key": "rune_name",
+			"type": "text",
+			"rect": [82, 22, 118, 26],
+			"font": { "size": 15, "weight": 700 },
+			"alignment": "left"
+		},
+		{
+			"key": "rune_info",
+			"type": "text",
+			"rect": [82, 48, 118, 20],
+			"font": { "size": 11 },
+			"alignment": "left",
+			"color": "#AAAAAA"
+		},
+		{
+			"key": "wr_bar",
+			"type": "bar",
+			"rect": [82, 74, 108, 16],
+			"range": { "min": 40, "max": 65 },
+			"value": 50,
+			"bar_fill_c": "#9B59B6",
+			"bar_bg_c": "#333333"
+		}
+	]
+}

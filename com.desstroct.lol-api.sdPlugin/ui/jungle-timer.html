@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Jungle Timer Settings</title>
+    <script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
+</head>
+<body>
+    <sdpi-item label="Objective">
+        <sdpi-select setting="objective">
+            <option value="dragon">Dragon</option>
+            <option value="baron">Baron</option>
+        </sdpi-select>
+    </sdpi-item>
+    <sdpi-item label="Info">
+        <details>
+            <summary>How it works</summary>
+            <p style="font-size: 11px; color: #999; padding: 8px;">
+                Automatically tracks Dragon and Baron kills via game events and shows a respawn countdown.
+                Press the key to manually start a timer if an event was missed.
+            </p>
+        </details>
+    </sdpi-item>
+</body>
+</html>

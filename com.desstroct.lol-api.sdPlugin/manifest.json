@@ -1,0 +1,254 @@
+{
+	"Name": "LoL Companion",
+	"Version": "0.6.0.0",
+	"Author": "Desstroct",
+	"Actions": [
+		{
+			"Name": "Game Status",
+			"UUID": "com.desstroct.lol-api.game-status",
+			"Icon": "imgs/actions/game-status/icon",
+			"Tooltip": "Shows the current League of Legends client state (Lobby, Queue, Champ Select, In Game, etc.)",
+			"PropertyInspectorPath": "ui/game-status.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/actions/game-status/key",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "Lobby Scanner",
+			"UUID": "com.desstroct.lol-api.lobby-scanner",
+			"Icon": "imgs/actions/lobby-scanner/icon",
+			"Tooltip": "Displays player info during champion select (champion, rank, win rate). On dial: rotate to cycle players.",
+			"PropertyInspectorPath": "ui/lobby-scanner.html",
+			"Controllers": [
+				"Keypad",
+				"Encoder"
+			],
+			"Encoder": {
+				"layout": "layouts/lobby-scanner.json",
+				"TriggerDescription": {
+					"Rotate": "Cycle players",
+					"Push": "Refresh",
+					"Touch": "Refresh"
+				}
+			},
+			"States": [
+				{
+					"Image": "imgs/actions/lobby-scanner/key",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "Summoner Tracker",
+			"UUID": "com.desstroct.lol-api.summoner-tracker",
+			"Icon": "imgs/actions/summoner-tracker/icon",
+			"Tooltip": "Track enemy summoner spell cooldowns. Dial: rotate to cycle enemies, touch to swap spell, press to mark used/reset.",
+			"PropertyInspectorPath": "ui/summoner-tracker.html",
+			"Controllers": [
+				"Keypad",
+				"Encoder"
+			],
+			"Encoder": {
+				"layout": "layouts/summoner-tracker.json",
+				"TriggerDescription": {
+					"Rotate": "Cycle enemies",
+					"Push": "Used / Reset",
+					"Touch": "Toggle spell D/F",
+					"LongTouch": "Reset timer"
+				}
+			},
+			"States": [
+				{
+					"Image": "imgs/actions/summoner-tracker/key",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "Jungle Timer",
+			"UUID": "com.desstroct.lol-api.jungle-timer",
+			"Icon": "imgs/actions/jungle-timer/icon",
+			"Tooltip": "Dragon and Baron respawn timer. Dial: rotate to switch objective, press to start timer.",
+			"PropertyInspectorPath": "ui/jungle-timer.html",
+			"Controllers": [
+				"Keypad",
+				"Encoder"
+			],
+			"Encoder": {
+				"layout": "layouts/jungle-timer.json",
+				"TriggerDescription": {
+					"Rotate": "Dragon / Baron",
+					"Push": "Manual timer",
+					"Touch": "Refresh"
+				}
+			},
+			"States": [
+				{
+					"Image": "imgs/actions/jungle-timer/key",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "KDA Tracker",
+			"UUID": "com.desstroct.lol-api.kda-tracker",
+			"Icon": "imgs/actions/kda-tracker/icon",
+			"Tooltip": "Live KDA, CS/min and gold display during game. Rich dashboard on dial touch strip.",
+			"PropertyInspectorPath": "ui/kda-tracker.html",
+			"Controllers": [
+				"Keypad",
+				"Encoder"
+			],
+			"Encoder": {
+				"layout": "layouts/kda-tracker.json",
+				"TriggerDescription": {
+					"Push": "Refresh",
+					"Touch": "Refresh"
+				}
+			},
+			"States": [
+				{
+					"Image": "imgs/actions/kda-tracker/key",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "Auto Accept",
+			"UUID": "com.desstroct.lol-api.auto-accept",
+			"Icon": "imgs/actions/auto-accept/icon",
+			"Tooltip": "Automatically accept match ready check. Press to toggle on/off.",
+			"PropertyInspectorPath": "ui/auto-accept.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/actions/auto-accept/key",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "Counterpick",
+			"UUID": "com.desstroct.lol-api.counterpick",
+			"Icon": "imgs/actions/counterpick/icon",
+			"Tooltip": "Suggests the best counter picks for your lane opponent. Dial: rotate to scroll through counters.",
+			"PropertyInspectorPath": "ui/counterpick.html",
+			"Controllers": [
+				"Keypad",
+				"Encoder"
+			],
+			"Encoder": {
+				"layout": "layouts/counterpick.json",
+				"TriggerDescription": {
+					"Rotate": "Scroll counters",
+					"Push": "Refresh",
+					"Touch": "Refresh"
+				}
+			},
+			"States": [
+				{
+					"Image": "imgs/actions/counterpick/key",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "Best Pick",
+			"UUID": "com.desstroct.lol-api.best-pick",
+			"Icon": "imgs/actions/best-pick/icon",
+			"Tooltip": "Suggests the best overall champion considering enemies and ally synergy. Dial: rotate to scroll picks.",
+			"PropertyInspectorPath": "ui/best-pick.html",
+			"Controllers": [
+				"Keypad",
+				"Encoder"
+			],
+			"Encoder": {
+				"layout": "layouts/best-pick.json",
+				"TriggerDescription": {
+					"Rotate": "Scroll picks",
+					"Push": "Refresh",
+					"Touch": "Refresh"
+				}
+			},
+			"States": [
+				{
+					"Image": "imgs/actions/best-pick/key",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "Lobby Level",
+			"UUID": "com.desstroct.lol-api.lobby-level",
+			"Icon": "imgs/actions/lobby-level/icon",
+			"Tooltip": "Shows average summoner level during champion select. Useful to gauge lobby experience.",
+			"PropertyInspectorPath": "ui/lobby-level.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/actions/lobby-level/key",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "Auto Rune",
+			"UUID": "com.desstroct.lol-api.auto-rune",
+			"Icon": "imgs/actions/auto-rune/icon",
+			"Tooltip": "Automatically sets optimal runes from Lolalytics when you lock a champion. Dial: rotate to switch build, press/touch to apply.",
+			"PropertyInspectorPath": "ui/auto-rune.html",
+			"Controllers": [
+				"Keypad",
+				"Encoder"
+			],
+			"Encoder": {
+				"layout": "layouts/auto-rune.json",
+				"TriggerDescription": {
+					"Rotate": "Best WR / Popular",
+					"Push": "Apply runes",
+					"Touch": "Apply runes"
+				}
+			},
+			"States": [
+				{
+					"Image": "imgs/actions/auto-rune/key",
+					"TitleAlignment": "bottom"
+				}
+			]
+		}
+	],
+	"Category": "LoL Companion",
+	"CategoryIcon": "imgs/plugin/category-icon",
+	"CodePath": "bin/plugin.js",
+	"Description": "League of Legends companion for Stream Deck — lobby intelligence, summoner tracking, and in-game HUD.",
+	"Icon": "imgs/plugin/marketplace",
+	"SDKVersion": 3,
+	"Software": {
+		"MinimumVersion": "6.9"
+	},
+	"OS": [
+		{
+			"Platform": "mac",
+			"MinimumVersion": "12"
+		},
+		{
+			"Platform": "windows",
+			"MinimumVersion": "10"
+		}
+	],
+	"Nodejs": {
+		"Version": "20",
+		"Debug": "enabled"
+	},
+	"UUID": "com.desstroct.lol-api"
+}
