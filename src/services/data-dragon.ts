@@ -186,7 +186,7 @@ export class DataDragon {
 
 	private async fetchJson<T>(url: string): Promise<T | null> {
 		try {
-			const response = await fetch(url);
+			const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
 			if (response.ok) {
 				return (await response.json()) as T;
 			}

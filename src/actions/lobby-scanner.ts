@@ -58,7 +58,7 @@ export class LobbyScannerAction extends SingletonAction<LobbyScannerSettings> {
 
 	override onWillDisappear(ev: WillDisappearEvent<LobbyScannerSettings>): void | Promise<void> {
 		this.dialStates.delete(ev.action.id);
-		this.stopPolling();
+		if (this.actions.length === 0) this.stopPolling();
 	}
 
 	override async onKeyDown(ev: KeyDownEvent<LobbyScannerSettings>): Promise<void> {
@@ -106,7 +106,16 @@ export class LobbyScannerAction extends SingletonAction<LobbyScannerSettings> {
 	}
 
 	private async updateLobby(): Promise<void> {
-		if (!lcuConnector.isConnected()) return;
+		if (!lcuConnector.isConnected()) {
+			for (const a of this.actions) {
+				if (a.isDial()) {
+					await a.setFeedback({ champ_icon: "", title: "Lobby Scan", champion: "Offline", rank: "", wr_text: "", wr_bar: { value: 0 } });
+				} else {
+					await a.setImage(""); await a.setTitle("Lobby\nOffline");
+				}
+			}
+			return;
+		}
 
 		// TFT has no traditional champion select lobby
 		if (gameMode.isTFT()) {

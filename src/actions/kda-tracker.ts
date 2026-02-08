@@ -36,7 +36,7 @@ export class KdaTracker extends SingletonAction {
 	}
 
 	override onWillDisappear(_ev: WillDisappearEvent): void | Promise<void> {
-		this.stopPolling();
+		if (this.actions.length === 0) this.stopPolling();
 	}
 
 	private startPolling(): void {

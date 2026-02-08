@@ -87,7 +87,13 @@ export class AutoPick extends SingletonAction<AutoPickSettings> {
 	}
 
 	private async updateState(): Promise<void> {
-		if (!this.enabled || !lcuConnector.isConnected()) return;
+		if (!this.enabled) return;
+		if (!lcuConnector.isConnected()) {
+			for (const a of this.actions) {
+				await a.setTitle("Auto Pick\nOffline");
+			}
+			return;
+		}
 
 		// TFT has no pick/ban phase
 		if (gameMode.isTFT()) return;

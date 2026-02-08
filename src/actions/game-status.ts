@@ -6,7 +6,7 @@ import {
 	WillDisappearEvent,
 } from "@elgato/streamdeck";
 import streamDeck from "@elgato/streamdeck";
-import { exec } from "node:child_process";
+import { spawn } from "node:child_process";
 import { lcuConnector } from "../services/lcu-connector";
 import { lcuApi } from "../services/lcu-api";
 import { gameClient } from "../services/game-client";
@@ -70,8 +70,12 @@ export class GameStatus extends SingletonAction<GameStatusSettings> {
 					const tag = encodeURIComponent(summoner.tagLine || "EUW");
 					const region = ev.payload.settings.region ?? "euw";
 					const url = `https://www.op.gg/summoners/${region}/${name}-${tag}`;
-					logger.info(`Opening OP.GG: ${url}`);
-					exec(`start "" "${url}"`);
+						logger.info(`Opening OP.GG: ${url}`);
+					if (process.platform === "darwin") {
+						spawn("open", [url], { stdio: "ignore" });
+					} else {
+						spawn("cmd", ["/c", "start", "", url], { stdio: "ignore" });
+					}
 					return;
 				}
 			} catch (e) {

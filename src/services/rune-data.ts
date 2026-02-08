@@ -77,10 +77,14 @@ export class RuneData {
 		}
 
 		try {
-			const url = `${LOLALYTICS_BASE}/lol/${championAlias}/build/?lane=${lane}`;
+			// ARAM uses a different URL path: /lol/{champ}/aram/build/
+			const url =
+				lane === "aram"
+					? `${LOLALYTICS_BASE}/lol/${championAlias}/aram/build/`
+					: `${LOLALYTICS_BASE}/lol/${championAlias}/build/?lane=${lane}`;
 			logger.debug(`Fetching runes: ${url}`);
 
-			const response = await fetch(url, { headers: FETCH_HEADERS });
+			const response = await fetch(url, { headers: FETCH_HEADERS, signal: AbortSignal.timeout(10_000) });
 			if (!response.ok) {
 				logger.warn(`Lolalytics returned ${response.status} for rune data`);
 				return cached?.data ?? [];
@@ -207,56 +211,53 @@ export class RuneData {
 		return results;
 	}
 
+	/** Expected keys on a per-build Qwik object (order-independent). */
+	private static readonly BUILD_OBJECT_KEYS = new Set(["skillpriority", "skillorder", "sums", "runes", "items"]);
+
 	/**
-	 * Search for build objects in the Qwik state that have a `runes` field
-	 * with the expected sub-structure (set, page).
+	 * Scan the Qwik state for build objects that contain rune data.
+	 *
+	 * Build objects are identified by their key signature rather than
+	 * hardcoded array indices, making this resilient to Qwik re-serialization
+	 * across Lolalytics deployments.
 	 */
 	private findRuneObjects(
 		objs: unknown[],
 		r: (ref: unknown) => unknown,
 	): { index: number; label: "highest_wr" | "most_common" }[] {
-		const candidates: { index: number; label: "highest_wr" | "most_common" }[] = [];
+		const hits: { index: number; n: number }[] = [];
 
-		// Try known hardcoded indices first (faster)
-		for (const idx of [1802, 1858]) {
-			if (this.isRuneObject(objs, idx, r)) {
-				candidates.push({
-					index: idx,
-					label: candidates.length === 0 ? "highest_wr" : "most_common",
-				});
-			}
+		for (let i = 0; i < objs.length; i++) {
+			const obj = objs[i];
+			if (typeof obj !== "object" || obj === null) continue;
+
+			const keys = Object.keys(obj);
+			// Must have ALL expected build-object keys
+			if (keys.length < RuneData.BUILD_OBJECT_KEYS.size) continue;
+			if (!keys.every((k) => RuneData.BUILD_OBJECT_KEYS.has(k))) continue;
+
+			// Quick-validate the runes sub-object
+			const runesVal = r((obj as Record<string, unknown>).runes);
+			if (typeof runesVal !== "object" || runesVal === null) continue;
+			const rv = runesVal as Record<string, unknown>;
+			if (!("set" in rv && "page" in rv && "wr" in rv)) continue;
+
+			const n = typeof rv.n === "number" ? rv.n : 0;
+			hits.push({ index: i, n });
+			if (hits.length >= 4) break; // safety cap
 		}
 
-		// Fallback: scan for rune objects if hardcoded indices don't match
-		if (candidates.length === 0) {
-			logger.debug("Hardcoded indices missed, scanning for rune objects...");
-			for (let i = 0; i < objs.length && candidates.length < 2; i++) {
-				if (this.isRuneObject(objs, i, r)) {
-					candidates.push({
-						index: i,
-						label: candidates.length === 0 ? "highest_wr" : "most_common",
-					});
-				}
-			}
+		if (hits.length === 0) return [];
+
+		// Sort by sample size descending — largest n = most common
+		hits.sort((a, b) => b.n - a.n);
+
+		const results: { index: number; label: "highest_wr" | "most_common" }[] = [];
+		results.push({ index: hits[0].index, label: "most_common" });
+		if (hits.length > 1) {
+			results.push({ index: hits[1].index, label: "highest_wr" });
 		}
-
-		return candidates;
-	}
-
-	/**
-	 * Check whether objs[index] is a build object containing valid rune data.
-	 */
-	private isRuneObject(objs: unknown[], index: number, r: (ref: unknown) => unknown): boolean {
-		if (index >= objs.length) return false;
-		const obj = objs[index];
-		if (typeof obj !== "object" || obj === null || !("runes" in obj)) return false;
-
-		// Resolve one level to check structure
-		const runesVal = r((obj as Record<string, unknown>).runes);
-		if (typeof runesVal !== "object" || runesVal === null) return false;
-
-		const rv = runesVal as Record<string, unknown>;
-		return "set" in rv && "page" in rv && "wr" in rv;
+		return results;
 	}
 
 	/**

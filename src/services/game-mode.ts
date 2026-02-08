@@ -85,6 +85,11 @@ class GameModeService {
 		return this.currentMode === "CHERRY";
 	}
 
+	/** True when playing ARAM (Howling Abyss). */
+	isARAM(): boolean {
+		return this.currentMode === "ARAM";
+	}
+
 	getPhase(): GameflowPhase {
 		return this.currentPhase;
 	}

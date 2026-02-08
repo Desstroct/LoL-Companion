@@ -121,7 +121,12 @@ export class LobbyLevelTracker extends SingletonAction<LobbyLevelSettings> {
 	}
 
 	private async updateLobbyLevel(): Promise<void> {
-		if (!lcuConnector.isConnected()) return;
+		if (!lcuConnector.isConnected()) {
+			for (const a of this.actions) {
+				await a.setTitle("Lobby Lvl\nOffline");
+			}
+			return;
+		}
 
 		// TFT has no traditional champion select lobby
 		if (gameMode.isTFT()) {

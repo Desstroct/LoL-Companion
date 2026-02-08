@@ -58,7 +58,7 @@ export class SummonerTracker extends SingletonAction<SummonerTrackerSettings> {
 
 	override onWillDisappear(ev: WillDisappearEvent<SummonerTrackerSettings>): void | Promise<void> {
 		this.dialStates.delete(ev.action.id);
-		this.stopPolling();
+		if (this.actions.length === 0) this.stopPolling();
 	}
 
 	override async onKeyDown(ev: KeyDownEvent<SummonerTrackerSettings>): Promise<void> {

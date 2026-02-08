@@ -64,7 +64,7 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 
 	override onWillDisappear(ev: WillDisappearEvent<AutoRuneSettings>): void | Promise<void> {
 		this.actionStates.delete(ev.action.id);
-		this.stopPolling();
+		if (this.actions.length === 0) this.stopPolling();
 	}
 
 	/** Key press: apply the currently selected runes to the client */
@@ -123,7 +123,16 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 	 * Only auto-applies runes when champion is actually locked, not just hovered.
 	 */
 	private async updateState(): Promise<void> {
-		if (!lcuConnector.isConnected()) return;
+		if (!lcuConnector.isConnected()) {
+			for (const a of this.actions) {
+				if (a.isDial()) {
+					await a.setFeedback({ keystone_icon: "", title: "Auto Rune", rune_name: "Offline", rune_info: "", wr_bar: { value: 0 } });
+				} else {
+					await a.setImage(""); await a.setTitle("Runes\nOffline");
+				}
+			}
+			return;
+		}
 
 		// TFT doesn't use rune pages
 		if (gameMode.isTFT()) {
@@ -216,7 +225,9 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 				await a.setTitle(`${champ.name}\nSearching...`);
 			}
 
-			const lane = ChampionStats.toLolalyticsLane(s.role ?? me.assignedPosition ?? "top");
+			const lane = gameMode.isARAM()
+				? "aram"
+				: ChampionStats.toLolalyticsLane(s.role ?? me.assignedPosition ?? "top");
 
 			try {
 				const runes = await runeData.getRecommendedRunes(champAlias, lane);

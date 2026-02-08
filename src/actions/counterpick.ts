@@ -50,7 +50,7 @@ export class Counterpick extends SingletonAction<CounterpickSettings> {
 
 	override onWillDisappear(ev: WillDisappearEvent<CounterpickSettings>): void | Promise<void> {
 		this.actionStates.delete(ev.action.id);
-		this.stopPolling();
+		if (this.actions.length === 0) this.stopPolling();
 	}
 
 	override async onKeyDown(ev: KeyDownEvent<CounterpickSettings>): Promise<void> {
@@ -124,7 +124,16 @@ export class Counterpick extends SingletonAction<CounterpickSettings> {
 	}
 
 	private async updateCounterpick(): Promise<void> {
-		if (!lcuConnector.isConnected()) return;
+		if (!lcuConnector.isConnected()) {
+			for (const a of this.actions) {
+				if (a.isDial()) {
+					await a.setFeedback({ champ_icon: "", title: "Counterpick", pick_name: "Offline", pick_info: "", wr_bar: { value: 0 } });
+				} else {
+					await a.setImage(""); await a.setTitle("Counter\nOffline");
+				}
+			}
+			return;
+		}
 
 		// TFT has no champion select with counterpicks
 		if (gameMode.isTFT()) {
@@ -133,6 +142,18 @@ export class Counterpick extends SingletonAction<CounterpickSettings> {
 					await a.setFeedback({ champ_icon: "", title: "Counterpick", pick_name: "N/A in TFT", pick_info: "", wr_bar: { value: 0 } });
 				} else {
 					await a.setImage(""); await a.setTitle("Counter\nN/A TFT");
+				}
+			}
+			return;
+		}
+
+		// ARAM has no counter data — roles don't exist
+		if (gameMode.isARAM()) {
+			for (const a of this.actions) {
+				if (a.isDial()) {
+					await a.setFeedback({ champ_icon: "", title: "Counterpick", pick_name: "N/A in ARAM", pick_info: "", wr_bar: { value: 0 } });
+				} else {
+					await a.setImage(""); await a.setTitle("Counter\nN/A ARAM");
 				}
 			}
 			return;

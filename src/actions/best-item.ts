@@ -58,7 +58,7 @@ export class BestItem extends SingletonAction {
 	}
 
 	override onWillDisappear(_ev: WillDisappearEvent): void | Promise<void> {
-		this.stopPolling();
+		if (this.actions.length === 0) this.stopPolling();
 	}
 
 	override onDialRotate(ev: DialRotateEvent): void | Promise<void> {
@@ -155,7 +155,7 @@ export class BestItem extends SingletonAction {
 
 		// ── Fetch build if not loaded yet ──
 		const champName = me.championName;
-		const lane = ItemBuilds.toLolalyticsLane(me.position);
+		const lane = gameMode.isARAM() ? "aram" : ItemBuilds.toLolalyticsLane(me.position);
 
 		if (champName !== this.currentChampion || lane !== this.currentLane) {
 			this.currentChampion = champName;

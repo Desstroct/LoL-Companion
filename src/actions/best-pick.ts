@@ -59,7 +59,7 @@ export class BestPick extends SingletonAction<BestPickSettings> {
 
 	override onWillDisappear(ev: WillDisappearEvent<BestPickSettings>): void | Promise<void> {
 		this.actionStates.delete(ev.action.id);
-		this.stopPolling();
+		if (this.actions.length === 0) this.stopPolling();
 	}
 
 	override async onKeyDown(ev: KeyDownEvent<BestPickSettings>): Promise<void> {
@@ -132,7 +132,16 @@ export class BestPick extends SingletonAction<BestPickSettings> {
 	}
 
 	private async updateBestPick(): Promise<void> {
-		if (!lcuConnector.isConnected()) return;
+		if (!lcuConnector.isConnected()) {
+			for (const a of this.actions) {
+				if (a.isDial()) {
+					await a.setFeedback({ champ_icon: "", title: "Best Pick", pick_name: "Offline", pick_info: "", score_bar: { value: 0 } });
+				} else {
+					await a.setImage(""); await a.setTitle("Best\nOffline");
+				}
+			}
+			return;
+		}
 
 		// TFT has no traditional champion select
 		if (gameMode.isTFT()) {
@@ -141,6 +150,18 @@ export class BestPick extends SingletonAction<BestPickSettings> {
 					await a.setFeedback({ champ_icon: "", title: "Best Pick", pick_name: "N/A in TFT", pick_info: "", score_bar: { value: 0 } });
 				} else {
 					await a.setImage(""); await a.setTitle("Best\nN/A TFT");
+				}
+			}
+			return;
+		}
+
+		// ARAM has no per-lane matchup data
+		if (gameMode.isARAM()) {
+			for (const a of this.actions) {
+				if (a.isDial()) {
+					await a.setFeedback({ champ_icon: "", title: "Best Pick", pick_name: "N/A in ARAM", pick_info: "", score_bar: { value: 0 } });
+				} else {
+					await a.setImage(""); await a.setTitle("Best\nN/A ARAM");
 				}
 			}
 			return;

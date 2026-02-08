@@ -100,7 +100,7 @@ export class JungleTimer extends SingletonAction<JungleTimerSettings> {
 
 	override onWillDisappear(ev: WillDisappearEvent<JungleTimerSettings>): void | Promise<void> {
 		this.dialStates.delete(ev.action.id);
-		this.stopPolling();
+		if (this.actions.length === 0) this.stopPolling();
 	}
 
 	override async onKeyDown(ev: KeyDownEvent<JungleTimerSettings>): Promise<void> {
