@@ -13,6 +13,7 @@ import { lcuConnector } from "../services/lcu-connector";
 import { lcuApi } from "../services/lcu-api";
 import { dataDragon } from "../services/data-dragon";
 import { championStats, ChampionStats, MatchupData } from "../services/champion-stats";
+import { getChampionIcon, prefetchChampionIcons } from "../services/champion-icons";
 
 const logger = streamDeck.logger.createScope("Counterpick");
 
@@ -40,6 +41,7 @@ export class Counterpick extends SingletonAction<CounterpickSettings> {
 		if (ev.action.isDial()) {
 			this.getDialView(ev.action.id);
 			return ev.action.setFeedback({
+				champ_icon: "",
 				title: `Counter · ${role.toUpperCase()}`,
 				pick_name: "Waiting...",
 				pick_info: "",
@@ -97,8 +99,10 @@ export class Counterpick extends SingletonAction<CounterpickSettings> {
 
 		const gamesStr = pick.games >= 1000 ? `${(pick.games / 1000).toFixed(1)}k` : `${pick.games}`;
 		const barColor = pick.winRateVs >= 54 ? "#2ECC71" : pick.winRateVs >= 50 ? "#F1C40F" : "#E74C3C";
+		const champIcon = await getChampionIcon(pick.alias);
 
 		await a.setFeedback({
+			champ_icon: champIcon ?? "",
 			title: `vs ${this.lastEnemyName}`,
 			pick_name: `#${index + 1} ${pick.name}`,
 			pick_info: `${pick.winRateVs}% WR · ${gamesStr} games`,
@@ -131,6 +135,7 @@ export class Counterpick extends SingletonAction<CounterpickSettings> {
 				const role = settings.role ?? "top";
 				if (a.isDial()) {
 					await a.setFeedback({
+						champ_icon: "",
 						title: `Counter · ${role.toUpperCase()}`,
 						pick_name: "Waiting...",
 						pick_info: "",
@@ -156,7 +161,7 @@ export class Counterpick extends SingletonAction<CounterpickSettings> {
 
 			if (!enemy) {
 				if (a.isDial()) {
-					await a.setFeedback({ title: `Counter · ${role.toUpperCase()}`, pick_name: "No enemy yet", pick_info: "", wr_bar: { value: 0 } });
+					await a.setFeedback({ title: `Counter · ${role.toUpperCase()}`, pick_name: "No enemy yet", pick_info: "", champ_icon: "", wr_bar: { value: 0 } });
 				} else {
 					await a.setTitle(`Counter\nNo enemy`);
 				}
@@ -177,7 +182,7 @@ export class Counterpick extends SingletonAction<CounterpickSettings> {
 			}
 
 			if (a.isDial()) {
-				await a.setFeedback({ title: `vs ${enemyChamp.name}`, pick_name: "Searching...", pick_info: "", wr_bar: { value: 0 } });
+				await a.setFeedback({ title: `vs ${enemyChamp.name}`, pick_name: "Searching...", pick_info: "", champ_icon: "", wr_bar: { value: 0 } });
 			} else {
 				await a.setTitle(`vs ${enemyChamp.name}\nSearching...`);
 			}
@@ -189,9 +194,12 @@ export class Counterpick extends SingletonAction<CounterpickSettings> {
 				this.lastPicks = picks;
 				this.lastEnemyName = enemyChamp.name;
 
+				// Prefetch icons for top picks
+				prefetchChampionIcons(picks.slice(0, 5).map((p) => p.alias));
+
 				if (picks.length === 0) {
 					if (a.isDial()) {
-						await a.setFeedback({ title: `vs ${enemyChamp.name}`, pick_name: "No data", pick_info: "", wr_bar: { value: 0 } });
+						await a.setFeedback({ title: `vs ${enemyChamp.name}`, pick_name: "No data", pick_info: "", champ_icon: "", wr_bar: { value: 0 } });
 					} else {
 						await a.setTitle(`vs ${enemyChamp.name}\nNo data`);
 					}
@@ -201,6 +209,8 @@ export class Counterpick extends SingletonAction<CounterpickSettings> {
 					await this.renderDialPick(a, 0);
 				} else {
 					const best = picks[0];
+					const bestIcon = await getChampionIcon(best.alias);
+					if (bestIcon) await a.setImage(bestIcon);
 					await a.setTitle(`vs ${enemyChamp.name}\n${best.name} ${best.winRateVs}%`);
 				}
 
@@ -208,7 +218,7 @@ export class Counterpick extends SingletonAction<CounterpickSettings> {
 			} catch (e) {
 				logger.error(`Counterpick error: ${e}`);
 				if (a.isDial()) {
-					await a.setFeedback({ title: `vs ${enemyChamp.name}`, pick_name: "Error", pick_info: "", wr_bar: { value: 0 } });
+					await a.setFeedback({ title: `vs ${enemyChamp.name}`, pick_name: "Error", pick_info: "", champ_icon: "", wr_bar: { value: 0 } });
 				} else {
 					await a.setTitle(`vs ${enemyChamp.name}\nError`);
 				}

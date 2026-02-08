@@ -212,6 +212,7 @@ export class ChampionStats {
 
 	/**
 	 * Fetch and parse matchup data for a champion on a lane.
+	 * Retries up to 2 times on failure with exponential backoff.
 	 */
 	private async getMatchups(championAlias: string, lane: string): Promise<MatchupData[]> {
 		const key = `${championAlias}:${lane}`;
@@ -221,43 +222,60 @@ export class ChampionStats {
 			return cached.data;
 		}
 
-		try {
-			const url = `${LOLALYTICS_BASE}/lol/${championAlias}/counters/?lane=${lane}`;
-			logger.debug(`Fetching matchups: ${url}`);
+		const url = `${LOLALYTICS_BASE}/lol/${championAlias}/counters/?lane=${lane}`;
+		const maxRetries = 2;
 
-			const response = await fetch(url, { headers: FETCH_HEADERS });
-			if (!response.ok) {
-				logger.warn(`Lolalytics returned ${response.status} for ${championAlias} ${lane}`);
-				return cached?.data ?? [];
+		for (let attempt = 0; attempt <= maxRetries; attempt++) {
+			try {
+				if (attempt > 0) {
+					const delay = 1000 * Math.pow(2, attempt - 1);
+					logger.debug(`Retry ${attempt}/${maxRetries} for ${championAlias} ${lane} in ${delay}ms`);
+					await new Promise((r) => setTimeout(r, delay));
+				}
+
+				logger.debug(`Fetching matchups: ${url}`);
+
+				const response = await fetch(url, { headers: FETCH_HEADERS });
+				if (!response.ok) {
+					logger.warn(`Lolalytics returned ${response.status} for ${championAlias} ${lane}`);
+					continue;
+				}
+
+				const html = await response.text();
+				const matchups = this.parseCountersPage(html, championAlias);
+
+				if (matchups.length === 0) {
+					logger.warn(`Parsed 0 matchups for ${championAlias} ${lane} (attempt ${attempt + 1})`);
+					continue;
+				}
+
+				logger.info(`Parsed ${matchups.length} matchups for ${championAlias} ${lane}`);
+				this.cache.set(key, { data: matchups, timestamp: Date.now() });
+				return matchups;
+			} catch (e) {
+				logger.error(`Failed to fetch matchups for ${championAlias} ${lane} (attempt ${attempt + 1}): ${e}`);
 			}
-
-			const html = await response.text();
-			const matchups = this.parseCountersPage(html, championAlias);
-
-			logger.info(`Parsed ${matchups.length} matchups for ${championAlias} ${lane}`);
-
-			this.cache.set(key, { data: matchups, timestamp: Date.now() });
-			return matchups;
-		} catch (e) {
-			logger.error(`Failed to fetch matchups for ${championAlias} ${lane}: ${e}`);
-			return cached?.data ?? [];
 		}
+
+		logger.error(`All ${maxRetries + 1} attempts failed for ${championAlias} ${lane}`);
+		return cached?.data ?? [];
 	}
 
 	/**
 	 * Parse the Lolalytics counters HTML page.
-	 * Structure per entry:
-	 *   <a href="/lol/{champ}/vs/{enemy}/build/...">
-	 *     ... alt="{EnemyName}" ...
-	 *     ... <!--t=XX-->{winRate}<!---->% ... <div ...>VS</div>
-	 *     ... {games} Games ...
-	 *   </a>
+	 *
+	 * Each card is an <a> tag containing:
+	 *   href="/lol/{champ}/vs/{enemy}/build/..."
+	 *   ... alt="{EnemyName}" ...
+	 *   ... <!--t=XX-->{winRate}<!---->% ... VS ...
+	 *   ... {games} Games ...
+	 *
+	 * WR is ~1000 chars from the href, Games is ~2200 chars from the href.
+	 * We use a 4000-char window to capture both reliably.
 	 */
 	private parseCountersPage(html: string, championAlias: string): MatchupData[] {
 		const matchups: MatchupData[] = [];
 
-		// Find all matchup link blocks
-		// Pattern: href="/lol/{champ}/vs/{enemy}/build/"
 		const linkRegex = new RegExp(
 			`href="/lol/${championAlias}/vs/([^/]+)/build/[^"]*"`,
 			"g",
@@ -270,11 +288,14 @@ export class ChampionStats {
 			const enemyAlias = linkMatch[1];
 			if (seen.has(enemyAlias)) continue;
 
-			// From the link position, find the win rate and games count
-			const afterLink = html.substring(linkMatch.index, linkMatch.index + 2000);
+			// 4000-char window: WR is ~1000 chars in, Games is ~2200 chars in
+			const afterLink = html.substring(linkMatch.index, linkMatch.index + 4000);
 
-			// Win rate pattern: <!--t=XX-->{number}<!---->%...VS
-			const wrMatch = afterLink.match(/<!--t=\w+-->([\d.]+)<!---->%/);
+			// Win rate pattern: <!--t=XX-->{number}<!---->% (Qwik SSR)
+			// Fallback: plain {number}% for non-Qwik pages
+			const wrMatch =
+				afterLink.match(/<!--t=\w+-->([\d.]+)<!---->%/) ??
+				afterLink.match(/(\d{2,3}\.\d{1,2})%/);
 			// Games pattern: {number} Games
 			const gamesMatch = afterLink.match(/([\d,]+)\s*Games/);
 
@@ -283,7 +304,6 @@ export class ChampionStats {
 				const games = parseInt(gamesMatch[1].replace(/,/g, ""), 10);
 
 				if (!isNaN(wr) && games >= 50) {
-					// Resolve display name from Data Dragon
 					const champData = this.resolveChampionName(enemyAlias);
 
 					matchups.push({

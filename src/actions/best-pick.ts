@@ -13,6 +13,7 @@ import { lcuConnector } from "../services/lcu-connector";
 import { lcuApi } from "../services/lcu-api";
 import { dataDragon } from "../services/data-dragon";
 import { championStats, ChampionStats } from "../services/champion-stats";
+import { getChampionIcon, prefetchChampionIcons } from "../services/champion-icons";
 
 const logger = streamDeck.logger.createScope("BestPick");
 
@@ -42,6 +43,7 @@ export class BestPick extends SingletonAction<BestPickSettings> {
 		if (ev.action.isDial()) {
 			this.getDialView(ev.action.id);
 			return ev.action.setFeedback({
+				champ_icon: "",
 				title: `Best · ${role.toUpperCase()}`,
 				pick_name: "Waiting...",
 				pick_info: "",
@@ -98,8 +100,10 @@ export class BestPick extends SingletonAction<BestPickSettings> {
 		if (!pick) return;
 
 		const barColor = pick.score >= 54 ? "#2ECC71" : pick.score >= 50 ? "#F1C40F" : "#E74C3C";
+		const champIcon = await getChampionIcon(pick.alias);
 
 		await a.setFeedback({
+			champ_icon: champIcon ?? "",
 			title: this.lastInfo,
 			pick_name: `#${index + 1} ${pick.name}`,
 			pick_info: `${pick.score}% · ${pick.details}`,
@@ -132,6 +136,7 @@ export class BestPick extends SingletonAction<BestPickSettings> {
 				const role = settings.role ?? "top";
 				if (a.isDial()) {
 					await a.setFeedback({
+						champ_icon: "",
 						title: `Best · ${role.toUpperCase()}`,
 						pick_name: "Waiting...",
 						pick_info: "",
@@ -169,7 +174,7 @@ export class BestPick extends SingletonAction<BestPickSettings> {
 
 			if (enemyAliases.length === 0) {
 				if (a.isDial()) {
-					await a.setFeedback({ title: `Best · ${role.toUpperCase()}`, pick_name: "No enemy yet", pick_info: "", score_bar: { value: 0 } });
+					await a.setFeedback({ title: `Best · ${role.toUpperCase()}`, pick_name: "No enemy yet", pick_info: "", champ_icon: "", score_bar: { value: 0 } });
 				} else {
 					await a.setTitle(`Best Pick\nNo enemy`);
 				}
@@ -186,7 +191,7 @@ export class BestPick extends SingletonAction<BestPickSettings> {
 			}
 
 			if (a.isDial()) {
-				await a.setFeedback({ title: `Best · ${role.toUpperCase()}`, pick_name: "Searching...", pick_info: "", score_bar: { value: 0 } });
+				await a.setFeedback({ title: `Best · ${role.toUpperCase()}`, pick_name: "Searching...", pick_info: "", champ_icon: "", score_bar: { value: 0 } });
 			} else {
 				await a.setTitle(`Best Pick\nSearching...`);
 			}
@@ -203,9 +208,12 @@ export class BestPick extends SingletonAction<BestPickSettings> {
 					? `vs${enemyAliases.length} +syn${allyChampionKeys.length} · ${role.toUpperCase()}`
 					: `vs${enemyAliases.length} · ${role.toUpperCase()}`;
 
+				// Prefetch icons for top picks
+				prefetchChampionIcons(picks.slice(0, 5).map((p) => p.alias));
+
 				if (picks.length === 0) {
 					if (a.isDial()) {
-						await a.setFeedback({ title: this.lastInfo, pick_name: "No data", pick_info: "", score_bar: { value: 0 } });
+						await a.setFeedback({ title: this.lastInfo, pick_name: "No data", pick_info: "", champ_icon: "", score_bar: { value: 0 } });
 					} else {
 						await a.setTitle(`Best Pick\nNo data`);
 					}
@@ -215,6 +223,8 @@ export class BestPick extends SingletonAction<BestPickSettings> {
 					await this.renderDialPick(a, 0);
 				} else {
 					const best = picks[0];
+					const bestIcon = await getChampionIcon(best.alias);
+					if (bestIcon) await a.setImage(bestIcon);
 					await a.setTitle(`Best Pick\n${best.name} ${best.score}%`);
 				}
 
@@ -222,7 +232,7 @@ export class BestPick extends SingletonAction<BestPickSettings> {
 			} catch (e) {
 				logger.error(`BestPick error: ${e}`);
 				if (a.isDial()) {
-					await a.setFeedback({ title: `Best · ${role.toUpperCase()}`, pick_name: "Error", pick_info: "", score_bar: { value: 0 } });
+					await a.setFeedback({ title: `Best · ${role.toUpperCase()}`, pick_name: "Error", pick_info: "", champ_icon: "", score_bar: { value: 0 } });
 				} else {
 					await a.setTitle(`Best Pick\nError`);
 				}

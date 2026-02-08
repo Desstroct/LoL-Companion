@@ -213,3 +213,27 @@ Transformer le Stream Deck en **tableau de bord tactique** qui complète l'écra
 ---
 
 *Document créé le 7 février 2026 — À mettre à jour au fur et à mesure du développement.*
+
+---
+
+## 9. Changelog technique
+
+### Session 8 février 2026 — Axe 1 & 2 : Parser fix + Champion icons
+
+**Axe 1 — Fix Counterpick/BestPick parser (champion-stats.ts)**
+- **Root cause identifié** : fenêtre de parsing HTML trop petite (2000 chars) alors que le WR est à ~1026 chars et les Games à ~2252 chars du `href`. Les 6 liens d'intro (sans données) polluaient aussi le dedup.
+- **Fix** : fenêtre élargie à 4000 chars + regex WR plus robuste (supporte SSR Qwik et format plain).
+- **Résultat** : 66 matchups parsés correctement (vs 0 avant).
+- **Retry logic** : ajout de 2 retries avec backoff exponentiel en cas d'échec.
+
+**Axe 2 — Icônes champion dynamiques**
+- **Nouveau service** : `src/services/champion-icons.ts` — télécharge les portraits depuis Data Dragon CDN à la volée, cache en mémoire (base64 data URI).
+- **Counterpick** : icône du counter pick affiché sur le pixmap (dial) ou `setImage` (key).
+- **Best Pick** : icône du best pick affiché sur le pixmap (dial) ou `setImage` (key).
+- **Layouts mis à jour** : `counterpick.json` et `best-pick.json` — ajout du slot `champ_icon` (pixmap 72×72), texte réaligné à droite (même layout qu'auto-rune).
+- **Prefetch** : les 5 meilleurs picks sont pré-téléchargés pour un scroll fluide.
+
+**Recherche OP.GG / Multi-sources**
+- OP.GG : données counter accessibles via RSC chunks (play/win par matchup) mais parsing complexe — reporté.
+- MetaSRC : bloqué (403). U.GG : trop lourd (14MB). Lolalytics reste source primaire fiable.
+
