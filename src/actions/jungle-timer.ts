@@ -64,6 +64,7 @@ export class JungleTimer extends SingletonAction<JungleTimerSettings> {
 	private dragonCount = 0;
 	private lastDragonType = "";
 	private isElderPhase = false;
+	private mapTerrain = "";
 
 	// ── Voidgrubs (Horde) state ──
 	private grubsKilled = 0;          // total grubs killed (max 6)
@@ -183,6 +184,7 @@ export class JungleTimer extends SingletonAction<JungleTimerSettings> {
 		this.dragonCount = 0;
 		this.lastDragonType = "";
 		this.isElderPhase = false;
+		this.mapTerrain = "";
 		this.grubsKilled = 0;
 		this.grubsWaveKills = 0;
 		this.grubsLastKillTime = null;
@@ -203,6 +205,9 @@ export class JungleTimer extends SingletonAction<JungleTimerSettings> {
 		}
 
 		const gameTime = allData.gameData.gameTime;
+		if (allData.gameData.mapTerrain && allData.gameData.mapTerrain !== "Default") {
+			this.mapTerrain = allData.gameData.mapTerrain;
+		}
 		this.processEvents(allData.events.Events, gameTime);
 
 		// Update spawn states based on game time
@@ -321,9 +326,9 @@ export class JungleTimer extends SingletonAction<JungleTimerSettings> {
 	private async getObjectiveIcon(objective: Objective, gameTime: number): Promise<string | null> {
 		switch (objective) {
 			case "dragon":
-				return this.lastDragonType
-					? await getDragonIcon(this.lastDragonType)
-					: await getDragonIcon("Fire");
+				if (this.lastDragonType) return getDragonIcon(this.lastDragonType);
+				if (this.isElderPhase) return getDragonIcon("Elder");
+				return getDragonIcon(this.getNextDragonType());
 			case "grubs":
 				if (gameTime >= GRUBS_REMOVED_TIME && this.grubsKilled >= 6) return getGrubsIcon();
 				return getGrubsIcon();
@@ -336,11 +341,29 @@ export class JungleTimer extends SingletonAction<JungleTimerSettings> {
 
 	private async getIdleIcon(objective: Objective): Promise<string | null> {
 		switch (objective) {
-			case "dragon": return getDragonIcon("Fire");
+			case "dragon": return getDragonIcon(this.isElderPhase ? "Elder" : "Fire");
 			case "grubs": return getGrubsIcon();
 			case "herald": return getHeraldIcon();
 			case "baron": return getBaronIcon();
 		}
+	}
+
+	/**
+	 * Determine the next dragon type based on mapTerrain.
+	 * mapTerrain values: "Mountain", "Infernal", "Ocean", "Cloud", "Hextech", "Chemtech", "Default"
+	 * Maps to icon keys: "Earth", "Fire", "Water", "Air", "Hextech", "Chemtech"
+	 */
+	private getNextDragonType(): string {
+		if (this.isElderPhase) return "Elder";
+		const terrainMap: Record<string, string> = {
+			Mountain: "Earth",
+			Infernal: "Fire",
+			Ocean: "Water",
+			Cloud: "Air",
+			Hextech: "Hextech",
+			Chemtech: "Chemtech",
+		};
+		return terrainMap[this.mapTerrain] ?? "Fire";
 	}
 
 	// ─────────── Dial data ───────────
