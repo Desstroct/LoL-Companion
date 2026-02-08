@@ -18,6 +18,13 @@ export class DataDragon {
 	private initialized = false;
 
 	/**
+	 * Whether Data Dragon has been successfully initialized with online data.
+	 */
+	isReady(): boolean {
+		return this.initialized;
+	}
+
+	/**
 	 * Initialize Data Dragon: fetches latest version and loads champion + spell data.
 	 */
 	async init(): Promise<void> {

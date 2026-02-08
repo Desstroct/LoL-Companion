@@ -68,8 +68,7 @@ import { lcuConnector } from "./services/lcu-connector";
 import { gameMode } from "./services/game-mode";
 import { dataDragon } from "./services/data-dragon";
 
-// Enable trace logging for development
-streamDeck.logger.setLevel("trace");
+streamDeck.logger.setLevel("info");
 
 const logger = streamDeck.logger.createScope("Plugin");
 
@@ -90,7 +89,7 @@ async function init() {
 	// Initialize Data Dragon with retry (network may be slow on startup)
 	for (let attempt = 1; attempt <= 3; attempt++) {
 		await dataDragon.init();
-		if (dataDragon.getVersion() !== "14.24.1" || attempt === 3) break;
+		if (dataDragon.isReady() || attempt === 3) break;
 		logger.warn(`DataDragon init attempt ${attempt} may have failed, retrying in ${attempt * 2}s...`);
 		await new Promise((r) => setTimeout(r, attempt * 2000));
 	}

@@ -1,6 +1,6 @@
 {
 	"Name": "LoL Companion",
-	"Version": "0.7.0.0",
+	"Version": "0.9.0.0",
 	"Author": "Desstroct",
 	"Actions": [
 		{
@@ -360,7 +360,8 @@
 	"Category": "LoL Companion",
 	"CategoryIcon": "imgs/plugin/category-icon",
 	"CodePath": "bin/plugin.js",
-	"Description": "League of Legends companion for Stream Deck — lobby intelligence, summoner tracking, and in-game HUD.",
+	"Description": "League of Legends & TFT companion for Stream Deck — lobby intelligence, summoner tracking, in-game HUD, auto runes, counterpicks, and more.",
+	"URL": "https://github.com/Desstroct/LoL-Companion",
 	"Icon": "imgs/plugin/marketplace",
 	"SDKVersion": 3,
 	"Software": {
@@ -377,8 +378,7 @@
 		}
 	],
 	"Nodejs": {
-		"Version": "20",
-		"Debug": "enabled"
+		"Version": "20"
 	},
 	"UUID": "com.desstroct.lol-api"
 }

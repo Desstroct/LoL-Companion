@@ -1,0 +1,3 @@
+# Exclude logs from packaging
+logs/
+*.log
