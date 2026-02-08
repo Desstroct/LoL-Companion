@@ -6,6 +6,7 @@ import {
 	WillDisappearEvent,
 } from "@elgato/streamdeck";
 import streamDeck from "@elgato/streamdeck";
+import { exec } from "node:child_process";
 import { lcuConnector } from "../services/lcu-connector";
 import { lcuApi } from "../services/lcu-api";
 import { gameClient } from "../services/game-client";
@@ -46,15 +47,32 @@ export class GameStatus extends SingletonAction<GameStatusSettings> {
 	}
 
 	override async onKeyDown(ev: KeyDownEvent<GameStatusSettings>): Promise<void> {
-		// Force refresh
+		// Open OP.GG profile of current summoner
+		if (lcuConnector.isConnected()) {
+			try {
+				const summoner = await lcuApi.getCurrentSummoner();
+				if (summoner && summoner.gameName) {
+					const name = encodeURIComponent(summoner.gameName);
+					const tag = encodeURIComponent(summoner.tagLine || "EUW");
+					const region = ev.payload.settings.region ?? "euw";
+					const url = `https://www.op.gg/summoners/${region}/${name}-${tag}`;
+					logger.info(`Opening OP.GG: ${url}`);
+					exec(`start "" "${url}"`);
+					return;
+				}
+			} catch (e) {
+				logger.error(`Failed to open OP.GG: ${e}`);
+			}
+		}
+		// Fallback: force refresh
 		await this.updateStatus();
 	}
 
 	private startPolling(): void {
 		if (this.pollInterval) return;
 
-		this.updateStatus();
-		this.pollInterval = setInterval(() => this.updateStatus(), 2000);
+		this.updateStatus().catch((e) => logger.error(`updateStatus error: ${e}`));
+		this.pollInterval = setInterval(() => this.updateStatus().catch((e) => logger.error(`updateStatus error: ${e}`)), 2000);
 	}
 
 	private stopPolling(): void {
@@ -93,4 +111,6 @@ export class GameStatus extends SingletonAction<GameStatusSettings> {
 	}
 }
 
-type GameStatusSettings = Record<string, never>;
+type GameStatusSettings = {
+	region?: string;
+};

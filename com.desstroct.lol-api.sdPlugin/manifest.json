@@ -1,6 +1,6 @@
 {
 	"Name": "LoL Companion",
-	"Version": "0.6.0.0",
+	"Version": "0.7.0.0",
 	"Author": "Desstroct",
 	"Actions": [
 		{
@@ -247,6 +247,46 @@
 			"States": [
 				{
 					"Image": "imgs/actions/best-item/key",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "Death Timer",
+			"UUID": "com.desstroct.lol-api.death-timer",
+			"Icon": "imgs/actions/death-timer/icon",
+			"Tooltip": "Shows your respawn countdown when you die in-game. Shows ALIVE status with level when alive.",
+			"PropertyInspectorPath": "ui/death-timer.html",
+			"Controllers": [
+				"Keypad",
+				"Encoder"
+			],
+			"Encoder": {
+				"layout": "layouts/death-timer.json",
+				"TriggerDescription": {
+					"Push": "Refresh",
+					"Touch": "Refresh"
+				}
+			},
+			"States": [
+				{
+					"Image": "imgs/actions/death-timer/key",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "Auto Pick/Ban",
+			"UUID": "com.desstroct.lol-api.auto-pick",
+			"Icon": "imgs/actions/auto-pick/icon",
+			"Tooltip": "Automatically picks and bans your preferred champions during Champion Select. Press to toggle on/off.",
+			"PropertyInspectorPath": "ui/auto-pick.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/actions/auto-pick/key",
 					"TitleAlignment": "middle"
 				}
 			]

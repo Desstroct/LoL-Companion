@@ -15,10 +15,21 @@ const logger = streamDeck.logger.createScope("LcuApi");
  * Wrapper around the LCU REST API.
  * All endpoints are relative to the LCU base URL (https://127.0.0.1:{port}).
  * Authentication is HTTP Basic with riot:{auth-token}.
+ *
+ * Features:
+ * - Shared https.Agent for connection reuse (no socket leaks)
+ * - Short-TTL request deduplication cache to avoid 7+ identical calls per poll cycle
  */
 export class LcuApi {
+	/** Shared agent (rejectUnauthorized: false for LCU self-signed cert) */
+	private agent = new https.Agent({ rejectUnauthorized: false, keepAlive: true });
+
+	/** Short-lived GET cache: endpoint → { data, timestamp } */
+	private getCache = new Map<string, { data: unknown; timestamp: number }>();
+	private readonly GET_CACHE_TTL = 500; // 500ms dedup window
 	/**
 	 * Generic GET request to the LCU API.
+	 * Results are cached for 500ms to deduplicate concurrent polling calls.
 	 */
 	async get<T>(endpoint: string): Promise<T | null> {
 		const creds = lcuConnector.getCredentials();
@@ -26,9 +37,14 @@ export class LcuApi {
 			return null;
 		}
 
+		// Check dedup cache
+		const cached = this.getCache.get(endpoint);
+		if (cached && Date.now() - cached.timestamp < this.GET_CACHE_TTL) {
+			return cached.data as T;
+		}
+
 		return new Promise((resolve) => {
 			const auth = Buffer.from(`riot:${creds.password}`).toString("base64");
-			const agent = new https.Agent({ rejectUnauthorized: false });
 
 			const req = https.request(
 				{
@@ -40,7 +56,7 @@ export class LcuApi {
 						Authorization: `Basic ${auth}`,
 						Accept: "application/json",
 					},
-					agent,
+					agent: this.agent,
 				},
 				(res) => {
 					let data = "";
@@ -48,7 +64,9 @@ export class LcuApi {
 					res.on("end", () => {
 						try {
 							if (res.statusCode === 200) {
-								resolve(JSON.parse(data) as T);
+								const parsed = JSON.parse(data) as T;
+								this.getCache.set(endpoint, { data: parsed, timestamp: Date.now() });
+								resolve(parsed);
 							} else {
 								logger.warn(`LCU ${endpoint} returned ${res.statusCode}`);
 								resolve(null);
@@ -86,7 +104,6 @@ export class LcuApi {
 
 		return new Promise((resolve) => {
 			const auth = Buffer.from(`riot:${creds.password}`).toString("base64");
-			const agent = new https.Agent({ rejectUnauthorized: false });
 			const postData = body ? JSON.stringify(body) : "";
 
 			const req = https.request(
@@ -100,7 +117,7 @@ export class LcuApi {
 						"Content-Type": "application/json",
 						"Content-Length": Buffer.byteLength(postData),
 					},
-					agent,
+					agent: this.agent,
 				},
 				(res) => {
 					let data = "";
@@ -192,6 +209,13 @@ export class LcuApi {
 	}
 
 	/**
+	 * Generic PATCH request to the LCU API.
+	 */
+	async patch<T = unknown>(endpoint: string, body?: unknown): Promise<T | null> {
+		return this.request<T>("PATCH", endpoint, body);
+	}
+
+	/**
 	 * Generic DELETE request to the LCU API.
 	 */
 	async del(endpoint: string): Promise<boolean> {
@@ -200,7 +224,6 @@ export class LcuApi {
 
 		return new Promise((resolve) => {
 			const auth = Buffer.from(`riot:${creds.password}`).toString("base64");
-			const agent = new https.Agent({ rejectUnauthorized: false });
 
 			const req = https.request(
 				{
@@ -209,7 +232,7 @@ export class LcuApi {
 					path: endpoint,
 					method: "DELETE",
 					headers: { Authorization: `Basic ${auth}` },
-					agent,
+					agent: this.agent,
 				},
 				(res) => {
 					let data = "";
@@ -235,7 +258,6 @@ export class LcuApi {
 
 		return new Promise((resolve) => {
 			const auth = Buffer.from(`riot:${creds.password}`).toString("base64");
-			const agent = new https.Agent({ rejectUnauthorized: false });
 			const postData = body ? JSON.stringify(body) : "";
 
 			const req = https.request(
@@ -250,7 +272,7 @@ export class LcuApi {
 						"Content-Length": Buffer.byteLength(postData),
 						Accept: "application/json",
 					},
-					agent,
+					agent: this.agent,
 				},
 				(res) => {
 					let data = "";

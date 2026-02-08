@@ -81,8 +81,8 @@ export class BestItem extends SingletonAction {
 
 	private startPolling(): void {
 		if (this.pollInterval) return;
-		this.updateAll();
-		this.pollInterval = setInterval(() => this.updateAll(), 2000);
+		this.updateAll().catch((e) => logger.error(`updateAll error: ${e}`));
+		this.pollInterval = setInterval(() => this.updateAll().catch((e) => logger.error(`updateAll error: ${e}`)), 2000);
 	}
 
 	private stopPolling(): void {

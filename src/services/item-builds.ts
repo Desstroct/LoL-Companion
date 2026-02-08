@@ -189,6 +189,7 @@ export class ItemBuilds {
 	 * Convert a Game Client champion name (e.g., "Master Yi") to Lolalytics alias.
 	 */
 	static toAlias(championName: string): string {
+		if (!championName) return "unknown";
 		// Try DDragon lookup first (display name → DDragon ID → lowercase)
 		for (const champ of dataDragon.getAllChampions()) {
 			if (champ.name.toLowerCase() === championName.toLowerCase()) {

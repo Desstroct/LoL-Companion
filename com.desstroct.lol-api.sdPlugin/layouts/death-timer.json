@@ -1,0 +1,35 @@
+{
+	"$schema": "https://schemas.elgato.com/streamdeck/plugins/layout.json",
+	"id": "death-timer",
+	"items": [
+		{
+			"key": "champ_icon",
+			"type": "pixmap",
+			"rect": [4, 10, 72, 72]
+		},
+		{
+			"key": "status_text",
+			"type": "text",
+			"rect": [82, 8, 118, 28],
+			"font": { "size": 16, "weight": 700 },
+			"alignment": "left"
+		},
+		{
+			"key": "timer_text",
+			"type": "text",
+			"rect": [82, 36, 118, 24],
+			"font": { "size": 20, "weight": 700 },
+			"alignment": "left",
+			"color": "#FFFFFF"
+		},
+		{
+			"key": "respawn_bar",
+			"type": "bar",
+			"rect": [82, 66, 108, 12],
+			"range": { "min": 0, "max": 100 },
+			"value": 0,
+			"bar_fill_c": "#E74C3C",
+			"bar_bg_c": "#333333"
+		}
+	]
+}

@@ -40,8 +40,8 @@ export class KdaTracker extends SingletonAction {
 
 	private startPolling(): void {
 		if (this.pollInterval) return;
-		this.updateAll();
-		this.pollInterval = setInterval(() => this.updateAll(), 1500);
+		this.updateAll().catch((e) => logger.error(`updateAll error: ${e}`));
+		this.pollInterval = setInterval(() => this.updateAll().catch((e) => logger.error(`updateAll error: ${e}`)), 1500);
 	}
 
 	private stopPolling(): void {
@@ -92,8 +92,10 @@ export class KdaTracker extends SingletonAction {
 		const { kills, deaths, assists, creepScore } = me.scores;
 		const gameTimeMinutes = allData.gameData.gameTime / 60;
 
-		// Fetch champion icon for display
-		const champIcon = await getChampionIconByName(me.championName);
+		// Fetch champion icon for display (championName may be undefined during loading)
+		const champIcon = me.championName
+			? await getChampionIconByName(me.championName)
+			: null;
 
 		const kda = deaths === 0
 			? (kills + assists)

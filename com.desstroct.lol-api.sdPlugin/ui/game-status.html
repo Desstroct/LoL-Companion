@@ -6,11 +6,33 @@
     <script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
 </head>
 <body>
+    <sdpi-item label="OP.GG Region">
+        <sdpi-select setting="region">
+            <option value="euw">EUW</option>
+            <option value="eune">EUNE</option>
+            <option value="na">NA</option>
+            <option value="kr">KR</option>
+            <option value="br">BR</option>
+            <option value="jp">JP</option>
+            <option value="lan">LAN</option>
+            <option value="las">LAS</option>
+            <option value="oce">OCE</option>
+            <option value="tr">TR</option>
+            <option value="ru">RU</option>
+            <option value="sg">SG</option>
+            <option value="ph">PH</option>
+            <option value="tw">TW</option>
+            <option value="vn">VN</option>
+            <option value="th">TH</option>
+        </sdpi-select>
+    </sdpi-item>
     <sdpi-item label="Info">
         <details>
             <summary>How it works</summary>
             <p style="font-size: 11px; color: #999; padding: 8px;">
-                Shows the current League client state: Offline, Lobby, Queue, Champ Select, In Game, etc. Updates automatically every 2 seconds. Press the key to force a refresh.
+                Shows the current League client state: Offline, Lobby, Queue, Champ Select, In Game, etc.<br><br>
+                <b>Press key:</b> Opens your OP.GG profile in your default browser.<br>
+                Updates automatically every 2 seconds.
             </p>
         </details>
     </sdpi-item>

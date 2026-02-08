@@ -93,8 +93,8 @@ export class LobbyScannerAction extends SingletonAction<LobbyScannerSettings> {
 	private startPolling(): void {
 		if (this.pollInterval) return;
 
-		this.updateLobby();
-		this.pollInterval = setInterval(() => this.updateLobby(), 2000);
+		this.updateLobby().catch((e) => logger.error(`updateLobby error: ${e}`));
+		this.pollInterval = setInterval(() => this.updateLobby().catch((e) => logger.error(`updateLobby error: ${e}`)), 2000);
 	}
 
 	private stopPolling(): void {

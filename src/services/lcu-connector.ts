@@ -44,10 +44,10 @@ export class LcuConnector {
 		if (this.pollInterval) return;
 
 		// Check immediately
-		this.discover();
+		this.discover().catch((e) => logger.error(`LCU discover error: ${e}`));
 
 		this.pollInterval = setInterval(() => {
-			this.discover();
+			this.discover().catch((e) => logger.error(`LCU discover error: ${e}`));
 		}, intervalMs);
 
 		logger.info("Started LCU polling");
@@ -106,11 +106,12 @@ export class LcuConnector {
 
 	/**
 	 * Discover LCU credentials by reading the LeagueClientUx process command line.
+	 * Uses PowerShell Get-CimInstance (wmic is deprecated on Windows 11 24H2+).
 	 */
 	private discoverFromProcess(): Promise<LcuCredentials | null> {
 		return new Promise((resolve, reject) => {
 			const cmd = process.platform === "win32"
-				? `wmic PROCESS WHERE name='LeagueClientUx.exe' GET commandline`
+				? `powershell.exe -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"name='LeagueClientUx.exe'\\" | Select-Object -ExpandProperty CommandLine"`
 				: `ps -A -o args | grep LeagueClientUx`;
 
 			exec(cmd, { timeout: 5000 }, (error, stdout) => {

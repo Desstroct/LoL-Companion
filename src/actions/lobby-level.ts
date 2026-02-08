@@ -108,8 +108,8 @@ export class LobbyLevelTracker extends SingletonAction<LobbyLevelSettings> {
 
 	private startPolling(): void {
 		if (this.pollInterval) return;
-		this.updateLobbyLevel();
-		this.pollInterval = setInterval(() => this.updateLobbyLevel(), 5000);
+		this.updateLobbyLevel().catch((e) => logger.error(`updateLobbyLevel error: ${e}`));
+		this.pollInterval = setInterval(() => this.updateLobbyLevel().catch((e) => logger.error(`updateLobbyLevel error: ${e}`)), 5000);
 	}
 
 	private stopPolling(): void {
@@ -175,7 +175,7 @@ export class LobbyLevelTracker extends SingletonAction<LobbyLevelSettings> {
 					const enemyRank = this.avgRankLabel(enemyData);
 					const allData = [...allyData, ...enemyData];
 					const totalLvl = this.avgLevel(allData.map((d) => d.level));
-					title = `Avg ${allyRank}\nLvl ${totalLvl}`;
+					title = `${allyRank} vs ${enemyRank}\nLvl ${totalLvl}`;
 				}
 
 				await a.setTitle(title);
@@ -188,8 +188,8 @@ export class LobbyLevelTracker extends SingletonAction<LobbyLevelSettings> {
 	}
 
 	private async fetchPlayerData(puuids: string[]): Promise<PlayerData[]> {
-		const results: PlayerData[] = [];
-		for (const puuid of puuids) {
+		// Fetch all players in parallel instead of sequentially
+		const promises = puuids.map(async (puuid): Promise<PlayerData> => {
 			const summoner = await lcuApi.getSummonerByPuuid(puuid);
 			const level = summoner?.summonerLevel ?? 0;
 
@@ -204,9 +204,10 @@ export class LobbyLevelTracker extends SingletonAction<LobbyLevelSettings> {
 				// Ranked data unavailable — skip
 			}
 
-			results.push({ level, rankValue });
-		}
-		return results;
+			return { level, rankValue };
+		});
+
+		return Promise.all(promises);
 	}
 
 	/**

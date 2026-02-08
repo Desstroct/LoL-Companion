@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Auto Pick/Ban Settings</title>
+    <script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
+</head>
+<body>
+    <sdpi-item label="Pick Champion">
+        <sdpi-textfield setting="pickChampion" placeholder="e.g. Aatrox, Lee Sin"></sdpi-textfield>
+    </sdpi-item>
+    <sdpi-item label="Ban Champion">
+        <sdpi-textfield setting="banChampion" placeholder="e.g. Yasuo"></sdpi-textfield>
+    </sdpi-item>
+    <sdpi-item label="Auto Lock">
+        <sdpi-checkbox setting="autoLock" label="Lock-in immediately (don't just hover)"></sdpi-checkbox>
+    </sdpi-item>
+    <sdpi-item label="Info">
+        <details>
+            <summary>How it works</summary>
+            <p style="font-size: 11px; color: #999; padding: 8px;">
+                During Champion Select, automatically bans and picks your preferred champions when it's your turn.<br><br>
+                <b>Pick Champion:</b> The champion to auto-pick (leave empty to skip).<br>
+                <b>Ban Champion:</b> The champion to auto-ban (leave empty to skip).<br>
+                <b>Auto Lock:</b> When enabled, locks in immediately. When off, only hovers.<br><br>
+                Press the key to toggle auto-pick ON/OFF.
+            </p>
+        </details>
+    </sdpi-item>
+</body>
+</html>

@@ -28,18 +28,14 @@ const logger = streamDeck.logger.createScope("Counterpick");
 @action({ UUID: "com.desstroct.lol-api.counterpick" })
 export class Counterpick extends SingletonAction<CounterpickSettings> {
 	private pollInterval: ReturnType<typeof setInterval> | null = null;
-	private lastEnemyChamp = "";
-	/** Cached counter picks for dial browsing */
-	private lastPicks: MatchupData[] = [];
-	private lastEnemyName = "";
-	/** Per-dial state: which counter index to view */
-	private dialStates: Map<string, { viewIndex: number }> = new Map();
+	/** Per-action instance state (supports multiple keys with different roles) */
+	private actionStates = new Map<string, CounterpickState>();
 
 	override onWillAppear(ev: WillAppearEvent<CounterpickSettings>): void | Promise<void> {
 		this.startPolling();
 		const role = ev.payload.settings.role ?? "top";
 		if (ev.action.isDial()) {
-			this.getDialView(ev.action.id);
+			this.getState(ev.action.id);
 			return ev.action.setFeedback({
 				champ_icon: "",
 				title: `Counter · ${role.toUpperCase()}`,
@@ -52,49 +48,52 @@ export class Counterpick extends SingletonAction<CounterpickSettings> {
 	}
 
 	override onWillDisappear(ev: WillDisappearEvent<CounterpickSettings>): void | Promise<void> {
-		this.dialStates.delete(ev.action.id);
+		this.actionStates.delete(ev.action.id);
 		this.stopPolling();
 	}
 
 	override async onKeyDown(ev: KeyDownEvent<CounterpickSettings>): Promise<void> {
-		this.lastEnemyChamp = "";
+		const state = this.getState(ev.action.id);
+		state.lastEnemyChamp = "";
 		await this.updateCounterpick();
 	}
 
 	/** Dial rotation: scroll through counter picks */
 	override async onDialRotate(ev: DialRotateEvent<CounterpickSettings>): Promise<void> {
-		if (this.lastPicks.length === 0) return;
-		const ds = this.getDialView(ev.action.id);
-		ds.viewIndex = ((ds.viewIndex + ev.payload.ticks) + this.lastPicks.length * 100) % this.lastPicks.length;
-		await this.renderDialPick(ev.action, ds.viewIndex);
+		const state = this.getState(ev.action.id);
+		if (state.lastPicks.length === 0) return;
+		state.viewIndex = ((state.viewIndex + ev.payload.ticks) + state.lastPicks.length * 100) % state.lastPicks.length;
+		await this.renderDialPick(ev.action, state);
 	}
 
 	/** Dial press: force refresh */
-	override async onDialUp(_ev: DialUpEvent<CounterpickSettings>): Promise<void> {
-		this.lastEnemyChamp = "";
+	override async onDialUp(ev: DialUpEvent<CounterpickSettings>): Promise<void> {
+		const state = this.getState(ev.action.id);
+		state.lastEnemyChamp = "";
 		await this.updateCounterpick();
 	}
 
 	/** Touch: force refresh */
-	override async onTouchTap(_ev: TouchTapEvent<CounterpickSettings>): Promise<void> {
-		this.lastEnemyChamp = "";
+	override async onTouchTap(ev: TouchTapEvent<CounterpickSettings>): Promise<void> {
+		const state = this.getState(ev.action.id);
+		state.lastEnemyChamp = "";
 		await this.updateCounterpick();
 	}
 
-	private getDialView(actionId: string): { viewIndex: number } {
-		let ds = this.dialStates.get(actionId);
-		if (!ds) {
-			ds = { viewIndex: 0 };
-			this.dialStates.set(actionId, ds);
+	private getState(actionId: string): CounterpickState {
+		let s = this.actionStates.get(actionId);
+		if (!s) {
+			s = { viewIndex: 0, lastEnemyChamp: "", lastPicks: [], lastEnemyName: "" };
+			this.actionStates.set(actionId, s);
 		}
-		return ds;
+		return s;
 	}
 
 	private async renderDialPick(
 		a: { setFeedback: (payload: any) => Promise<void> },
-		index: number,
+		state: CounterpickState,
 	): Promise<void> {
-		const pick = this.lastPicks[index];
+		const pick = state.lastPicks[state.viewIndex];
 		if (!pick) return;
 
 		const gamesStr = pick.games >= 1000 ? `${(pick.games / 1000).toFixed(1)}k` : `${pick.games}`;
@@ -103,8 +102,8 @@ export class Counterpick extends SingletonAction<CounterpickSettings> {
 
 		await a.setFeedback({
 			champ_icon: champIcon ?? "",
-			title: `vs ${this.lastEnemyName}`,
-			pick_name: `#${index + 1} ${pick.name}`,
+			title: `vs ${state.lastEnemyName}`,
+			pick_name: `#${state.viewIndex + 1} ${pick.name}`,
 			pick_info: `${pick.winRateVs}% WR · ${gamesStr} games`,
 			wr_bar: { value: pick.winRateVs, bar_fill_c: barColor },
 		});
@@ -112,8 +111,8 @@ export class Counterpick extends SingletonAction<CounterpickSettings> {
 
 	private startPolling(): void {
 		if (this.pollInterval) return;
-		this.updateCounterpick();
-		this.pollInterval = setInterval(() => this.updateCounterpick(), 3000);
+		this.updateCounterpick().catch((e) => logger.error(`updateCounterpick error: ${e}`));
+		this.pollInterval = setInterval(() => this.updateCounterpick().catch((e) => logger.error(`updateCounterpick error: ${e}`)), 3000);
 	}
 
 	private stopPolling(): void {
@@ -128,8 +127,10 @@ export class Counterpick extends SingletonAction<CounterpickSettings> {
 
 		const phase = await lcuApi.getGameflowPhase();
 		if (phase !== "ChampSelect") {
-			this.lastEnemyChamp = "";
-			this.lastPicks = [];
+			for (const s of this.actionStates.values()) {
+				s.lastEnemyChamp = "";
+				s.lastPicks = [];
+			}
 			for (const a of this.actions) {
 				const settings = (await a.getSettings()) as CounterpickSettings;
 				const role = settings.role ?? "top";
@@ -155,6 +156,7 @@ export class Counterpick extends SingletonAction<CounterpickSettings> {
 		for (const a of this.actions) {
 			const settings = (await a.getSettings()) as CounterpickSettings;
 			const role = settings.role ?? "top";
+			const state = this.getState(a.id);
 
 			const enemy = session.theirTeam.find(
 				(p) => p.assignedPosition === role && p.championId > 0,
@@ -173,11 +175,10 @@ export class Counterpick extends SingletonAction<CounterpickSettings> {
 			if (!enemyChamp) continue;
 
 			const enemyAlias = ChampionStats.toLolalytics(enemyChamp.id);
-			if (enemyAlias === this.lastEnemyChamp) {
+			if (enemyAlias === state.lastEnemyChamp) {
 				// Already processed — just re-render dials at their current index
 				if (a.isDial()) {
-					const ds = this.getDialView(a.id);
-					await this.renderDialPick(a, ds.viewIndex);
+					await this.renderDialPick(a, state);
 				}
 				continue;
 			}
@@ -192,8 +193,8 @@ export class Counterpick extends SingletonAction<CounterpickSettings> {
 				const lane = ChampionStats.toLolalyticsLane(role);
 				const picks = await championStats.getBestCounterpicks(enemyAlias, lane);
 
-				this.lastPicks = picks;
-				this.lastEnemyName = enemyChamp.name;
+				state.lastPicks = picks;
+				state.lastEnemyName = enemyChamp.name;
 
 				// Prefetch icons for top picks
 				prefetchChampionIcons(picks.slice(0, 5).map((p) => p.alias));
@@ -205,9 +206,8 @@ export class Counterpick extends SingletonAction<CounterpickSettings> {
 						await a.setTitle(`vs ${enemyChamp.name}\nNo data`);
 					}
 				} else if (a.isDial()) {
-					const ds = this.getDialView(a.id);
-					ds.viewIndex = 0; // Reset to #1 on new enemy
-					await this.renderDialPick(a, 0);
+					state.viewIndex = 0;
+					await this.renderDialPick(a, state);
 				} else {
 					const best = picks[0];
 					const bestIcon = await getChampionIcon(best.alias);
@@ -215,7 +215,7 @@ export class Counterpick extends SingletonAction<CounterpickSettings> {
 					await a.setTitle(`vs ${enemyChamp.name}\n${best.name} ${best.winRateVs}%`);
 				}
 
-				this.lastEnemyChamp = enemyAlias;
+				state.lastEnemyChamp = enemyAlias;
 			} catch (e) {
 				logger.error(`Counterpick error: ${e}`);
 				if (a.isDial()) {
@@ -226,6 +226,13 @@ export class Counterpick extends SingletonAction<CounterpickSettings> {
 			}
 		}
 	}
+}
+
+interface CounterpickState {
+	viewIndex: number;
+	lastEnemyChamp: string;
+	lastPicks: MatchupData[];
+	lastEnemyName: string;
 }
 
 type CounterpickSettings = {

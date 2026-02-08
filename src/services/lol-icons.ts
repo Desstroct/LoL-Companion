@@ -3,13 +3,15 @@ import { dataDragon } from "./data-dragon";
 
 const logger = streamDeck.logger.createScope("LoLIcons");
 
-/** Unified in-memory icon cache: key → base64 data URI */
+/** Unified in-memory icon cache: key → base64 data URI (bounded to 500 entries) */
 const iconCache = new Map<string, string>();
+const ICON_CACHE_MAX = 500;
 
 // ────────────────── Generic fetch ──────────────────
 
 /**
  * Fetch any image URL and return as base64 data URI. Cached in memory.
+ * Evicts oldest entries when cache exceeds ICON_CACHE_MAX.
  */
 async function fetchIcon(cacheKey: string, url: string): Promise<string | null> {
 	if (iconCache.has(cacheKey)) return iconCache.get(cacheKey)!;
@@ -21,6 +23,11 @@ async function fetchIcon(cacheKey: string, url: string): Promise<string | null> 
 		}
 		const buffer = Buffer.from(await response.arrayBuffer());
 		const dataUri = `data:image/png;base64,${buffer.toString("base64")}`;
+		// Evict oldest entries if cache is full
+		if (iconCache.size >= ICON_CACHE_MAX) {
+			const firstKey = iconCache.keys().next().value;
+			if (firstKey) iconCache.delete(firstKey);
+		}
 		iconCache.set(cacheKey, dataUri);
 		return dataUri;
 	} catch (e) {
@@ -49,6 +56,7 @@ export async function getChampionIcon(alias: string): Promise<string | null> {
  * @param key Numeric champion ID as string (e.g., "266" for Aatrox)
  */
 export async function getChampionIconByKey(key: string): Promise<string | null> {
+	if (!key) return null;
 	const champ = dataDragon.getChampionByKey(key);
 	if (!champ) return null;
 	return fetchIcon(`champ:${champ.id.toLowerCase()}`, dataDragon.getChampionImageUrl(champ.id));
@@ -59,6 +67,7 @@ export async function getChampionIconByKey(key: string): Promise<string | null> 
  * @param name Champion name (e.g., "Aatrox", "Master Yi", "Wukong")
  */
 export async function getChampionIconByName(name: string): Promise<string | null> {
+	if (!name) return null;
 	// Game Client API uses display names; DDragon uses IDs
 	const lower = name.toLowerCase().replace(/['\s.]/g, "");
 	for (const champ of dataDragon.getAllChampions()) {
@@ -86,6 +95,7 @@ export function prefetchChampionIcons(aliases: string[]): void {
  * Get a summoner spell icon by DDragon spell key (e.g., "SummonerFlash").
  */
 export async function getSpellIcon(spellKey: string): Promise<string | null> {
+	if (!spellKey) return null;
 	return fetchIcon(`spell:${spellKey}`, dataDragon.getSpellImageUrl(spellKey));
 }
 
@@ -182,6 +192,7 @@ export async function getProfileIcon(iconId: number): Promise<string | null> {
 // ────────────────── Internal helpers ──────────────────
 
 function resolveDataDragonId(alias: string): string | null {
+	if (!alias) return null;
 	const lowerAlias = alias.toLowerCase().replace(/['\s.]/g, "");
 	for (const champ of dataDragon.getAllChampions()) {
 		const ddLower = champ.id.toLowerCase().replace(/['\s.]/g, "");

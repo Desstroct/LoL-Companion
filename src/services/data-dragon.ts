@@ -70,6 +70,20 @@ export class DataDragon {
 	}
 
 	/**
+	 * Get champion data by display name (e.g., "Lee Sin", "Aatrox").
+	 * Case-insensitive search.
+	 */
+	getChampionByName(name: string): DdChampion | undefined {
+		const lower = name.toLowerCase();
+		for (const champ of this.champions.values()) {
+			if (champ.name.toLowerCase() === lower || champ.id.toLowerCase() === lower) {
+				return champ;
+			}
+		}
+		return undefined;
+	}
+
+	/**
 	 * Get the champion square image URL.
 	 */
 	getChampionImageUrl(championId: string): string {

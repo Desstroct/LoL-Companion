@@ -167,8 +167,8 @@ export class JungleTimer extends SingletonAction<JungleTimerSettings> {
 	private startPolling(): void {
 		if (this.pollInterval) return;
 		this.resetState();
-		this.updateAll();
-		this.pollInterval = setInterval(() => this.updateAll(), 1000);
+		this.updateAll().catch((e) => logger.error(`updateAll error: ${e}`));
+		this.pollInterval = setInterval(() => this.updateAll().catch((e) => logger.error(`updateAll error: ${e}`)), 1000);
 	}
 
 	private stopPolling(): void {

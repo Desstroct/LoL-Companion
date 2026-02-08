@@ -26,6 +26,7 @@ const logger = streamDeck.logger.createScope("AutoAccept");
 @action({ UUID: "com.desstroct.lol-api.auto-accept" })
 export class AutoAccept extends SingletonAction<AutoAcceptSettings> {
 	private pollInterval: ReturnType<typeof setInterval> | null = null;
+	private renderTimeout: ReturnType<typeof setTimeout> | null = null;
 	private enabled = true; // On by default
 	private lastPhase: GameflowPhase = "None";
 	private hasAcceptedCurrent = false;
@@ -38,6 +39,10 @@ export class AutoAccept extends SingletonAction<AutoAcceptSettings> {
 	}
 
 	override onWillDisappear(_ev: WillDisappearEvent<AutoAcceptSettings>): void | Promise<void> {
+		if (this.renderTimeout) {
+			clearTimeout(this.renderTimeout);
+			this.renderTimeout = null;
+		}
 		this.stopPolling();
 	}
 
@@ -51,7 +56,7 @@ export class AutoAccept extends SingletonAction<AutoAcceptSettings> {
 
 	private startPolling(): void {
 		if (this.pollInterval) return;
-		this.pollInterval = setInterval(() => this.checkReadyCheck(), 500);
+		this.pollInterval = setInterval(() => this.checkReadyCheck().catch((e) => logger.error(`checkReadyCheck error: ${e}`)), 500);
 	}
 
 	private stopPolling(): void {
@@ -94,7 +99,10 @@ export class AutoAccept extends SingletonAction<AutoAcceptSettings> {
 					await a.setTitle("Accepted\n✅");
 				}
 				// Reset display after 2 seconds
-				setTimeout(() => this.renderAll(), 2000);
+				this.renderTimeout = setTimeout(() => {
+					this.renderTimeout = null;
+					this.renderAll();
+				}, 2000);
 			} else {
 				logger.warn("Failed to accept ready check");
 			}

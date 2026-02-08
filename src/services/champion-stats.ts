@@ -77,8 +77,12 @@ export class ChampionStats {
 		// Fetch matchup data for each enemy
 		const allMatchups: Map<string, { totalWr: number; count: number; name: string }> = new Map();
 
-		for (const enemy of enemyAliases) {
-			const counters = await this.getBestCounterpicks(enemy, lane);
+		// Fetch all enemy matchup pages in parallel
+		const allCounters = await Promise.all(
+			enemyAliases.map((enemy) => this.getBestCounterpicks(enemy, lane)),
+		);
+
+		for (const counters of allCounters) {
 			for (const c of counters) {
 				const existing = allMatchups.get(c.alias);
 				if (existing) {
@@ -97,7 +101,7 @@ export class ChampionStats {
 
 		// Score = weighted combination of counter and synergy
 		const results = [...allMatchups.entries()]
-			.filter(([_, v]) => v.count >= enemyAliases.length) // Must have data vs every enemy
+			.filter(([_, v]) => v.count >= 1) // Must have data vs at least one enemy
 			.map(([alias, v]) => {
 				const counterScore = v.totalWr / v.count;
 				let synergyBonus = 0;
@@ -167,6 +171,7 @@ export class ChampionStats {
 	 * - Role diversity: avoid stacking the same tags
 	 */
 	private computeSynergyBonus(candidateAlias: string, profile: TeamProfile): number {
+		if (!candidateAlias) return 0;
 		// Resolve candidate champion data
 		const allChamps = dataDragon["champions"] as Map<string, { info: { magic: number; attack: number; defense: number }; tags: string[] }>;
 		let candidateChamp: { info: { magic: number; attack: number; defense: number }; tags: string[] } | null = null;

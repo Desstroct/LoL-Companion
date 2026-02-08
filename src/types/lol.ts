@@ -310,15 +310,6 @@ export interface SummonerSpellState {
 	remainingCooldown: number;
 }
 
-export interface TrackedPlayer {
-	championName: string;
-	riotId: string;
-	team: "ORDER" | "CHAOS";
-	position: string;
-	spell1: SummonerSpellState;
-	spell2: SummonerSpellState;
-}
-
 export interface PlayerCardData {
 	gameName: string;
 	tagLine: string;
@@ -330,12 +321,6 @@ export interface PlayerCardData {
 	winRate: number;
 	championName: string;
 	position: string;
-}
-
-export interface LobbyState {
-	phase: GameflowPhase;
-	allies: PlayerCardData[];
-	enemies: PlayerCardData[];
 }
 
 // ---- Summoner Spell Cooldowns (base values) ----
