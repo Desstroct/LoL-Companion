@@ -10,13 +10,12 @@ import {
 } from "@elgato/streamdeck";
 import streamDeck from "@elgato/streamdeck";
 import { gameClient } from "../services/game-client";
+import { gameMode } from "../services/game-mode";
 import { getSpellIcon } from "../services/lol-icons";
 import {
 	SUMMONER_SPELL_COOLDOWNS,
 	SUMMONER_SPELL_DISPLAY_NAMES,
 	SPELL_DISPLAY_TO_KEY,
-	type GamePlayer,
-	type SummonerSpellState,
 } from "../types/lol";
 
 const logger = streamDeck.logger.createScope("SumTracker");
@@ -151,6 +150,18 @@ export class SummonerTracker extends SingletonAction<SummonerTrackerSettings> {
 	}
 
 	private async updateAll(): Promise<void> {
+		// TFT has no summoner spells / Live Client Data API
+		if (gameMode.isTFT()) {
+			for (const a of this.actions) {
+				if (a.isDial()) {
+					await a.setFeedback({ spell_icon: "", title: "N/A in TFT", spell_info: "", cd_text: "", cd_bar: { value: 0 } });
+				} else {
+					await a.setImage(""); await a.setTitle("Spell\nN/A TFT");
+				}
+			}
+			return;
+		}
+
 		const allData = await gameClient.getAllData();
 		if (!allData) {
 			// Not in game: show idle state
@@ -265,8 +276,9 @@ export class SummonerTracker extends SingletonAction<SummonerTrackerSettings> {
 		enemySlot: number,
 		spellSlot: number,
 	): Promise<void> {
-		const champName = state.enemyChampion || "???";
-		const spellLabel = spellSlot === 1 ? "(D)" : "(F)";
+		const rawChamp = state.enemyChampion || "???";
+		const champName = rawChamp.length > 10 ? rawChamp.slice(0, 9) + "…" : rawChamp;
+		const spellLabel = spellSlot === 1 ? "D" : "F";
 		const spellIconUri = await getSpellIcon(state.spellKey);
 
 		if (state.isOnCooldown) {
@@ -281,7 +293,7 @@ export class SummonerTracker extends SingletonAction<SummonerTrackerSettings> {
 			await a.setFeedback({
 				spell_icon: spellIconUri ?? "",
 				title: `E${enemySlot} ${champName}`,
-				spell_info: `${state.spellName} ${spellLabel} · ${state.cooldown}s`,
+				spell_info: `${state.spellName} ${spellLabel} ${state.cooldown}s`,
 				cd_text: timeStr,
 				cd_bar: { value: pct, bar_fill_c: "#E74C3C" },
 			});
@@ -289,7 +301,7 @@ export class SummonerTracker extends SingletonAction<SummonerTrackerSettings> {
 			await a.setFeedback({
 				spell_icon: spellIconUri ?? "",
 				title: `E${enemySlot} ${champName}`,
-				spell_info: `${state.spellName} ${spellLabel} · ${state.cooldown}s`,
+				spell_info: `${state.spellName} ${spellLabel} ${state.cooldown}s`,
 				cd_text: "✅ READY",
 				cd_bar: { value: 0, bar_fill_c: "#2ECC71" },
 			});

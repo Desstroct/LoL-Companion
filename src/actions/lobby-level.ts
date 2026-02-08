@@ -8,6 +8,7 @@ import {
 import streamDeck from "@elgato/streamdeck";
 import { lcuConnector } from "../services/lcu-connector";
 import { lcuApi } from "../services/lcu-api";
+import { gameMode } from "../services/game-mode";
 
 const logger = streamDeck.logger.createScope("LobbyLevel");
 
@@ -121,6 +122,14 @@ export class LobbyLevelTracker extends SingletonAction<LobbyLevelSettings> {
 
 	private async updateLobbyLevel(): Promise<void> {
 		if (!lcuConnector.isConnected()) return;
+
+		// TFT has no traditional champion select lobby
+		if (gameMode.isTFT()) {
+			for (const a of this.actions) {
+				await a.setTitle("Lobby Lvl\nN/A TFT");
+			}
+			return;
+		}
 
 		const phase = await lcuApi.getGameflowPhase();
 		if (phase !== "ChampSelect") {

@@ -6,6 +6,7 @@ import {
 } from "@elgato/streamdeck";
 import streamDeck from "@elgato/streamdeck";
 import { gameClient } from "../services/game-client";
+import { gameMode } from "../services/game-mode";
 import { getChampionIconByName } from "../services/lol-icons";
 
 const logger = streamDeck.logger.createScope("DeathTimer");
@@ -58,6 +59,18 @@ export class DeathTimer extends SingletonAction {
 	}
 
 	private async updateAll(): Promise<void> {
+		// TFT has no Live Client Data API
+		if (gameMode.isTFT()) {
+			for (const a of this.actions) {
+				if (a.isDial()) {
+					await a.setFeedback({ champ_icon: "", status_text: "N/A in TFT", timer_text: "", respawn_bar: { value: 0 } });
+				} else {
+					await a.setImage(""); await a.setTitle("Death\nN/A TFT");
+				}
+			}
+			return;
+		}
+
 		const allData = await gameClient.getAllData();
 
 		if (!allData) {
@@ -103,8 +116,6 @@ export class DeathTimer extends SingletonAction {
 		if (me.isDead) {
 			this.lastDead = true;
 			const respawnSec = Math.ceil(me.respawnTimer);
-			// Bar: 0 = just died (full bar), max 60s respawn typical
-			const barMax = Math.max(respawnSec, 1);
 			const barValue = Math.min(100, Math.round((respawnSec / 60) * 100));
 
 			for (const a of this.actions) {

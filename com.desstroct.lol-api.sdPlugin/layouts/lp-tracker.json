@@ -1,0 +1,59 @@
+{
+	"$schema": "https://schemas.elgato.com/streamdeck/plugins/layout.json",
+	"id": "lp-tracker",
+	"items": [
+		{
+			"key": "rank_icon",
+			"type": "pixmap",
+			"rect": [4, 10, 72, 72]
+		},
+		{
+			"key": "rank_text",
+			"type": "text",
+			"rect": [82, 0, 118, 22],
+			"font": { "size": 16, "weight": 700 },
+			"alignment": "left"
+		},
+		{
+			"key": "lp_text",
+			"type": "text",
+			"rect": [82, 22, 60, 20],
+			"font": { "size": 14, "weight": 600 },
+			"alignment": "left",
+			"color": "#FFD700"
+		},
+		{
+			"key": "delta_text",
+			"type": "text",
+			"rect": [142, 22, 58, 20],
+			"font": { "size": 12, "weight": 600 },
+			"alignment": "right",
+			"color": "#2ECC71"
+		},
+		{
+			"key": "lp_bar",
+			"type": "bar",
+			"rect": [82, 44, 108, 10],
+			"range": { "min": 0, "max": 100 },
+			"value": 0,
+			"bar_fill_c": "#FFD700",
+			"bar_bg_c": "#333333"
+		},
+		{
+			"key": "winrate_text",
+			"type": "text",
+			"rect": [82, 56, 118, 16],
+			"font": { "size": 11 },
+			"alignment": "left",
+			"color": "#AAAAAA"
+		},
+		{
+			"key": "queue_text",
+			"type": "text",
+			"rect": [82, 74, 118, 16],
+			"font": { "size": 10 },
+			"alignment": "left",
+			"color": "#888888"
+		}
+	]
+}

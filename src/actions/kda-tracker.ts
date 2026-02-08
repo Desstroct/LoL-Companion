@@ -6,6 +6,7 @@ import {
 } from "@elgato/streamdeck";
 import streamDeck from "@elgato/streamdeck";
 import { gameClient } from "../services/game-client";
+import { gameMode } from "../services/game-mode";
 import { getChampionIconByName } from "../services/lol-icons";
 
 const logger = streamDeck.logger.createScope("KdaTracker");
@@ -52,6 +53,18 @@ export class KdaTracker extends SingletonAction {
 	}
 
 	private async updateAll(): Promise<void> {
+		// TFT has no Live Client Data API — show clear message
+		if (gameMode.isTFT()) {
+			for (const a of this.actions) {
+				if (a.isDial()) {
+					await a.setFeedback({ champ_icon: "", kda_line: "", cs_line: "N/A in TFT", gold_text: "", kda_bar: { value: 0 }, ratio_text: "" });
+				} else {
+					await a.setImage(""); await a.setTitle("KDA\nN/A TFT");
+				}
+			}
+			return;
+		}
+
 		const allData = await gameClient.getAllData();
 
 		if (!allData) {

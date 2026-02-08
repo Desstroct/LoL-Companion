@@ -11,6 +11,7 @@ import {
 import streamDeck from "@elgato/streamdeck";
 import { lcuConnector } from "../services/lcu-connector";
 import { lcuApi } from "../services/lcu-api";
+import { gameMode } from "../services/game-mode";
 import { dataDragon } from "../services/data-dragon";
 import { championStats, ChampionStats, MatchupData } from "../services/champion-stats";
 import { getChampionIcon, prefetchChampionIcons } from "../services/lol-icons";
@@ -124,6 +125,18 @@ export class Counterpick extends SingletonAction<CounterpickSettings> {
 
 	private async updateCounterpick(): Promise<void> {
 		if (!lcuConnector.isConnected()) return;
+
+		// TFT has no champion select with counterpicks
+		if (gameMode.isTFT()) {
+			for (const a of this.actions) {
+				if (a.isDial()) {
+					await a.setFeedback({ champ_icon: "", title: "Counterpick", pick_name: "N/A in TFT", pick_info: "", wr_bar: { value: 0 } });
+				} else {
+					await a.setImage(""); await a.setTitle("Counter\nN/A TFT");
+				}
+			}
+			return;
+		}
 
 		const phase = await lcuApi.getGameflowPhase();
 		if (phase !== "ChampSelect") {

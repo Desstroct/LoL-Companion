@@ -11,9 +11,10 @@ import {
 import streamDeck from "@elgato/streamdeck";
 import { lcuConnector } from "../services/lcu-connector";
 import { lcuApi } from "../services/lcu-api";
+import { gameMode } from "../services/game-mode";
 import { dataDragon } from "../services/data-dragon";
 import { getChampionIconByKey } from "../services/lol-icons";
-import type { LcuChampSelectSession, PlayerCardData } from "../types/lol";
+import type { LcuChampSelectSession } from "../types/lol";
 
 const logger = streamDeck.logger.createScope("LobbyScan");
 
@@ -106,6 +107,18 @@ export class LobbyScannerAction extends SingletonAction<LobbyScannerSettings> {
 
 	private async updateLobby(): Promise<void> {
 		if (!lcuConnector.isConnected()) return;
+
+		// TFT has no traditional champion select lobby
+		if (gameMode.isTFT()) {
+			for (const a of this.actions) {
+				if (a.isDial()) {
+					await a.setFeedback({ champ_icon: "", title: "Lobby Scan", champion: "N/A in TFT", rank: "", wr_text: "", wr_bar: { value: 0 } });
+				} else {
+					await a.setImage(""); await a.setTitle("Lobby\nN/A TFT");
+				}
+			}
+			return;
+		}
 
 		const phase = await lcuApi.getGameflowPhase();
 		if (phase !== "ChampSelect") {

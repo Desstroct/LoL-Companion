@@ -14,6 +14,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { lcuConnector } from "../services/lcu-connector";
 import { lcuApi } from "../services/lcu-api";
+import { gameMode } from "../services/game-mode";
 import { dataDragon } from "../services/data-dragon";
 import { runeData, RunePageData } from "../services/rune-data";
 import { ChampionStats } from "../services/champion-stats";
@@ -123,6 +124,18 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 	 */
 	private async updateState(): Promise<void> {
 		if (!lcuConnector.isConnected()) return;
+
+		// TFT doesn't use rune pages
+		if (gameMode.isTFT()) {
+			for (const a of this.actions) {
+				if (a.isDial()) {
+					await a.setFeedback({ keystone_icon: "", title: "Auto Rune", rune_name: "N/A in TFT", rune_info: "", wr_bar: { value: 0 } });
+				} else {
+					await a.setImage(""); await a.setTitle("Runes\nN/A TFT");
+				}
+			}
+			return;
+		}
 
 		const phase = await lcuApi.getGameflowPhase();
 		if (phase !== "ChampSelect") {
@@ -261,10 +274,11 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 		const keystoneId = rune.selectedPerkIds[0];
 		const keystoneImg = getKeystoneImage(keystoneId);
 
+		const shortChamp = champName.length > 10 ? champName.slice(0, 9) + "…" : champName;
 		if (a.isDial()) {
 			await a.setFeedback({
 				keystone_icon: keystoneImg ?? "",
-				title: `${champName} · ${label}${appliedMark}`,
+				title: `${shortChamp} · ${label}${appliedMark}`,
 				rune_name: rune.keystoneName,
 				rune_info: `${rune.winRate}% WR · ${gamesStr} games`,
 				wr_bar: { value: rune.winRate, bar_fill_c: barColor },

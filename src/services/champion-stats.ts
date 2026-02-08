@@ -3,7 +3,16 @@ import { dataDragon } from "./data-dragon";
 
 const logger = streamDeck.logger.createScope("ChampionStats");
 
-const LOLALYTICS_BASE = "https://lolalytics.com";
+/**
+ * Lolalytics JSON API base — returns structured counter data.
+ * Endpoint: /mega/?ep=counter&p=d&v=1&patch={major.minor}&c={champion}&lane={lane}&tier=emerald_plus&queue=420&region=all
+ * Response: { stats: {...}, counters: [{ cid, vsWr, n, d1, d2, allWr, defaultLane }] }
+ * - cid: Data Dragon champion key (numeric)
+ * - vsWr: win rate of the searched champion VS this enemy (higher = enemy wins more)
+ * - n: number of games in matchup
+ * - allWr: overall win rate of the counter champion
+ */
+const LOLALYTICS_API = "https://a1.lolalytics.com";
 const FETCH_HEADERS = {
 	"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
 };
@@ -20,14 +29,11 @@ export interface MatchupData {
 }
 
 /**
- * Parses the Lolalytics counters page to extract matchup data.
- * The counters page is server-side rendered (Qwik SSR), so all data is in the initial HTML.
- *
- * Data pattern in HTML:
- *   /lol/{champ}/vs/{enemy}/build/  ... <!--t=XX-->{winRate}<!---->% ... VS ... {games} Games
+ * Fetches champion counter/matchup data from Lolalytics JSON API.
+ * Uses structured API responses — no HTML scraping needed.
  */
 export class ChampionStats {
-	/** Cache: "championAlias:lane" → { data, timestamp } */
+	/** Cache: "championKey:lane" → { data, timestamp } */
 	private cache: Map<string, { data: MatchupData[]; timestamp: number }> = new Map();
 	private readonly CACHE_TTL = 30 * 60 * 1000; // 30 minutes
 
@@ -172,15 +178,8 @@ export class ChampionStats {
 	 */
 	private computeSynergyBonus(candidateAlias: string, profile: TeamProfile): number {
 		if (!candidateAlias) return 0;
-		// Resolve candidate champion data
-		const allChamps = dataDragon["champions"] as Map<string, { info: { magic: number; attack: number; defense: number }; tags: string[] }>;
-		let candidateChamp: { info: { magic: number; attack: number; defense: number }; tags: string[] } | null = null;
-		for (const [id, c] of allChamps) {
-			if (id.toLowerCase() === candidateAlias.toLowerCase()) {
-				candidateChamp = c;
-				break;
-			}
-		}
+		// Resolve candidate champion data via public API
+		const candidateChamp = dataDragon.getChampionByName(candidateAlias);
 		if (!candidateChamp || profile.count === 0) return 0;
 
 		let bonus = 0;
@@ -216,8 +215,11 @@ export class ChampionStats {
 	}
 
 	/**
-	 * Fetch and parse matchup data for a champion on a lane.
+	 * Fetch matchup data for a champion on a lane via Lolalytics JSON API.
 	 * Retries up to 2 times on failure with exponential backoff.
+	 *
+	 * @param championAlias - Lolalytics champion alias (lowercase, e.g. "aatrox")
+	 * @param lane - Lolalytics lane string (e.g. "top", "middle", "support")
 	 */
 	private async getMatchups(championAlias: string, lane: string): Promise<MatchupData[]> {
 		const key = `${championAlias}:${lane}`;
@@ -227,7 +229,12 @@ export class ChampionStats {
 			return cached.data;
 		}
 
-		const url = `${LOLALYTICS_BASE}/lol/${championAlias}/counters/?lane=${lane}`;
+		// Extract major.minor patch from Data Dragon version (e.g. "16.3.1" → "16.3")
+		const ddVersion = dataDragon.getVersion();
+		const patchParts = ddVersion.split(".");
+		const patch = `${patchParts[0]}.${patchParts[1]}`;
+
+		const url = `${LOLALYTICS_API}/mega/?ep=counter&p=d&v=1&patch=${patch}&c=${championAlias}&lane=${lane}&tier=emerald_plus&queue=420&region=all`;
 		const maxRetries = 2;
 
 		for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -240,21 +247,47 @@ export class ChampionStats {
 
 				logger.debug(`Fetching matchups: ${url}`);
 
-				const response = await fetch(url, { headers: FETCH_HEADERS });
+				const response = await fetch(url, {
+					headers: FETCH_HEADERS,
+					signal: AbortSignal.timeout(10_000),
+				});
+
 				if (!response.ok) {
-					logger.warn(`Lolalytics returned ${response.status} for ${championAlias} ${lane}`);
+					logger.warn(`Lolalytics API returned ${response.status} for ${championAlias} ${lane}`);
 					continue;
 				}
 
-				const html = await response.text();
-				const matchups = this.parseCountersPage(html, championAlias);
+				const json = await response.json() as LolalyticCounterResponse;
+
+				if (!json?.counters || !Array.isArray(json.counters)) {
+					logger.warn(`Invalid API response structure for ${championAlias} ${lane}`);
+					continue;
+				}
+
+				const matchups: MatchupData[] = [];
+
+				for (const c of json.counters) {
+					if (!c.cid || c.n < 50) continue; // Skip very low sample sizes
+
+					// Resolve champion info from Data Dragon using numeric key
+					const champ = dataDragon.getChampionByKey(String(c.cid));
+					const alias = champ ? ChampionStats.toLolalytics(champ.id) : String(c.cid);
+					const name = champ?.name ?? `Champion ${c.cid}`;
+
+					matchups.push({
+						alias,
+						name,
+						winRateVs: c.vsWr,
+						games: c.n,
+					});
+				}
 
 				if (matchups.length === 0) {
-					logger.warn(`Parsed 0 matchups for ${championAlias} ${lane} (attempt ${attempt + 1})`);
+					logger.warn(`0 matchups from API for ${championAlias} ${lane} (attempt ${attempt + 1})`);
 					continue;
 				}
 
-				logger.info(`Parsed ${matchups.length} matchups for ${championAlias} ${lane}`);
+				logger.info(`Parsed ${matchups.length} matchups for ${championAlias} ${lane} via API`);
 				this.cache.set(key, { data: matchups, timestamp: Date.now() });
 				return matchups;
 			} catch (e) {
@@ -264,88 +297,6 @@ export class ChampionStats {
 
 		logger.error(`All ${maxRetries + 1} attempts failed for ${championAlias} ${lane}`);
 		return cached?.data ?? [];
-	}
-
-	/**
-	 * Parse the Lolalytics counters HTML page.
-	 *
-	 * Each card is an <a> tag containing:
-	 *   href="/lol/{champ}/vs/{enemy}/build/..."
-	 *   ... alt="{EnemyName}" ...
-	 *   ... <!--t=XX-->{winRate}<!---->% ... VS ...
-	 *   ... {games} Games ...
-	 *
-	 * WR is ~1000 chars from the href, Games is ~2200 chars from the href.
-	 * We use a 4000-char window to capture both reliably.
-	 */
-	private parseCountersPage(html: string, championAlias: string): MatchupData[] {
-		const matchups: MatchupData[] = [];
-
-		const linkRegex = new RegExp(
-			`href="/lol/${championAlias}/vs/([^/]+)/build/[^"]*"`,
-			"g",
-		);
-
-		let linkMatch: RegExpExecArray | null;
-		const seen = new Set<string>();
-
-		while ((linkMatch = linkRegex.exec(html)) !== null) {
-			const enemyAlias = linkMatch[1];
-			if (seen.has(enemyAlias)) continue;
-
-			// 4000-char window: WR is ~1000 chars in, Games is ~2200 chars in
-			const afterLink = html.substring(linkMatch.index, linkMatch.index + 4000);
-
-			// Win rate pattern: <!--t=XX-->{number}<!---->% (Qwik SSR)
-			// Fallback: plain {number}% for non-Qwik pages
-			const wrMatch =
-				afterLink.match(/<!--t=\w+-->([\d.]+)<!---->%/) ??
-				afterLink.match(/(\d{2,3}\.\d{1,2})%/);
-			// Games pattern: {number} Games
-			const gamesMatch = afterLink.match(/([\d,]+)\s*Games/);
-
-			if (wrMatch && gamesMatch) {
-				const wr = parseFloat(wrMatch[1]);
-				const games = parseInt(gamesMatch[1].replace(/,/g, ""), 10);
-
-				if (!isNaN(wr) && games >= 50) {
-					const champData = this.resolveChampionName(enemyAlias);
-
-					matchups.push({
-						alias: enemyAlias,
-						name: champData ?? this.formatAlias(enemyAlias),
-						winRateVs: wr,
-						games,
-					});
-
-					seen.add(enemyAlias);
-				}
-			}
-		}
-
-		return matchups;
-	}
-
-	/**
-	 * Try to resolve champion display name from DataDragon.
-	 */
-	private resolveChampionName(alias: string): string | null {
-		// DataDragon uses PascalCase IDs like "MasterYi", Lolalytics uses "masteryi"
-		// Try to find a match in the loaded champions
-		const allChamps = dataDragon["champions"] as Map<string, { name: string }>;
-		for (const [id, champ] of allChamps) {
-			if (id.toLowerCase() === alias.toLowerCase()) {
-				return champ.name;
-			}
-		}
-		return null;
-	}
-
-	/**
-	 * Format a Lolalytics alias for display (fallback).
-	 */
-	private formatAlias(alias: string): string {
-		return alias.charAt(0).toUpperCase() + alias.slice(1);
 	}
 
 	/**
@@ -372,6 +323,35 @@ export class ChampionStats {
 
 // Singleton instance
 export const championStats = new ChampionStats();
+
+/** Lolalytics counter API response shape */
+interface LolalyticCounterResponse {
+	stats?: {
+		cid: number;
+		lane: string;
+		avgWr: number;
+		wr: string;
+		pr: string;
+		counters?: { strong: number[]; weak: number[] };
+	};
+	counters?: Array<{
+		/** Champion key (Data Dragon numeric ID) */
+		cid: number;
+		/** Win rate of searched champion vs this enemy (higher = enemy wins more) */
+		vsWr: number;
+		/** Number of games */
+		n: number;
+		/** Delta 1 (matchup vs average) */
+		d1: number;
+		/** Delta 2 */
+		d2: number;
+		/** Overall win rate of this champion */
+		allWr: number;
+		/** Default lane for this champion */
+		defaultLane: string;
+	}>;
+	response?: { valid: boolean; duration: number };
+}
 
 interface TeamProfile {
 	avgMagic: number;

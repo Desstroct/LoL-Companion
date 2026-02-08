@@ -11,6 +11,7 @@ import {
 import streamDeck from "@elgato/streamdeck";
 import { lcuConnector } from "../services/lcu-connector";
 import { lcuApi } from "../services/lcu-api";
+import { gameMode } from "../services/game-mode";
 import { dataDragon } from "../services/data-dragon";
 import { championStats, ChampionStats } from "../services/champion-stats";
 import { getChampionIcon, prefetchChampionIcons } from "../services/lol-icons";
@@ -132,6 +133,18 @@ export class BestPick extends SingletonAction<BestPickSettings> {
 
 	private async updateBestPick(): Promise<void> {
 		if (!lcuConnector.isConnected()) return;
+
+		// TFT has no traditional champion select
+		if (gameMode.isTFT()) {
+			for (const a of this.actions) {
+				if (a.isDial()) {
+					await a.setFeedback({ champ_icon: "", title: "Best Pick", pick_name: "N/A in TFT", pick_info: "", score_bar: { value: 0 } });
+				} else {
+					await a.setImage(""); await a.setTitle("Best\nN/A TFT");
+				}
+			}
+			return;
+		}
 
 		const phase = await lcuApi.getGameflowPhase();
 		if (phase !== "ChampSelect") {

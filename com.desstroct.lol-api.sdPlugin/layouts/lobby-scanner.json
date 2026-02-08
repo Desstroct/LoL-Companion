@@ -25,7 +25,7 @@
 		{
 			"key": "rank",
 			"type": "text",
-			"rect": [82, 46, 118, 18],
+			"rect": [82, 46, 118, 16],
 			"font": { "size": 11 },
 			"alignment": "left",
 			"color": "#AAAAAA"
@@ -42,7 +42,7 @@
 			"key": "wr_bar",
 			"type": "bar",
 			"rect": [82, 82, 108, 12],
-			"range": { "min": 40, "max": 65 },
+			"range": { "min": 0, "max": 100 },
 			"value": 50,
 			"bar_fill_c": "#3498DB",
 			"bar_bg_c": "#333333"

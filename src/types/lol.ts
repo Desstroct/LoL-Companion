@@ -353,8 +353,10 @@ export const SUMMONER_SPELL_DISPLAY_NAMES: Record<string, string> = {
 	SummonerSnowball: "Mark",
 };
 
-// Maps the Game Client API display names to internal spell names
+// Maps the Game Client API display names to internal spell names.
+// Includes common localisations (FR, ES, DE, PT, IT, KO, JA, ZH, etc.)
 export const SPELL_DISPLAY_TO_KEY: Record<string, string> = {
+	// English
 	"Flash": "SummonerFlash",
 	"Ignite": "SummonerDot",
 	"Teleport": "SummonerTeleport",
@@ -366,4 +368,44 @@ export const SPELL_DISPLAY_TO_KEY: Record<string, string> = {
 	"Ghost": "SummonerGhost",
 	"Clarity": "SummonerMana",
 	"Mark": "SummonerSnowball",
+	// French (FR)
+	"Téléportation": "SummonerTeleport",
+	"Embrasement": "SummonerDot",
+	"Soin": "SummonerHeal",
+	"Épuisement": "SummonerExhaust",
+	"Châtiment": "SummonerSmite",
+	"Purification": "SummonerCleanse",
+	"Fantôme": "SummonerGhost",
+	"Clarté": "SummonerMana",
+	"Marque": "SummonerSnowball",
+	"Barrière": "SummonerBarrier",
+	// Spanish (ES)
+	"Teletransporte": "SummonerTeleport",
+	"Incendiar": "SummonerDot",
+	"Curación": "SummonerHeal",
+	"Agotar": "SummonerExhaust",
+	"Castigo": "SummonerSmite",
+	"Purificar": "SummonerCleanse",
+	"Fantasmal": "SummonerGhost",
+	"Claridad": "SummonerMana",
+	"Destello": "SummonerFlash",
+	"Marca": "SummonerSnowball",
+	"Barrera": "SummonerBarrier",
+	// German (DE) — Teleport is same as English
+	"Entzünden": "SummonerDot",
+	"Heilung": "SummonerHeal",
+	"Erschöpfung": "SummonerExhaust",
+	"Zerschmettern": "SummonerSmite",
+	"Geistererscheinung": "SummonerGhost",
+	"Klarheit": "SummonerMana",
+	"Ruf der Leere": "SummonerSnowball",
+	"Blitz": "SummonerFlash",
+	// Portuguese (PT) — Incendiar already mapped from ES
+	"Teletransportar": "SummonerTeleport",
+	"Curar": "SummonerHeal",
+	"Exaurir": "SummonerExhaust",
+	"Punição": "SummonerSmite",
+	"Interface Limpa": "SummonerCleanse",
+	"Espírito Inquieto": "SummonerGhost",
+	"Lampejo": "SummonerFlash",
 };

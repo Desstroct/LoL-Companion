@@ -3,22 +3,29 @@ import { dataDragon } from "./data-dragon";
 
 const logger = streamDeck.logger.createScope("LoLIcons");
 
-/** Unified in-memory icon cache: key → base64 data URI (bounded to 500 entries) */
+/**
+ * Unified in-memory icon cache: key → base64 data URI (bounded to 500 entries).
+ * A value of "" means the fetch was attempted and failed (negative cache).
+ */
 const iconCache = new Map<string, string>();
 const ICON_CACHE_MAX = 500;
+const NEGATIVE_SENTINEL = "";
 
 // ────────────────── Generic fetch ──────────────────
 
 /**
  * Fetch any image URL and return as base64 data URI. Cached in memory.
+ * Failed fetches are negatively cached so they are not retried every tick.
  * Evicts oldest entries when cache exceeds ICON_CACHE_MAX.
  */
 async function fetchIcon(cacheKey: string, url: string): Promise<string | null> {
-	if (iconCache.has(cacheKey)) return iconCache.get(cacheKey)!;
+	const cached = iconCache.get(cacheKey);
+	if (cached !== undefined) return cached || null; // "" → null (negative cache)
 	try {
 		const response = await fetch(url);
 		if (!response.ok) {
 			logger.warn(`Icon fetch failed (${response.status}): ${url}`);
+			iconCache.set(cacheKey, NEGATIVE_SENTINEL);
 			return null;
 		}
 		const buffer = Buffer.from(await response.arrayBuffer());
@@ -32,6 +39,7 @@ async function fetchIcon(cacheKey: string, url: string): Promise<string | null> 
 		return dataUri;
 	} catch (e) {
 		logger.error(`Icon fetch error: ${url} — ${e}`);
+		iconCache.set(cacheKey, NEGATIVE_SENTINEL);
 		return null;
 	}
 }
@@ -95,7 +103,7 @@ export function prefetchChampionIcons(aliases: string[]): void {
  * Get a summoner spell icon by DDragon spell key (e.g., "SummonerFlash").
  */
 export async function getSpellIcon(spellKey: string): Promise<string | null> {
-	if (!spellKey) return null;
+	if (!spellKey || spellKey === "Unknown") return null;
 	return fetchIcon(`spell:${spellKey}`, dataDragon.getSpellImageUrl(spellKey));
 }
 
@@ -187,6 +195,17 @@ export async function getGrubsIcon(): Promise<string | null> {
 export async function getProfileIcon(iconId: number): Promise<string | null> {
 	const url = `https://ddragon.leagueoflegends.com/cdn/${dataDragon.getVersion()}/img/profileicon/${iconId}.png`;
 	return fetchIcon(`profile:${iconId}`, url);
+}
+
+/**
+ * Get a ranked tier emblem icon (e.g. GOLD, PLATINUM, DIAMOND).
+ * Uses Community Dragon ranked crest images.
+ */
+export async function getRankedEmblemIcon(tier: string): Promise<string | null> {
+	if (!tier || tier === "NONE") return null;
+	const tierLower = tier.toLowerCase();
+	const url = `https://raw.communitydragon.org/latest/plugins/rcp-fe-lol-shared-components/global/default/images/${tierLower}.png`;
+	return fetchIcon(`ranked-emblem:${tierLower}`, url);
 }
 
 // ────────────────── Internal helpers ──────────────────

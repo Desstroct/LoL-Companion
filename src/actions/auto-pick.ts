@@ -8,9 +8,9 @@ import {
 import streamDeck from "@elgato/streamdeck";
 import { lcuConnector } from "../services/lcu-connector";
 import { lcuApi } from "../services/lcu-api";
+import { gameMode } from "../services/game-mode";
 import { dataDragon } from "../services/data-dragon";
 import { getChampionIcon } from "../services/lol-icons";
-import type { LcuChampSelectAction } from "../types/lol";
 
 const logger = streamDeck.logger.createScope("AutoPick");
 
@@ -88,6 +88,9 @@ export class AutoPick extends SingletonAction<AutoPickSettings> {
 
 	private async updateState(): Promise<void> {
 		if (!this.enabled || !lcuConnector.isConnected()) return;
+
+		// TFT has no pick/ban phase
+		if (gameMode.isTFT()) return;
 
 		const phase = await lcuApi.getGameflowPhase();
 		if (phase !== "ChampSelect") {

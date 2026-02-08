@@ -290,6 +290,71 @@
 					"TitleAlignment": "middle"
 				}
 			]
+		},
+		{
+			"Name": "LP Tracker",
+			"UUID": "com.desstroct.lol-api.lp-tracker",
+			"Icon": "imgs/actions/lp-tracker/icon",
+			"Tooltip": "Shows your current rank, LP, win rate, and session LP changes. Rotate dial or press key to switch between Solo/Duo and Flex.",
+			"PropertyInspectorPath": "ui/lp-tracker.html",
+			"Controllers": [
+				"Keypad",
+				"Encoder"
+			],
+			"Encoder": {
+				"layout": "layouts/lp-tracker.json",
+				"TriggerDescription": {
+					"Rotate": "Switch queue",
+					"Push": "Refresh",
+					"Touch": "Refresh"
+				}
+			},
+			"States": [
+				{
+					"Image": "imgs/actions/lp-tracker/key",
+					"TitleAlignment": "middle"
+				}
+			]
+		}
+		,
+		{
+			"Name": "Profile Switch",
+			"UUID": "com.desstroct.lol-api.profile-switch",
+			"Icon": "imgs/actions/profile-switch/icon",
+			"Tooltip": "Automatically switches Stream Deck profiles based on LoL game phase (Lobby → Champ Select → In Game). Press to toggle.",
+			"PropertyInspectorPath": "ui/profile-switch.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/actions/profile-switch/key",
+					"TitleAlignment": "middle"
+				}
+			]
+		}
+	],
+	"Profiles": [
+		{
+			"Name": "profiles/LoL Lobby",
+			"DeviceType": 0,
+			"Readonly": false,
+			"DontAutoSwitchWhenInstalled": true,
+			"AutoInstall": true
+		},
+		{
+			"Name": "profiles/LoL Champ Select",
+			"DeviceType": 0,
+			"Readonly": false,
+			"DontAutoSwitchWhenInstalled": true,
+			"AutoInstall": true
+		},
+		{
+			"Name": "profiles/LoL In Game",
+			"DeviceType": 0,
+			"Readonly": false,
+			"DontAutoSwitchWhenInstalled": true,
+			"AutoInstall": true
 		}
 	],
 	"Category": "LoL Companion",

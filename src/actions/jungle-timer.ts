@@ -10,6 +10,7 @@ import {
 } from "@elgato/streamdeck";
 import streamDeck from "@elgato/streamdeck";
 import { gameClient } from "../services/game-client";
+import { gameMode } from "../services/game-mode";
 import { getDragonIcon, getBaronIcon, getHeraldIcon, getGrubsIcon } from "../services/lol-icons";
 import type { GameEvent } from "../types/lol";
 
@@ -197,6 +198,12 @@ export class JungleTimer extends SingletonAction<JungleTimerSettings> {
 	// ─────────── Main update loop ───────────
 
 	private async updateAll(): Promise<void> {
+		// TFT has no jungle objectives / Live Client Data API
+		if (gameMode.isTFT()) {
+			await this.renderIdle("N/A TFT");
+			return;
+		}
+
 		const allData = await gameClient.getAllData();
 
 		if (!allData) {
@@ -253,7 +260,8 @@ export class JungleTimer extends SingletonAction<JungleTimerSettings> {
 
 	// ─────────── Idle render (no game) ───────────
 
-	private async renderIdle(): Promise<void> {
+	private async renderIdle(statusOverride?: string): Promise<void> {
+		const status = statusOverride ?? "No game";
 		for (const a of this.actions) {
 			if (a.isDial()) {
 				const ds = this.getDialObjective(a.id);
@@ -262,7 +270,7 @@ export class JungleTimer extends SingletonAction<JungleTimerSettings> {
 					obj_icon: icon ?? "",
 					title: objectiveLabel(ds.objective),
 					timer: "--:--",
-					status: "No game",
+					status,
 					progress: { value: 0 },
 				});
 			} else {
@@ -274,7 +282,7 @@ export class JungleTimer extends SingletonAction<JungleTimerSettings> {
 				} else {
 					await a.setImage("");
 				}
-				await a.setTitle(`${objectiveDisplayName(obj)}\n--:--`);
+				await a.setTitle(`${objectiveDisplayName(obj)}\n${statusOverride ?? "--:--"}`);
 			}
 		}
 	}

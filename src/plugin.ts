@@ -1,3 +1,52 @@
+// ╔══════════════════════════════════════════════════════════════════════════════╗
+// ║  RIOT / VANGUARD COMPLIANCE — READ BEFORE ADDING ANY FEATURE              ║
+// ║                                                                            ║
+// ║  This plugin ONLY uses two official, Riot-sanctioned data sources:         ║
+// ║                                                                            ║
+// ║  ✅ ALLOWED — LCU API (League Client, localhost, HTTPS)                    ║
+// ║     • Reading: game phase, lobby, champ select, match history, runes,      ║
+// ║       ranked stats, summoner info, item sets                               ║
+// ║     • Writing: accept match, pick/ban champion, set rune page,             ║
+// ║       set item sets — all things a human does via the client UI            ║
+// ║     • Same API used by Blitz, Porofessor, Mobalytics, U.GG, OP.GG         ║
+// ║                                                                            ║
+// ║  ✅ ALLOWED — Live Client Data API (in-game, 127.0.0.1:2999)              ║
+// ║     • Read-only: player stats, scores, items, abilities, game time         ║
+// ║     • Built and documented by Riot specifically for overlays               ║
+// ║     • Only exposes data already visible on the player's screen             ║
+// ║                                                                            ║
+// ║  ✅ ALLOWED — Public websites / APIs (Lolalytics, OP.GG, DDragon, CDN)    ║
+// ║     • Static data: champion stats, counter picks, item builds, icons       ║
+// ║                                                                            ║
+// ║  ──────────────────────────────────────────────────────────────────────     ║
+// ║                                                                            ║
+// ║  🚫 NEVER DO ANY OF THE FOLLOWING — instant ban by Vanguard:               ║
+// ║                                                                            ║
+// ║  ❌ Read/write game process memory (LeagueOfLegends.exe)                   ║
+// ║  ❌ Inject input into the game window (auto-dodge, auto-combo, scripting)  ║
+// ║  ❌ Intercept or modify network packets to/from the game server            ║
+// ║  ❌ Modify game files (textures, particles, hitboxes, camera zoom)         ║
+// ║  ❌ Access fog-of-war data or enemy positions not visible on screen        ║
+// ║  ❌ Automate in-game actions (mouse clicks, key presses in game window)    ║
+// ║  ❌ Interact with Vanguard (vgk.sys / vgtray.exe) in any way              ║
+// ║                                                                            ║
+// ║  Rule of thumb: LCU (client/launcher) = fair game.                         ║
+// ║                 LeagueOfLegends.exe (game process) = never touch.          ║
+// ╚══════════════════════════════════════════════════════════════════════════════╝
+
+// ── Silence EPIPE immediately (before any import touches stdout) ──
+// When Stream Deck restarts the plugin, the stdio pipes close. Any further
+// writes (including from the SDK logger) would throw EPIPE and crash the
+// process in a cascade.  Swallowing the error keeps the process alive long
+// enough for a clean shutdown.
+for (const stream of [process.stdout, process.stderr]) {
+	stream?.on?.("error", (err: NodeJS.ErrnoException) => {
+		if (err.code === "EPIPE" || err.code === "ERR_STREAM_DESTROYED") return;
+		// Re-throw anything that isn't a pipe error
+		throw err;
+	});
+}
+
 import streamDeck from "@elgato/streamdeck";
 
 import { GameStatus } from "./actions/game-status";
@@ -13,7 +62,10 @@ import { AutoRune } from "./actions/auto-rune";
 import { BestItem } from "./actions/best-item";
 import { DeathTimer } from "./actions/death-timer";
 import { AutoPick } from "./actions/auto-pick";
+import { LpTracker } from "./actions/lp-tracker";
+import { ProfileSwitch } from "./actions/profile-switch";
 import { lcuConnector } from "./services/lcu-connector";
+import { gameMode } from "./services/game-mode";
 import { dataDragon } from "./services/data-dragon";
 
 // Enable trace logging for development
@@ -22,11 +74,13 @@ streamDeck.logger.setLevel("trace");
 const logger = streamDeck.logger.createScope("Plugin");
 
 // ── Global error handlers (prevent plugin crashes) ──
-process.on("uncaughtException", (err) => {
-	logger.error(`Uncaught exception: ${err.message}\n${err.stack}`);
+process.on("uncaughtException", (err: NodeJS.ErrnoException) => {
+	// EPIPE is already handled on the streams — don't log (it'd EPIPE again)
+	if (err.code === "EPIPE" || err.code === "ERR_STREAM_DESTROYED") return;
+	try { logger.error(`Uncaught exception: ${err.message}\n${err.stack}`); } catch { /* swallow */ }
 });
 process.on("unhandledRejection", (reason) => {
-	logger.error(`Unhandled rejection: ${reason}`);
+	try { logger.error(`Unhandled rejection: ${reason}`); } catch { /* swallow */ }
 });
 
 // Initialize services
@@ -43,6 +97,9 @@ async function init() {
 
 	// Start polling for the League Client
 	lcuConnector.startPolling(3000);
+
+	// Start centralised game-mode detection (LoL vs TFT vs ARAM etc.)
+	gameMode.start();
 
 	lcuConnector.onConnectionChange((creds) => {
 		if (creds) {
@@ -69,6 +126,8 @@ streamDeck.actions.registerAction(new AutoRune());
 streamDeck.actions.registerAction(new BestItem());
 streamDeck.actions.registerAction(new DeathTimer());
 streamDeck.actions.registerAction(new AutoPick());
+streamDeck.actions.registerAction(new LpTracker());
+streamDeck.actions.registerAction(new ProfileSwitch());
 
 // Connect to Stream Deck and initialize
 streamDeck.connect().then(() => {

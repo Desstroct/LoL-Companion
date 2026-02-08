@@ -10,6 +10,7 @@ import { exec } from "node:child_process";
 import { lcuConnector } from "../services/lcu-connector";
 import { lcuApi } from "../services/lcu-api";
 import { gameClient } from "../services/game-client";
+import { gameMode } from "../services/game-mode";
 import type { GameflowPhase } from "../types/lol";
 
 const logger = streamDeck.logger.createScope("GameStatus");
@@ -25,6 +26,19 @@ const PHASE_DISPLAY: Record<string, { label: string }> = {
 	WaitingForStats: { label: "Status\nStats..." },
 	EndOfGame: { label: "Status\nEnd" },
 	Reconnect: { label: "Status\nReconnect" },
+};
+
+/** TFT-specific labels (override LoL ones) */
+const TFT_PHASE_DISPLAY: Record<string, { label: string }> = {
+	Lobby: { label: "TFT\nLobby" },
+	Matchmaking: { label: "TFT\nQueue..." },
+	ReadyCheck: { label: "TFT\nFOUND" },
+	ChampSelect: { label: "TFT\nLoading" },
+	GameStart: { label: "TFT\nLoading" },
+	InProgress: { label: "TFT\nIn Game" },
+	WaitingForStats: { label: "TFT\nStats..." },
+	EndOfGame: { label: "TFT\nEnd" },
+	Reconnect: { label: "TFT\nReconnect" },
 };
 
 /**
@@ -90,7 +104,8 @@ export class GameStatus extends SingletonAction<GameStatusSettings> {
 		}
 
 		// If LCU says InProgress, double check with Game Client
-		if (phase === "InProgress") {
+		// Skip for TFT — the Live Client Data API doesn't serve TFT data
+		if (phase === "InProgress" && !gameMode.isTFT()) {
 			const inGame = await gameClient.isInGame();
 			if (!inGame) {
 				phase = "GameStart"; // Game is loading
@@ -99,9 +114,12 @@ export class GameStatus extends SingletonAction<GameStatusSettings> {
 
 		if (phase !== this.currentPhase) {
 			this.currentPhase = phase;
-			const display = PHASE_DISPLAY[phase] ?? PHASE_DISPLAY.None;
 
-			logger.info(`Game phase changed: ${phase}`);
+			// Use TFT labels when the game mode is TFT
+			const displayMap = gameMode.isTFT() ? TFT_PHASE_DISPLAY : PHASE_DISPLAY;
+			const display = displayMap[phase] ?? PHASE_DISPLAY[phase] ?? PHASE_DISPLAY.None;
+
+			logger.info(`Game phase changed: ${phase} (mode=${gameMode.get()})`);
 
 			// Update all visible instances of this action
 			for (const a of this.actions) {

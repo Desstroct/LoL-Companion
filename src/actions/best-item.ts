@@ -7,6 +7,7 @@ import {
 } from "@elgato/streamdeck";
 import streamDeck from "@elgato/streamdeck";
 import { gameClient } from "../services/game-client";
+import { gameMode } from "../services/game-mode";
 import { itemBuilds, ItemBuilds } from "../services/item-builds";
 import type { ItemBuild } from "../services/item-builds";
 import { dataDragon } from "../services/data-dragon";
@@ -76,7 +77,7 @@ export class BestItem extends SingletonAction {
 		}
 
 		// Trigger immediate update
-		this.updateAll();
+		this.updateAll().catch((e) => logger.error(`updateAll error: ${e}`));
 	}
 
 	private startPolling(): void {
@@ -93,6 +94,18 @@ export class BestItem extends SingletonAction {
 	}
 
 	private async updateAll(): Promise<void> {
+		// TFT has a different item system / no Live Client Data API
+		if (gameMode.isTFT()) {
+			for (const a of this.actions) {
+				if (a.isDial()) {
+					await a.setFeedback({ item_icon: "", title: "BEST ITEM", item_name: "N/A in TFT", cost_text: "", gold_bar: { value: 0 }, status_text: "" });
+				} else {
+					await a.setImage(""); await a.setTitle("Best Item\nN/A TFT");
+				}
+			}
+			return;
+		}
+
 		const allData = await gameClient.getAllData();
 
 		// ── No game running ──

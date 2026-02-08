@@ -162,6 +162,18 @@ function getAssetUrls(ddVersion) {
 
     // Auto Rune → Conqueror keystone (most iconic rune) from Community Dragon
     'auto-rune': `${CD}/perk-images/styles/precision/conqueror/conqueror.png`,
+
+    // Death Timer → Dead Man's Plate (skull on a plate — perfect for death/respawn)
+    'death-timer': `${DD}/img/item/3742.png`,
+
+    // Auto Pick/Ban → Blade of the Ruined King (iconic weapon — champion power/selection)
+    'auto-pick': `${DD}/img/item/3153.png`,
+
+    // Best Item → Rabadon's Deathcap (THE best item — wizard hat)
+    'best-item': `${DD}/img/item/3089.png`,
+
+    // LP Tracker → Watchful Wardstone (ranked/LP tracking)
+    'lp-tracker': `${DD}/img/item/3108.png`,
   };
 }
 

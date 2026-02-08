@@ -34,7 +34,7 @@
 			"key": "wr_bar",
 			"type": "bar",
 			"rect": [82, 74, 108, 16],
-			"range": { "min": 40, "max": 65 },
+			"range": { "min": 0, "max": 100 },
 			"value": 50,
 			"bar_fill_c": "#9B59B6",
 			"bar_bg_c": "#333333"
