@@ -6,6 +6,7 @@ import {
 } from "@elgato/streamdeck";
 import streamDeck from "@elgato/streamdeck";
 import { gameClient } from "../services/game-client";
+import { getChampionIconByName } from "../services/lol-icons";
 
 const logger = streamDeck.logger.createScope("KdaTracker");
 
@@ -57,6 +58,7 @@ export class KdaTracker extends SingletonAction {
 			for (const a of this.actions) {
 				if (a.isDial()) {
 					await a.setFeedback({
+						champ_icon: "",
 						kda_line: "- / - / -",
 						cs_line: "No game",
 						gold_text: "",
@@ -64,6 +66,7 @@ export class KdaTracker extends SingletonAction {
 						ratio_text: "",
 					});
 				} else {
+					await a.setImage("");
 					await a.setTitle("KDA\nNo game");
 				}
 			}
@@ -89,6 +92,9 @@ export class KdaTracker extends SingletonAction {
 		const { kills, deaths, assists, creepScore } = me.scores;
 		const gameTimeMinutes = allData.gameData.gameTime / 60;
 
+		// Fetch champion icon for display
+		const champIcon = await getChampionIconByName(me.championName);
+
 		const kda = deaths === 0
 			? (kills + assists)
 			: parseFloat(((kills + assists) / deaths).toFixed(1));
@@ -112,6 +118,7 @@ export class KdaTracker extends SingletonAction {
 		for (const a of this.actions) {
 			if (a.isDial()) {
 				await a.setFeedback({
+					champ_icon: champIcon ?? "",
 					kda_line: kdaLine,
 					cs_line: csLine,
 					gold_text: `${goldStr}g`,
@@ -119,6 +126,7 @@ export class KdaTracker extends SingletonAction {
 					ratio_text: kdaRatio,
 				});
 			} else {
+				if (champIcon) await a.setImage(champIcon);
 				await a.setTitle(`${kdaLine}\n${kdaRatio}`);
 			}
 		}

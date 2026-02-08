@@ -10,6 +10,7 @@ import {
 } from "@elgato/streamdeck";
 import streamDeck from "@elgato/streamdeck";
 import { gameClient } from "../services/game-client";
+import { getDragonIcon, getBaronIcon } from "../services/lol-icons";
 import type { GameEvent } from "../types/lol";
 
 const logger = streamDeck.logger.createScope("JungleTimer");
@@ -159,7 +160,11 @@ export class JungleTimer extends SingletonAction<JungleTimerSettings> {
 			for (const a of this.actions) {
 				if (a.isDial()) {
 					const ds = this.getDialObjective(a.id);
+					const idleIcon = ds.objective === "dragon"
+						? await getDragonIcon("Fire")
+						: await getBaronIcon();
 					await a.setFeedback({
+						obj_icon: idleIcon ?? "",
 						title: ds.objective === "dragon" ? "🐲 DRAGON" : "👑 BARON",
 						timer: "--:--",
 						status: "No game",
@@ -168,6 +173,7 @@ export class JungleTimer extends SingletonAction<JungleTimerSettings> {
 				} else {
 					const settings = (await a.getSettings()) as JungleTimerSettings;
 					const obj = settings.objective ?? "dragon";
+					await a.setImage("");
 					await a.setTitle(obj === "dragon" ? "Dragon\n--:--" : "Baron\n--:--");
 				}
 			}
@@ -200,7 +206,19 @@ export class JungleTimer extends SingletonAction<JungleTimerSettings> {
 				const data = objective === "dragon"
 					? this.getDragonDialData(gameTime)
 					: this.getBaronDialData(gameTime);
+
+				// Fetch objective icon
+				let objIcon: string | null = null;
+				if (objective === "dragon") {
+					objIcon = this.lastDragonType
+						? await getDragonIcon(this.lastDragonType)
+						: await getDragonIcon("Fire");
+				} else {
+					objIcon = await getBaronIcon();
+				}
+
 				await a.setFeedback({
+					obj_icon: objIcon ?? "",
 					title: data.title,
 					timer: data.timer,
 					status: data.status,
@@ -210,9 +228,16 @@ export class JungleTimer extends SingletonAction<JungleTimerSettings> {
 					},
 				});
 			} else {
+				// Fetch objective icon for key
 				if (objective === "dragon") {
+					const drIcon = this.lastDragonType
+						? await getDragonIcon(this.lastDragonType)
+						: await getDragonIcon("Fire");
+					if (drIcon) await a.setImage(drIcon);
 					await a.setTitle(this.getDragonDisplay(gameTime));
 				} else {
+					const brIcon = await getBaronIcon();
+					if (brIcon) await a.setImage(brIcon);
 					await a.setTitle(this.getBaronDisplay(gameTime));
 				}
 			}

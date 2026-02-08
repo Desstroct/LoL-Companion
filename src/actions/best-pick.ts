@@ -13,7 +13,7 @@ import { lcuConnector } from "../services/lcu-connector";
 import { lcuApi } from "../services/lcu-api";
 import { dataDragon } from "../services/data-dragon";
 import { championStats, ChampionStats } from "../services/champion-stats";
-import { getChampionIcon, prefetchChampionIcons } from "../services/champion-icons";
+import { getChampionIcon, prefetchChampionIcons } from "../services/lol-icons";
 
 const logger = streamDeck.logger.createScope("BestPick");
 
@@ -143,6 +143,7 @@ export class BestPick extends SingletonAction<BestPickSettings> {
 						score_bar: { value: 0 },
 					});
 				} else {
+					await a.setImage("");
 					await a.setTitle(`Best\n${role.toUpperCase()}`);
 				}
 			}

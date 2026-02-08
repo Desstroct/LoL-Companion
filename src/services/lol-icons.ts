@@ -1,0 +1,181 @@
+import streamDeck from "@elgato/streamdeck";
+import { dataDragon } from "./data-dragon";
+
+const logger = streamDeck.logger.createScope("LoLIcons");
+
+/** Unified in-memory icon cache: key → base64 data URI */
+const iconCache = new Map<string, string>();
+
+// ────────────────── Generic fetch ──────────────────
+
+/**
+ * Fetch any image URL and return as base64 data URI. Cached in memory.
+ */
+async function fetchIcon(cacheKey: string, url: string): Promise<string | null> {
+	if (iconCache.has(cacheKey)) return iconCache.get(cacheKey)!;
+	try {
+		const response = await fetch(url);
+		if (!response.ok) {
+			logger.warn(`Icon fetch failed (${response.status}): ${url}`);
+			return null;
+		}
+		const buffer = Buffer.from(await response.arrayBuffer());
+		const dataUri = `data:image/png;base64,${buffer.toString("base64")}`;
+		iconCache.set(cacheKey, dataUri);
+		return dataUri;
+	} catch (e) {
+		logger.error(`Icon fetch error: ${url} — ${e}`);
+		return null;
+	}
+}
+
+// ────────────────── Champion icons ──────────────────
+
+/**
+ * Get a champion square portrait as base64 data URI.
+ * @param alias Lolalytics alias (e.g., "aatrox", "masteryi")
+ */
+export async function getChampionIcon(alias: string): Promise<string | null> {
+	const ddId = resolveDataDragonId(alias);
+	if (!ddId) {
+		logger.warn(`Cannot resolve DDragon ID for alias: ${alias}`);
+		return null;
+	}
+	return fetchIcon(`champ:${alias}`, dataDragon.getChampionImageUrl(ddId));
+}
+
+/**
+ * Get a champion square portrait by numeric key (champion ID).
+ * @param key Numeric champion ID as string (e.g., "266" for Aatrox)
+ */
+export async function getChampionIconByKey(key: string): Promise<string | null> {
+	const champ = dataDragon.getChampionByKey(key);
+	if (!champ) return null;
+	return fetchIcon(`champ:${champ.id.toLowerCase()}`, dataDragon.getChampionImageUrl(champ.id));
+}
+
+/**
+ * Get a champion icon by exact champion name (as returned by Game Client API).
+ * @param name Champion name (e.g., "Aatrox", "Master Yi", "Wukong")
+ */
+export async function getChampionIconByName(name: string): Promise<string | null> {
+	// Game Client API uses display names; DDragon uses IDs
+	const lower = name.toLowerCase().replace(/['\s.]/g, "");
+	for (const champ of dataDragon.getAllChampions()) {
+		const ddLower = champ.id.toLowerCase().replace(/['\s.]/g, "");
+		const nameLower = champ.name.toLowerCase().replace(/['\s.]/g, "");
+		if (ddLower === lower || nameLower === lower) {
+			return fetchIcon(`champ:${ddLower}`, dataDragon.getChampionImageUrl(champ.id));
+		}
+	}
+	return null;
+}
+
+/** Prefetch champion icons (non-blocking). */
+export function prefetchChampionIcons(aliases: string[]): void {
+	for (const alias of aliases) {
+		if (!iconCache.has(`champ:${alias}`)) {
+			getChampionIcon(alias).catch(() => {});
+		}
+	}
+}
+
+// ────────────────── Summoner spell icons ──────────────────
+
+/**
+ * Get a summoner spell icon by DDragon spell key (e.g., "SummonerFlash").
+ */
+export async function getSpellIcon(spellKey: string): Promise<string | null> {
+	return fetchIcon(`spell:${spellKey}`, dataDragon.getSpellImageUrl(spellKey));
+}
+
+/**
+ * Get a summoner spell icon by display name (e.g., "Flash", "Ignite").
+ * Resolves display name → DDragon key automatically.
+ */
+export async function getSpellIconByDisplayName(displayName: string): Promise<string | null> {
+	const key = DISPLAY_TO_SPELL_KEY[displayName];
+	if (!key) {
+		logger.warn(`Unknown spell display name: ${displayName}`);
+		return null;
+	}
+	return getSpellIcon(key);
+}
+
+const DISPLAY_TO_SPELL_KEY: Record<string, string> = {
+	"Flash": "SummonerFlash",
+	"Ignite": "SummonerDot",
+	"Teleport": "SummonerTeleport",
+	"Heal": "SummonerHeal",
+	"Exhaust": "SummonerExhaust",
+	"Barrier": "SummonerBarrier",
+	"Smite": "SummonerSmite",
+	"Cleanse": "SummonerCleanse",
+	"Ghost": "SummonerGhost",
+	"Clarity": "SummonerMana",
+	"Mark": "SummonerSnowball",
+};
+
+// ────────────────── Item icons ──────────────────
+
+/**
+ * Get an item icon by item ID.
+ */
+export async function getItemIcon(itemId: number): Promise<string | null> {
+	const url = `https://ddragon.leagueoflegends.com/cdn/${dataDragon.getVersion()}/img/item/${itemId}.png`;
+	return fetchIcon(`item:${itemId}`, url);
+}
+
+// ────────────────── Jungle objective icons ──────────────────
+
+// Community Dragon URLs for dragon soul / baron
+const CD_BASE = "https://raw.communitydragon.org/latest/game/assets/ux/minimap";
+
+const DRAGON_ICON_URLS: Record<string, string> = {
+	Fire: `${CD_BASE}/minimap_icon_fire_dragon.png`,
+	Water: `${CD_BASE}/minimap_icon_water_dragon.png`,
+	Air: `${CD_BASE}/minimap_icon_air_dragon.png`,
+	Earth: `${CD_BASE}/minimap_icon_earth_dragon.png`,
+	Hextech: `${CD_BASE}/minimap_icon_hextech_dragon.png`,
+	Chemtech: `${CD_BASE}/minimap_icon_chemtech_dragon.png`,
+	Elder: `${CD_BASE}/minimap_icon_elder_dragon.png`,
+};
+
+const BARON_ICON_URL = `${CD_BASE}/minimap_icon_baron.png`;
+
+/**
+ * Get a dragon type icon (Infernal, Ocean, Cloud, Mountain, Hextech, Chemtech, Elder).
+ */
+export async function getDragonIcon(dragonType: string): Promise<string | null> {
+	const url = DRAGON_ICON_URLS[dragonType];
+	if (!url) return null;
+	return fetchIcon(`dragon:${dragonType}`, url);
+}
+
+/** Get the Baron Nashor icon. */
+export async function getBaronIcon(): Promise<string | null> {
+	return fetchIcon("baron", BARON_ICON_URL);
+}
+
+// ────────────────── Profile icons ──────────────────
+
+/**
+ * Get a summoner profile icon by ID.
+ */
+export async function getProfileIcon(iconId: number): Promise<string | null> {
+	const url = `https://ddragon.leagueoflegends.com/cdn/${dataDragon.getVersion()}/img/profileicon/${iconId}.png`;
+	return fetchIcon(`profile:${iconId}`, url);
+}
+
+// ────────────────── Internal helpers ──────────────────
+
+function resolveDataDragonId(alias: string): string | null {
+	const lowerAlias = alias.toLowerCase().replace(/['\s.]/g, "");
+	for (const champ of dataDragon.getAllChampions()) {
+		const ddLower = champ.id.toLowerCase().replace(/['\s.]/g, "");
+		if (ddLower === lowerAlias) {
+			return champ.id;
+		}
+	}
+	return null;
+}

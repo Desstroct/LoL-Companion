@@ -10,6 +10,7 @@ import {
 } from "@elgato/streamdeck";
 import streamDeck from "@elgato/streamdeck";
 import { gameClient } from "../services/game-client";
+import { getSpellIcon } from "../services/lol-icons";
 import {
 	SUMMONER_SPELL_COOLDOWNS,
 	SUMMONER_SPELL_DISPLAY_NAMES,
@@ -157,6 +158,7 @@ export class SummonerTracker extends SingletonAction<SummonerTrackerSettings> {
 				if (a.isDial()) {
 					const ds = this.getDialState(a.id);
 					await a.setFeedback({
+						spell_icon: "",
 						title: `Enemy ${ds.enemySlot}`,
 						spell_info: ds.spellSlot === 1 ? "Spell D" : "Spell F",
 						cd_text: "No game",
@@ -164,6 +166,7 @@ export class SummonerTracker extends SingletonAction<SummonerTrackerSettings> {
 					});
 				} else {
 					const settings = (await a.getSettings()) as SummonerTrackerSettings;
+					await a.setImage("");
 					await a.setTitle(`Enemy ${settings.enemySlot ?? 1}\nNo game`);
 				}
 			}
@@ -264,6 +267,7 @@ export class SummonerTracker extends SingletonAction<SummonerTrackerSettings> {
 	): Promise<void> {
 		const champName = state.enemyChampion || "???";
 		const spellLabel = spellSlot === 1 ? "(D)" : "(F)";
+		const spellIconUri = await getSpellIcon(state.spellKey);
 
 		if (state.isOnCooldown) {
 			const remaining = Math.ceil(state.remainingCooldown);
@@ -275,6 +279,7 @@ export class SummonerTracker extends SingletonAction<SummonerTrackerSettings> {
 			const pct = Math.round((state.remainingCooldown / state.cooldown) * 100);
 
 			await a.setFeedback({
+				spell_icon: spellIconUri ?? "",
 				title: `E${enemySlot} ${champName}`,
 				spell_info: `${state.spellName} ${spellLabel} · ${state.cooldown}s`,
 				cd_text: timeStr,
@@ -282,6 +287,7 @@ export class SummonerTracker extends SingletonAction<SummonerTrackerSettings> {
 			});
 		} else {
 			await a.setFeedback({
+				spell_icon: spellIconUri ?? "",
 				title: `E${enemySlot} ${champName}`,
 				spell_info: `${state.spellName} ${spellLabel} · ${state.cooldown}s`,
 				cd_text: "✅ READY",
@@ -291,10 +297,12 @@ export class SummonerTracker extends SingletonAction<SummonerTrackerSettings> {
 	}
 
 	private async renderKey(
-		a: { setTitle: (title: string) => Promise<void> },
+		a: { setTitle: (title: string) => Promise<void>; setImage: (image: string) => Promise<void> },
 		state: SpellTrackingState,
 	): Promise<void> {
 		const spellShort = SUMMONER_SPELL_DISPLAY_NAMES[state.spellKey] ?? state.spellName ?? "?";
+		const spellIconUri = await getSpellIcon(state.spellKey);
+		if (spellIconUri) await a.setImage(spellIconUri);
 
 		if (state.isOnCooldown) {
 			const remaining = Math.ceil(state.remainingCooldown);

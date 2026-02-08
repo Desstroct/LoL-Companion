@@ -13,7 +13,7 @@ import { lcuConnector } from "../services/lcu-connector";
 import { lcuApi } from "../services/lcu-api";
 import { dataDragon } from "../services/data-dragon";
 import { championStats, ChampionStats, MatchupData } from "../services/champion-stats";
-import { getChampionIcon, prefetchChampionIcons } from "../services/champion-icons";
+import { getChampionIcon, prefetchChampionIcons } from "../services/lol-icons";
 
 const logger = streamDeck.logger.createScope("Counterpick");
 
@@ -142,6 +142,7 @@ export class Counterpick extends SingletonAction<CounterpickSettings> {
 						wr_bar: { value: 0 },
 					});
 				} else {
+					await a.setImage("");
 					await a.setTitle(`Counter\n${role.toUpperCase()}`);
 				}
 			}

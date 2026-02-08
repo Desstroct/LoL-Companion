@@ -12,6 +12,7 @@ import streamDeck from "@elgato/streamdeck";
 import { lcuConnector } from "../services/lcu-connector";
 import { lcuApi } from "../services/lcu-api";
 import { dataDragon } from "../services/data-dragon";
+import { getChampionIconByKey } from "../services/lol-icons";
 import type { LcuChampSelectSession, PlayerCardData } from "../types/lol";
 
 const logger = streamDeck.logger.createScope("LobbyScan");
@@ -116,6 +117,7 @@ export class LobbyScannerAction extends SingletonAction<LobbyScannerSettings> {
 					const team = slot <= 5 ? "Ally" : "Enemy";
 					const index = slot <= 5 ? slot : slot - 5;
 					await a.setFeedback({
+						champ_icon: "",
 						title: `${team} #${index}`,
 						champion: "Waiting...",
 						rank: "",
@@ -127,6 +129,7 @@ export class LobbyScannerAction extends SingletonAction<LobbyScannerSettings> {
 					const slot = settings.slot ?? 1;
 					const team = slot <= 5 ? "Ally" : "Enemy";
 					const index = slot <= 5 ? slot : slot - 5;
+					await a.setImage("");
 					await a.setTitle(`${team}\n#${index}`);
 				}
 			}
@@ -156,6 +159,7 @@ export class LobbyScannerAction extends SingletonAction<LobbyScannerSettings> {
 			if (!player) {
 				if (isDial) {
 					await a.setFeedback({
+						champ_icon: "",
 						title: isAlly ? `Ally #${index + 1}` : `Enemy #${index + 1}`,
 						champion: "No data",
 						rank: "",
@@ -163,19 +167,27 @@ export class LobbyScannerAction extends SingletonAction<LobbyScannerSettings> {
 						wr_bar: { value: 0 },
 					});
 				} else {
+					await a.setImage("");
 					await a.setTitle(isAlly ? "Ally\nNo data" : "Enemy\nNo data");
 				}
 				continue;
 			}
 
-			// Get champion name
+			// Get champion name + icon
 			let champName = "???";
-			if (player.championId > 0) {
-				const champ = dataDragon.getChampionByKey(String(player.championId));
-				champName = champ?.name ?? `#${player.championId}`;
-			} else if (player.championPickIntent > 0) {
-				const champ = dataDragon.getChampionByKey(String(player.championPickIntent));
-				champName = champ ? `(${champ.name})` : "...";
+			let champIcon: string | null = null;
+			const champKey = player.championId > 0
+				? String(player.championId)
+				: player.championPickIntent > 0 ? String(player.championPickIntent) : null;
+
+			if (champKey) {
+				const champ = dataDragon.getChampionByKey(champKey);
+				if (player.championId > 0) {
+					champName = champ?.name ?? `#${player.championId}`;
+				} else {
+					champName = champ ? `(${champ.name})` : "...";
+				}
+				champIcon = await getChampionIconByKey(champKey);
 			}
 
 			// Get position
@@ -201,6 +213,7 @@ export class LobbyScannerAction extends SingletonAction<LobbyScannerSettings> {
 				const teamLabel = isAlly ? "Ally" : "Enemy";
 				const barColor = wrPct >= 55 ? "#2ECC71" : wrPct >= 50 ? "#F1C40F" : wrPct > 0 ? "#E74C3C" : "#666666";
 				await a.setFeedback({
+					champ_icon: champIcon ?? "",
 					title: `${pos} · ${teamLabel} #${index + 1}`,
 					champion: champName,
 					rank: rankStr || "Unranked",
@@ -208,6 +221,7 @@ export class LobbyScannerAction extends SingletonAction<LobbyScannerSettings> {
 					wr_bar: { value: wrPct || 50, bar_fill_c: barColor },
 				});
 			} else {
+				if (champIcon) await a.setImage(champIcon);
 				const title = rankStr
 					? `${champName}\n${rankStr} ${wrPct}%`
 					: `${pos}\n${champName}`;
