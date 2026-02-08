@@ -1,5 +1,5 @@
 import streamDeck from "@elgato/streamdeck";
-import type { DdChampion, DdSummonerSpell } from "../types/lol";
+import type { DdChampion, DdSummonerSpell, DdItem } from "../types/lol";
 
 const logger = streamDeck.logger.createScope("DataDragon");
 
@@ -14,6 +14,7 @@ export class DataDragon {
 	private champions: Map<string, DdChampion> = new Map();
 	private championsByKey: Map<string, DdChampion> = new Map();
 	private summonerSpells: Map<string, DdSummonerSpell> = new Map();
+	private items: Map<string, DdItem> = new Map();
 	private initialized = false;
 
 	/**
@@ -37,9 +38,11 @@ export class DataDragon {
 			await this.loadChampions();
 			// Load summoner spell data
 			await this.loadSummonerSpells();
+			// Load item data
+			await this.loadItems();
 
 			this.initialized = true;
-			logger.info(`Data Dragon initialized: ${this.champions.size} champions, ${this.summonerSpells.size} spells`);
+			logger.info(`Data Dragon initialized: ${this.champions.size} champions, ${this.summonerSpells.size} spells, ${this.items.size} items`);
 		} catch (e) {
 			logger.error(`Data Dragon init failed: ${e}`);
 		}
@@ -96,6 +99,34 @@ export class DataDragon {
 		return `${DD_BASE}/cdn/${this.getVersion()}/img/spell/${imageName}`;
 	}
 
+	/**
+	 * Get item data by ID (e.g., "3031" for Infinity Edge).
+	 */
+	getItem(id: string): DdItem | undefined {
+		return this.items.get(id);
+	}
+
+	/**
+	 * Get item display name.
+	 */
+	getItemName(id: number): string {
+		return this.items.get(String(id))?.name ?? `Item ${id}`;
+	}
+
+	/**
+	 * Get item total gold cost.
+	 */
+	getItemCost(id: number): number {
+		return this.items.get(String(id))?.gold.total ?? 0;
+	}
+
+	/**
+	 * Get item image URL.
+	 */
+	getItemImageUrl(itemId: number): string {
+		return `${DD_BASE}/cdn/${this.getVersion()}/img/item/${itemId}.png`;
+	}
+
 	// ---- Private methods ----
 
 	private async loadChampions(): Promise<void> {
@@ -117,6 +148,17 @@ export class DataDragon {
 		if (data?.data) {
 			for (const [id, spell] of Object.entries(data.data)) {
 				this.summonerSpells.set(id, spell);
+			}
+		}
+	}
+
+	private async loadItems(): Promise<void> {
+		const url = `${DD_BASE}/cdn/${this.getVersion()}/data/en_US/item.json`;
+		const data = await this.fetchJson<{ data: Record<string, DdItem> }>(url);
+
+		if (data?.data) {
+			for (const [id, item] of Object.entries(data.data)) {
+				this.items.set(id, item);
 			}
 		}
 	}

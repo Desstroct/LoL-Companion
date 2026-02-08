@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Best Item Settings</title>
+    <script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
+</head>
+<body>
+    <sdpi-item label="Info">
+        <details>
+            <summary>How it works</summary>
+            <p style="font-size: 11px; color: #999; padding: 8px;">
+                Recommends the next item to buy based on your champion, lane,
+                and current items. Build data is fetched from Lolalytics (highest win rate build).
+                <br><br>
+                <strong>Key:</strong> Shows next item icon, name, and cost.<br>
+                <strong>Dial:</strong> Rotate to browse the full 6-item build.
+                Shows item cost, your gold, and a progress bar.
+                "BUY NOW!" appears when you can afford the next item.
+                <br><br>
+                Champion and lane are auto-detected from the live game.
+                Updates every 2 seconds during a game.
+            </p>
+        </details>
+    </sdpi-item>
+</body>
+</html>

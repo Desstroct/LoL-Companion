@@ -10,6 +10,7 @@ import { Counterpick } from "./actions/counterpick";
 import { BestPick } from "./actions/best-pick";
 import { LobbyLevelTracker } from "./actions/lobby-level";
 import { AutoRune } from "./actions/auto-rune";
+import { BestItem } from "./actions/best-item";
 import { lcuConnector } from "./services/lcu-connector";
 import { dataDragon } from "./services/data-dragon";
 
@@ -50,6 +51,7 @@ streamDeck.actions.registerAction(new Counterpick());
 streamDeck.actions.registerAction(new BestPick());
 streamDeck.actions.registerAction(new LobbyLevelTracker());
 streamDeck.actions.registerAction(new AutoRune());
+streamDeck.actions.registerAction(new BestItem());
 
 // Connect to Stream Deck and initialize
 streamDeck.connect().then(() => {

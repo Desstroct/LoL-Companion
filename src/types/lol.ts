@@ -280,6 +280,25 @@ export interface DdSummonerSpell {
 	image: DdImage;
 }
 
+export interface DdItem {
+	name: string;
+	gold: DdItemGold;
+	description: string;
+	plaintext: string;
+	image: DdImage;
+	tags: string[];
+	into?: string[];
+	from?: string[];
+	maps: Record<string, boolean>;
+}
+
+export interface DdItemGold {
+	base: number;
+	total: number;
+	sell: number;
+	purchasable: boolean;
+}
+
 // ---- Plugin Internal Types ----
 
 export interface SummonerSpellState {

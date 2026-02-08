@@ -225,6 +225,31 @@
 					"TitleAlignment": "bottom"
 				}
 			]
+		},
+		{
+			"Name": "Best Item",
+			"UUID": "com.desstroct.lol-api.best-item",
+			"Icon": "imgs/actions/best-item/icon",
+			"Tooltip": "Recommends the next item to buy based on your champion, lane, and current gold. Dial: rotate to browse full build.",
+			"PropertyInspectorPath": "ui/best-item.html",
+			"Controllers": [
+				"Keypad",
+				"Encoder"
+			],
+			"Encoder": {
+				"layout": "layouts/best-item.json",
+				"TriggerDescription": {
+					"Rotate": "Browse build",
+					"Push": "Refresh",
+					"Touch": "Refresh"
+				}
+			},
+			"States": [
+				{
+					"Image": "imgs/actions/best-item/key",
+					"TitleAlignment": "middle"
+				}
+			]
 		}
 	],
 	"Category": "LoL Companion",
