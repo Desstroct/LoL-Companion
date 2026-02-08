@@ -128,22 +128,22 @@ export async function getItemIcon(itemId: number): Promise<string | null> {
 
 // ────────────────── Jungle objective icons ──────────────────
 
-// Community Dragon URLs for dragon soul / baron
-const CD_BASE = "https://raw.communitydragon.org/latest/game/assets/ux/minimap";
+// Community Dragon URLs for jungle objectives (correct path: /icons/ subfolder)
+const CD_ICONS = "https://raw.communitydragon.org/latest/game/assets/ux/minimap/icons";
 
 const DRAGON_ICON_URLS: Record<string, string> = {
-	Fire: `${CD_BASE}/minimap_icon_fire_dragon.png`,
-	Water: `${CD_BASE}/minimap_icon_water_dragon.png`,
-	Air: `${CD_BASE}/minimap_icon_air_dragon.png`,
-	Earth: `${CD_BASE}/minimap_icon_earth_dragon.png`,
-	Hextech: `${CD_BASE}/minimap_icon_hextech_dragon.png`,
-	Chemtech: `${CD_BASE}/minimap_icon_chemtech_dragon.png`,
-	Elder: `${CD_BASE}/minimap_icon_elder_dragon.png`,
+	Fire: `${CD_ICONS}/dragon_infernal.png`,
+	Water: `${CD_ICONS}/dragon_ocean.png`,
+	Air: `${CD_ICONS}/dragon_cloud.png`,
+	Earth: `${CD_ICONS}/dragon_mountain.png`,
+	Hextech: `${CD_ICONS}/dragon_hextech.png`,
+	Chemtech: `${CD_ICONS}/dragon_chemtech.png`,
+	Elder: `${CD_ICONS}/dragon_elder.png`,
 };
 
-const BARON_ICON_URL = `${CD_BASE}/minimap_icon_baron.png`;
-const HERALD_ICON_URL = `${CD_BASE}/minimap_icon_riftherald.png`;
-const GRUBS_ICON_URL = "https://raw.communitydragon.org/latest/game/assets/ux/minimap/minimap_icon_voidmite.png";
+const BARON_ICON_URL = `${CD_ICONS}/baron.png`;
+const HERALD_ICON_URL = `${CD_ICONS}/riftherald.png`;
+const GRUBS_ICON_URL = `${CD_ICONS}/grub.png`;
 
 /**
  * Get a dragon type icon (Infernal, Ocean, Cloud, Mountain, Hextech, Chemtech, Elder).
