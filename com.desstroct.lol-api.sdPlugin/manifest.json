@@ -74,7 +74,7 @@
 			"Name": "Jungle Timer",
 			"UUID": "com.desstroct.lol-api.jungle-timer",
 			"Icon": "imgs/actions/jungle-timer/icon",
-			"Tooltip": "Dragon and Baron respawn timer. Dial: rotate to switch objective, press to start timer.",
+			"Tooltip": "Jungle objective timers: Dragon, Voidgrubs, Rift Herald, Baron. Dial: rotate to cycle objectives, press to start manual timer.",
 			"PropertyInspectorPath": "ui/jungle-timer.html",
 			"Controllers": [
 				"Keypad",
@@ -83,7 +83,7 @@
 			"Encoder": {
 				"layout": "layouts/jungle-timer.json",
 				"TriggerDescription": {
-					"Rotate": "Dragon / Baron",
+					"Rotate": "Cycle objectives",
 					"Push": "Manual timer",
 					"Touch": "Refresh"
 				}

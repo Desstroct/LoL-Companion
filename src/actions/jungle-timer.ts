@@ -10,19 +10,32 @@ import {
 } from "@elgato/streamdeck";
 import streamDeck from "@elgato/streamdeck";
 import { gameClient } from "../services/game-client";
-import { getDragonIcon, getBaronIcon } from "../services/lol-icons";
+import { getDragonIcon, getBaronIcon, getHeraldIcon, getGrubsIcon } from "../services/lol-icons";
 import type { GameEvent } from "../types/lol";
 
 const logger = streamDeck.logger.createScope("JungleTimer");
 
-// Respawn timers in seconds
-const DRAGON_RESPAWN = 300; // 5 min
-const ELDER_RESPAWN = 360; // 6 min
-const BARON_RESPAWN = 360; // 6 min
-const BARON_SPAWN_TIME = 1200; // 20:00
-const DRAGON_SPAWN_TIME = 300; // 5:00
+// ──────────── Game timeline constants (Season 14+) ────────────
+// BOT side pit
+const DRAGON_SPAWN_TIME = 300;   // 5:00
+const DRAGON_RESPAWN = 300;      // 5 min
+const ELDER_RESPAWN = 360;       // 6 min
 
-const DRAGON_TYPE_EMOJI: Record<string, string> = {
+// TOP side pit: Grubs (5:00→14:00) → Herald (14:00→19:45) → Baron (20:00+)
+const GRUBS_SPAWN_TIME = 300;    // 5:00
+const GRUBS_RESPAWN = 240;       // ~4 min between waves
+const GRUBS_REMOVED_TIME = 840;  // 14:00 — herald replaces grubs
+
+const HERALD_SPAWN_TIME = 840;   // 14:00
+const HERALD_REMOVED_TIME = 1185; // 19:45 — baron pit opens
+
+const BARON_SPAWN_TIME = 1200;   // 20:00
+const BARON_RESPAWN = 360;       // 6 min
+
+type Objective = "dragon" | "grubs" | "herald" | "baron";
+const OBJECTIVE_CYCLE: Objective[] = ["dragon", "grubs", "herald", "baron"];
+
+const DRAGON_TYPE_SHORT: Record<string, string> = {
 	Fire: "INF",
 	Water: "OCE",
 	Air: "CLD",
@@ -33,31 +46,39 @@ const DRAGON_TYPE_EMOJI: Record<string, string> = {
 };
 
 /**
- * Jungle Timer action — tracks Dragon / Baron respawn timers.
+ * Jungle Timer action — tracks Dragon, Voidgrubs, Rift Herald, and Baron
+ * respawn timers using the Game Client live event API.
  *
- * Shows countdown until objective respawns. Detects kills via the
- * Game Client event API and starts the appropriate respawn timer.
- *
- * Settings: objective = "dragon" | "baron"
- *
- * Press the key to manually start a timer (if event was missed).
+ * Settings: objective = "dragon" | "grubs" | "herald" | "baron"
+ * Dial: rotate to cycle objectives, press to start manual timer, touch to refresh.
+ * Key: press to start manual timer for the configured objective.
  */
 @action({ UUID: "com.desstroct.lol-api.jungle-timer" })
 export class JungleTimer extends SingletonAction<JungleTimerSettings> {
 	private pollInterval: ReturnType<typeof setInterval> | null = null;
 	private processedEventIds: Set<number> = new Set();
-	/** Per-dial instance state: which objective is being viewed */
-	private dialStates: Map<string, { objective: "dragon" | "baron" }> = new Map();
+	private dialStates: Map<string, { objective: Objective }> = new Map();
 
-	// Dragon state
+	// ── Dragon state ──
 	private dragonKillTime: number | null = null;
 	private dragonCount = 0;
 	private lastDragonType = "";
 	private isElderPhase = false;
 
-	// Baron state
+	// ── Voidgrubs (Horde) state ──
+	private grubsKilled = 0;          // total grubs killed (max 6)
+	private grubsWaveKills = 0;       // kills in current wave (max 3)
+	private grubsLastKillTime: number | null = null;
+
+	// ── Rift Herald state ──
+	private heraldKillTime: number | null = null;
+	private heraldAlive = false;
+
+	// ── Baron state ──
 	private baronKillTime: number | null = null;
 	private baronAlive = false;
+
+	// ─────────── Lifecycle ───────────
 
 	override onWillAppear(ev: WillAppearEvent<JungleTimerSettings>): void | Promise<void> {
 		this.startPolling();
@@ -65,13 +86,14 @@ export class JungleTimer extends SingletonAction<JungleTimerSettings> {
 		if (ev.action.isDial()) {
 			this.getDialObjective(ev.action.id, obj);
 			return ev.action.setFeedback({
-				title: obj === "dragon" ? "🐲 DRAGON" : "👑 BARON",
+				obj_icon: "",
+				title: objectiveLabel(obj),
 				timer: "--:--",
 				status: "Waiting...",
 				progress: { value: 0 },
 			});
 		}
-		return ev.action.setTitle(obj === "dragon" ? "Dragon" : "Baron");
+		return ev.action.setTitle(`${objectiveDisplayName(obj)}\n--:--`);
 	}
 
 	override onWillDisappear(ev: WillDisappearEvent<JungleTimerSettings>): void | Promise<void> {
@@ -80,51 +102,64 @@ export class JungleTimer extends SingletonAction<JungleTimerSettings> {
 	}
 
 	override async onKeyDown(ev: KeyDownEvent<JungleTimerSettings>): Promise<void> {
-		const settings = ev.payload.settings;
-		const objective = settings.objective ?? "dragon";
-		await this.manualTimer(objective);
+		const obj = ev.payload.settings.objective ?? "dragon";
+		await this.manualTimer(obj);
 	}
 
-	/** Dial rotation: toggle dragon ↔ baron */
 	override async onDialRotate(ev: DialRotateEvent<JungleTimerSettings>): Promise<void> {
 		const ds = this.getDialObjective(ev.action.id);
-		ds.objective = ds.objective === "dragon" ? "baron" : "dragon";
+		const idx = OBJECTIVE_CYCLE.indexOf(ds.objective);
+		const next = (idx + ev.payload.ticks + OBJECTIVE_CYCLE.length * 100) % OBJECTIVE_CYCLE.length;
+		ds.objective = OBJECTIVE_CYCLE[next];
 		await this.updateAll();
 	}
 
-	/** Dial press: manual timer for current objective */
 	override async onDialUp(ev: DialUpEvent<JungleTimerSettings>): Promise<void> {
 		const ds = this.getDialObjective(ev.action.id);
 		await this.manualTimer(ds.objective);
 	}
 
-	/** Touch: force refresh */
 	override async onTouchTap(_ev: TouchTapEvent<JungleTimerSettings>): Promise<void> {
 		await this.updateAll();
 	}
 
-	private getDialObjective(actionId: string, initial?: string): { objective: "dragon" | "baron" } {
+	// ─────────── Helpers ───────────
+
+	private getDialObjective(actionId: string, initial?: string): { objective: Objective } {
 		let ds = this.dialStates.get(actionId);
 		if (!ds) {
-			ds = { objective: (initial as "dragon" | "baron") ?? "dragon" };
+			ds = { objective: (initial as Objective) ?? "dragon" };
 			this.dialStates.set(actionId, ds);
 		}
 		return ds;
 	}
 
-	private async manualTimer(objective: string): Promise<void> {
+	private async manualTimer(objective: Objective): Promise<void> {
 		const gameTime = await gameClient.getGameTime();
 		if (gameTime <= 0) return;
 
-		if (objective === "dragon") {
-			this.dragonKillTime = gameTime;
-			logger.info(`Manual dragon timer at ${Math.floor(gameTime)}s`);
-		} else {
-			this.baronKillTime = gameTime;
-			this.baronAlive = false;
-			logger.info(`Manual baron timer at ${Math.floor(gameTime)}s`);
+		switch (objective) {
+			case "dragon":
+				this.dragonKillTime = gameTime;
+				logger.info(`Manual dragon timer at ${fmt(gameTime)}`);
+				break;
+			case "grubs":
+				this.grubsLastKillTime = gameTime;
+				this.grubsWaveKills = 0; // mark wave as cleared
+				this.grubsKilled = Math.min(this.grubsKilled + 3, 6);
+				logger.info(`Manual grubs wave cleared at ${fmt(gameTime)} (total: ${this.grubsKilled})`);
+				break;
+			case "herald":
+				this.heraldKillTime = gameTime;
+				this.heraldAlive = false;
+				logger.info(`Manual herald timer at ${fmt(gameTime)}`);
+				break;
+			case "baron":
+				this.baronKillTime = gameTime;
+				this.baronAlive = false;
+				logger.info(`Manual baron timer at ${fmt(gameTime)}`);
+				break;
 		}
-
 		await this.updateAll();
 	}
 
@@ -148,51 +183,39 @@ export class JungleTimer extends SingletonAction<JungleTimerSettings> {
 		this.dragonCount = 0;
 		this.lastDragonType = "";
 		this.isElderPhase = false;
+		this.grubsKilled = 0;
+		this.grubsWaveKills = 0;
+		this.grubsLastKillTime = null;
+		this.heraldKillTime = null;
+		this.heraldAlive = false;
 		this.baronKillTime = null;
 		this.baronAlive = false;
 	}
+
+	// ─────────── Main update loop ───────────
 
 	private async updateAll(): Promise<void> {
 		const allData = await gameClient.getAllData();
 
 		if (!allData) {
-			// Not in game
-			for (const a of this.actions) {
-				if (a.isDial()) {
-					const ds = this.getDialObjective(a.id);
-					const idleIcon = ds.objective === "dragon"
-						? await getDragonIcon("Fire")
-						: await getBaronIcon();
-					await a.setFeedback({
-						obj_icon: idleIcon ?? "",
-						title: ds.objective === "dragon" ? "🐲 DRAGON" : "👑 BARON",
-						timer: "--:--",
-						status: "No game",
-						progress: { value: 0 },
-					});
-				} else {
-					const settings = (await a.getSettings()) as JungleTimerSettings;
-					const obj = settings.objective ?? "dragon";
-					await a.setImage("");
-					await a.setTitle(obj === "dragon" ? "Dragon\n--:--" : "Baron\n--:--");
-				}
-			}
+			await this.renderIdle();
 			return;
 		}
 
 		const gameTime = allData.gameData.gameTime;
-
-		// Process events for kills
 		this.processEvents(allData.events.Events, gameTime);
 
-		// Update baron spawn state
+		// Update spawn states based on game time
+		if (!this.heraldAlive && gameTime >= HERALD_SPAWN_TIME && gameTime < HERALD_REMOVED_TIME && this.heraldKillTime === null) {
+			this.heraldAlive = true;
+		}
 		if (!this.baronAlive && gameTime >= BARON_SPAWN_TIME && this.baronKillTime === null) {
 			this.baronAlive = true;
 		}
 
-		// Render each action instance
+		// Render each action
 		for (const a of this.actions) {
-			let objective: string;
+			let objective: Objective;
 			const isDial = a.isDial();
 
 			if (isDial) {
@@ -202,182 +225,287 @@ export class JungleTimer extends SingletonAction<JungleTimerSettings> {
 				objective = settings.objective ?? "dragon";
 			}
 
+			const icon = await this.getObjectiveIcon(objective, gameTime);
+
 			if (isDial) {
-				const data = objective === "dragon"
-					? this.getDragonDialData(gameTime)
-					: this.getBaronDialData(gameTime);
-
-				// Fetch objective icon
-				let objIcon: string | null = null;
-				if (objective === "dragon") {
-					objIcon = this.lastDragonType
-						? await getDragonIcon(this.lastDragonType)
-						: await getDragonIcon("Fire");
-				} else {
-					objIcon = await getBaronIcon();
-				}
-
+				const data = this.getDialData(objective, gameTime);
 				await a.setFeedback({
-					obj_icon: objIcon ?? "",
+					obj_icon: icon ?? "",
 					title: data.title,
 					timer: data.timer,
 					status: data.status,
 					progress: {
 						value: data.progress,
-						bar_fill_c: data.alive ? "#2ECC71" : "#E67E22",
+						bar_fill_c: data.alive ? "#2ECC71" : data.expired ? "#666666" : "#E67E22",
 					},
 				});
 			} else {
-				// Fetch objective icon for key
-				if (objective === "dragon") {
-					const drIcon = this.lastDragonType
-						? await getDragonIcon(this.lastDragonType)
-						: await getDragonIcon("Fire");
-					if (drIcon) await a.setImage(drIcon);
-					await a.setTitle(this.getDragonDisplay(gameTime));
-				} else {
-					const brIcon = await getBaronIcon();
-					if (brIcon) await a.setImage(brIcon);
-					await a.setTitle(this.getBaronDisplay(gameTime));
-				}
+				if (icon) await a.setImage(icon);
+				await a.setTitle(this.getKeyDisplay(objective, gameTime));
 			}
 		}
 	}
+
+	// ─────────── Idle render (no game) ───────────
+
+	private async renderIdle(): Promise<void> {
+		for (const a of this.actions) {
+			if (a.isDial()) {
+				const ds = this.getDialObjective(a.id);
+				const icon = await this.getIdleIcon(ds.objective);
+				await a.setFeedback({
+					obj_icon: icon ?? "",
+					title: objectiveLabel(ds.objective),
+					timer: "--:--",
+					status: "No game",
+					progress: { value: 0 },
+				});
+			} else {
+				const settings = (await a.getSettings()) as JungleTimerSettings;
+				const obj = settings.objective ?? "dragon";
+				const icon = await this.getIdleIcon(obj);
+				if (icon) {
+					await a.setImage(icon);
+				} else {
+					await a.setImage("");
+				}
+				await a.setTitle(`${objectiveDisplayName(obj)}\n--:--`);
+			}
+		}
+	}
+
+	// ─────────── Event processing ───────────
 
 	private processEvents(events: GameEvent[], _gameTime: number): void {
 		for (const ev of events) {
 			if (this.processedEventIds.has(ev.EventID)) continue;
 			this.processedEventIds.add(ev.EventID);
 
-			if (ev.EventName === "DragonKill") {
-				this.dragonKillTime = ev.EventTime;
-				this.dragonCount++;
-				this.lastDragonType = ev.DragonType ?? "";
+			switch (ev.EventName) {
+				case "DragonKill":
+					this.dragonKillTime = ev.EventTime;
+					this.dragonCount++;
+					this.lastDragonType = ev.DragonType ?? "";
+					if (ev.DragonType === "Elder") this.isElderPhase = true;
+					logger.info(`Dragon killed: ${ev.DragonType} at ${fmt(ev.EventTime)} (total: ${this.dragonCount})`);
+					break;
 
-				if (ev.DragonType === "Elder") {
-					this.isElderPhase = true;
-				}
-				// After 4 dragons by one team → elder phase
-				// We simplify: track count loosely, elder event will set isElderPhase
-				logger.info(`Dragon killed: ${ev.DragonType} at ${Math.floor(ev.EventTime)}s (total: ${this.dragonCount})`);
-			}
+				case "HordeKill":
+					// Voidgrub killed (one at a time)
+					this.grubsKilled = Math.min(this.grubsKilled + 1, 6);
+					this.grubsWaveKills++;
+					this.grubsLastKillTime = ev.EventTime;
+					if (this.grubsWaveKills >= 3) {
+						this.grubsWaveKills = 0; // wave cleared, next wave timer starts
+					}
+					logger.info(`Voidgrub killed at ${fmt(ev.EventTime)} (total: ${this.grubsKilled})`);
+					break;
 
-			if (ev.EventName === "BaronKill") {
-				this.baronKillTime = ev.EventTime;
-				this.baronAlive = false;
-				logger.info(`Baron killed at ${Math.floor(ev.EventTime)}s`);
+				case "HeraldKill":
+					this.heraldKillTime = ev.EventTime;
+					this.heraldAlive = false;
+					logger.info(`Rift Herald killed at ${fmt(ev.EventTime)}`);
+					break;
+
+				case "BaronKill":
+					this.baronKillTime = ev.EventTime;
+					this.baronAlive = false;
+					logger.info(`Baron killed at ${fmt(ev.EventTime)}`);
+					break;
 			}
 		}
 	}
 
-	private getDragonDialData(gameTime: number): { title: string; timer: string; status: string; progress: number; alive: boolean } {
-		if (gameTime < DRAGON_SPAWN_TIME && this.dragonKillTime === null) {
-			const remaining = DRAGON_SPAWN_TIME - gameTime;
-			const pct = Math.round(((DRAGON_SPAWN_TIME - remaining) / DRAGON_SPAWN_TIME) * 100);
-			return { title: "🐲 DRAGON", timer: formatTime(remaining), status: "First spawn", progress: pct, alive: false };
+	// ─────────── Icons ───────────
+
+	private async getObjectiveIcon(objective: Objective, gameTime: number): Promise<string | null> {
+		switch (objective) {
+			case "dragon":
+				return this.lastDragonType
+					? await getDragonIcon(this.lastDragonType)
+					: await getDragonIcon("Fire");
+			case "grubs":
+				if (gameTime >= GRUBS_REMOVED_TIME && this.grubsKilled >= 6) return getGrubsIcon();
+				return getGrubsIcon();
+			case "herald":
+				return getHeraldIcon();
+			case "baron":
+				return getBaronIcon();
+		}
+	}
+
+	private async getIdleIcon(objective: Objective): Promise<string | null> {
+		switch (objective) {
+			case "dragon": return getDragonIcon("Fire");
+			case "grubs": return getGrubsIcon();
+			case "herald": return getHeraldIcon();
+			case "baron": return getBaronIcon();
+		}
+	}
+
+	// ─────────── Dial data ───────────
+
+	private getDialData(objective: Objective, gameTime: number): DialData {
+		switch (objective) {
+			case "dragon": return this.getDragonData(gameTime);
+			case "grubs": return this.getGrubsData(gameTime);
+			case "herald": return this.getHeraldData(gameTime);
+			case "baron": return this.getBaronData(gameTime);
+		}
+	}
+
+	private getDragonData(gt: number): DialData {
+		const label = "🐲 DRAGON";
+
+		// Before first spawn
+		if (gt < DRAGON_SPAWN_TIME && this.dragonKillTime === null) {
+			const rem = DRAGON_SPAWN_TIME - gt;
+			return { title: label, timer: formatTime(rem), status: "First spawn 5:00", progress: pct(DRAGON_SPAWN_TIME - rem, DRAGON_SPAWN_TIME), alive: false, expired: false };
 		}
 
+		// Respawning
 		if (this.dragonKillTime !== null) {
 			const respawn = this.isElderPhase ? ELDER_RESPAWN : DRAGON_RESPAWN;
-			const spawnAt = this.dragonKillTime + respawn;
-			const remaining = spawnAt - gameTime;
-
-			if (remaining > 0) {
-				const typeStr = this.lastDragonType
-					? (DRAGON_TYPE_EMOJI[this.lastDragonType] ?? this.lastDragonType.substring(0, 3))
-					: "";
-				const pct = Math.round(((respawn - remaining) / respawn) * 100);
-				return { title: "🐲 DRAGON", timer: formatTime(remaining), status: `${typeStr} #${this.dragonCount} · Respawn`, progress: pct, alive: false };
+			const rem = (this.dragonKillTime + respawn) - gt;
+			if (rem > 0) {
+				const typeStr = this.lastDragonType ? (DRAGON_TYPE_SHORT[this.lastDragonType] ?? this.lastDragonType.substring(0, 3)) : "";
+				return { title: label, timer: formatTime(rem), status: `${typeStr} #${this.dragonCount} · Respawn`, progress: pct(respawn - rem, respawn), alive: false, expired: false };
 			}
-
 			this.dragonKillTime = null;
 		}
 
-		return { title: "🐲 DRAGON", timer: "ALIVE", status: `#${this.dragonCount} · Kill it!`, progress: 100, alive: true };
+		return { title: label, timer: "ALIVE", status: `#${this.dragonCount + 1} · Kill it!`, progress: 100, alive: true, expired: false };
 	}
 
-	private getBaronDialData(gameTime: number): { title: string; timer: string; status: string; progress: number; alive: boolean } {
-		if (gameTime < BARON_SPAWN_TIME && this.baronKillTime === null) {
-			const remaining = BARON_SPAWN_TIME - gameTime;
-			const pct = Math.round(((BARON_SPAWN_TIME - remaining) / BARON_SPAWN_TIME) * 100);
-			return { title: "👑 BARON", timer: formatTime(remaining), status: "First spawn", progress: pct, alive: false };
+	private getGrubsData(gt: number): DialData {
+		const label = "🪲 GRUBS";
+
+		// Grubs removed after 14:00
+		if (gt >= GRUBS_REMOVED_TIME) {
+			return { title: label, timer: "GONE", status: `${this.grubsKilled}/6 killed`, progress: 0, alive: false, expired: true };
 		}
 
-		if (this.baronKillTime !== null) {
-			const spawnAt = this.baronKillTime + BARON_RESPAWN;
-			const remaining = spawnAt - gameTime;
+		// All 6 killed
+		if (this.grubsKilled >= 6) {
+			return { title: label, timer: "DONE", status: "6/6 killed ✅", progress: 100, alive: false, expired: true };
+		}
 
-			if (remaining > 0) {
-				const pct = Math.round(((BARON_RESPAWN - remaining) / BARON_RESPAWN) * 100);
-				return { title: "👑 BARON", timer: formatTime(remaining), status: "Respawning...", progress: pct, alive: false };
+		// Before first spawn
+		if (gt < GRUBS_SPAWN_TIME) {
+			const rem = GRUBS_SPAWN_TIME - gt;
+			return { title: label, timer: formatTime(rem), status: "Spawns at 5:00", progress: pct(GRUBS_SPAWN_TIME - rem, GRUBS_SPAWN_TIME), alive: false, expired: false };
+		}
+
+		// Wave cleared, next wave respawning
+		if (this.grubsLastKillTime !== null && this.grubsWaveKills === 0 && this.grubsKilled < 6 && this.grubsKilled > 0) {
+			const spawnAt = this.grubsLastKillTime + GRUBS_RESPAWN;
+			const rem = spawnAt - gt;
+			if (rem > 0) {
+				return { title: label, timer: formatTime(rem), status: `${this.grubsKilled}/6 · Next wave`, progress: pct(GRUBS_RESPAWN - rem, GRUBS_RESPAWN), alive: false, expired: false };
 			}
-
-			this.baronKillTime = null;
-			this.baronAlive = true;
 		}
 
-		if (this.baronAlive) {
-			return { title: "👑 BARON", timer: "ALIVE", status: "Fight now!", progress: 100, alive: true };
-		}
-
-		const remaining = BARON_SPAWN_TIME - gameTime;
-		const pct = Math.round(((BARON_SPAWN_TIME - remaining) / BARON_SPAWN_TIME) * 100);
-		return { title: "👑 BARON", timer: formatTime(remaining), status: "Spawns at 20:00", progress: pct, alive: false };
+		// Grubs alive — show how many remain in wave
+		const waveRemaining = 3 - this.grubsWaveKills;
+		return { title: label, timer: "ALIVE", status: `${this.grubsKilled}/6 · ${waveRemaining} up`, progress: 100, alive: true, expired: false };
 	}
 
-	private getDragonDisplay(gameTime: number): string {
-		// Before first dragon spawns
-		if (gameTime < DRAGON_SPAWN_TIME && this.dragonKillTime === null) {
-			const remaining = DRAGON_SPAWN_TIME - gameTime;
-			return `Dragon\n${formatTime(remaining)}`;
+	private getHeraldData(gt: number): DialData {
+		const label = "🦀 HERALD";
+
+		// Herald removed after 19:45
+		if (gt >= HERALD_REMOVED_TIME) {
+			return { title: label, timer: "GONE", status: "Baron pit now", progress: 0, alive: false, expired: true };
 		}
 
-		// Dragon is on respawn timer
-		if (this.dragonKillTime !== null) {
-			const respawn = this.isElderPhase ? ELDER_RESPAWN : DRAGON_RESPAWN;
-			const spawnAt = this.dragonKillTime + respawn;
-			const remaining = spawnAt - gameTime;
-
-			if (remaining > 0) {
-				return `Dragon #${this.dragonCount}\n${formatTime(remaining)}`;
-			}
-
-			// Respawn timer expired → dragon is alive
-			this.dragonKillTime = null;
+		// Before herald spawns (< 14:00)
+		if (gt < HERALD_SPAWN_TIME) {
+			const rem = HERALD_SPAWN_TIME - gt;
+			return { title: label, timer: formatTime(rem), status: "Spawns at 14:00", progress: pct(HERALD_SPAWN_TIME - rem, HERALD_SPAWN_TIME), alive: false, expired: false };
 		}
 
-		// Dragon is alive
-		return `Dragon\nALIVE`;
+		// Herald killed — no respawn in current patches
+		if (this.heraldKillTime !== null) {
+			return { title: label, timer: "DEAD", status: `Killed at ${fmt(this.heraldKillTime)}`, progress: 0, alive: false, expired: true };
+		}
+
+		// Herald alive
+		if (this.heraldAlive) {
+			const despawnIn = HERALD_REMOVED_TIME - gt;
+			return { title: label, timer: "ALIVE", status: `Gone in ${formatTime(despawnIn)}`, progress: 100, alive: true, expired: false };
+		}
+
+		// Waiting to spawn
+		const rem = HERALD_SPAWN_TIME - gt;
+		return { title: label, timer: formatTime(Math.max(0, rem)), status: "Spawns at 14:00", progress: pct(HERALD_SPAWN_TIME - rem, HERALD_SPAWN_TIME), alive: false, expired: false };
 	}
 
-	private getBaronDisplay(gameTime: number): string {
+	private getBaronData(gt: number): DialData {
+		const label = "👑 BARON";
+
 		// Before baron spawns
-		if (gameTime < BARON_SPAWN_TIME && this.baronKillTime === null) {
-			const remaining = BARON_SPAWN_TIME - gameTime;
-			return `Baron\n${formatTime(remaining)}`;
+		if (gt < BARON_SPAWN_TIME && this.baronKillTime === null) {
+			const rem = BARON_SPAWN_TIME - gt;
+			return { title: label, timer: formatTime(rem), status: "Spawns at 20:00", progress: pct(BARON_SPAWN_TIME - rem, BARON_SPAWN_TIME), alive: false, expired: false };
 		}
 
-		// Baron is on respawn timer
+		// Baron respawning
 		if (this.baronKillTime !== null) {
-			const spawnAt = this.baronKillTime + BARON_RESPAWN;
-			const remaining = spawnAt - gameTime;
-
-			if (remaining > 0) {
-				return `Baron\n${formatTime(remaining)}`;
+			const rem = (this.baronKillTime + BARON_RESPAWN) - gt;
+			if (rem > 0) {
+				return { title: label, timer: formatTime(rem), status: "Respawning...", progress: pct(BARON_RESPAWN - rem, BARON_RESPAWN), alive: false, expired: false };
 			}
-
-			// Respawn timer expired
 			this.baronKillTime = null;
 			this.baronAlive = true;
 		}
 
-		// Baron is alive
 		if (this.baronAlive) {
-			return `Baron\nALIVE`;
+			return { title: label, timer: "ALIVE", status: "Fight now!", progress: 100, alive: true, expired: false };
 		}
 
-		// Waiting for baron to spawn
-		return `Baron\n${formatTime(BARON_SPAWN_TIME - gameTime)}`;
+		// Fallback: waiting for spawn
+		const rem = BARON_SPAWN_TIME - gt;
+		return { title: label, timer: formatTime(Math.max(0, rem)), status: "Spawns at 20:00", progress: pct(BARON_SPAWN_TIME - rem, BARON_SPAWN_TIME), alive: false, expired: false };
+	}
+
+	// ─────────── Key display ───────────
+
+	private getKeyDisplay(objective: Objective, gt: number): string {
+		const data = this.getDialData(objective, gt);
+		return `${objectiveDisplayName(objective)}\n${data.timer}`;
+	}
+}
+
+// ─────────── Types & helpers ───────────
+
+interface DialData {
+	title: string;
+	timer: string;
+	status: string;
+	progress: number;
+	alive: boolean;
+	expired: boolean;
+}
+
+type JungleTimerSettings = {
+	objective?: Objective;
+};
+
+function objectiveLabel(obj: Objective): string {
+	switch (obj) {
+		case "dragon": return "🐲 DRAGON";
+		case "grubs": return "🪲 GRUBS";
+		case "herald": return "🦀 HERALD";
+		case "baron": return "👑 BARON";
+	}
+}
+
+function objectiveDisplayName(obj: Objective): string {
+	switch (obj) {
+		case "dragon": return "Dragon";
+		case "grubs": return "Grubs";
+		case "herald": return "Herald";
+		case "baron": return "Baron";
 	}
 }
 
@@ -388,6 +516,11 @@ function formatTime(seconds: number): string {
 	return `${m}:${String(sec).padStart(2, "0")}`;
 }
 
-type JungleTimerSettings = {
-	objective?: "dragon" | "baron";
-};
+function pct(elapsed: number, total: number): number {
+	if (total <= 0) return 0;
+	return Math.round(Math.min(100, Math.max(0, (elapsed / total) * 100)));
+}
+
+function fmt(seconds: number): string {
+	return `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
+}

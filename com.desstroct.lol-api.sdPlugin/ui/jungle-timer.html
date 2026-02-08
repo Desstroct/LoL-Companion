@@ -9,6 +9,8 @@
     <sdpi-item label="Objective">
         <sdpi-select setting="objective">
             <option value="dragon">Dragon</option>
+            <option value="grubs">Voidgrubs</option>
+            <option value="herald">Rift Herald</option>
             <option value="baron">Baron</option>
         </sdpi-select>
     </sdpi-item>
@@ -16,8 +18,11 @@
         <details>
             <summary>How it works</summary>
             <p style="font-size: 11px; color: #999; padding: 8px;">
-                Automatically tracks Dragon and Baron kills via game events and shows a respawn countdown.
+                Tracks all jungle objectives: Dragon, Voidgrubs (5:00-14:00),
+                Rift Herald (14:00-19:45), and Baron (20:00+).
+                Auto-detects kills via game events and shows respawn countdowns.
                 Press the key to manually start a timer if an event was missed.
+                On dial: rotate to cycle objectives.
             </p>
         </details>
     </sdpi-item>

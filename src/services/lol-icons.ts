@@ -142,6 +142,8 @@ const DRAGON_ICON_URLS: Record<string, string> = {
 };
 
 const BARON_ICON_URL = `${CD_BASE}/minimap_icon_baron.png`;
+const HERALD_ICON_URL = `${CD_BASE}/minimap_icon_riftherald.png`;
+const GRUBS_ICON_URL = "https://raw.communitydragon.org/latest/game/assets/ux/minimap/minimap_icon_voidmite.png";
 
 /**
  * Get a dragon type icon (Infernal, Ocean, Cloud, Mountain, Hextech, Chemtech, Elder).
@@ -155,6 +157,16 @@ export async function getDragonIcon(dragonType: string): Promise<string | null> 
 /** Get the Baron Nashor icon. */
 export async function getBaronIcon(): Promise<string | null> {
 	return fetchIcon("baron", BARON_ICON_URL);
+}
+
+/** Get the Rift Herald icon. */
+export async function getHeraldIcon(): Promise<string | null> {
+	return fetchIcon("herald", HERALD_ICON_URL);
+}
+
+/** Get the Voidgrubs (Horde) icon. */
+export async function getGrubsIcon(): Promise<string | null> {
+	return fetchIcon("grubs", GRUBS_ICON_URL);
 }
 
 // ────────────────── Profile icons ──────────────────
