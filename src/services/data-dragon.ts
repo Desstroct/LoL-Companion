@@ -16,6 +16,10 @@ export class DataDragon {
 	private summonerSpells: Map<string, DdSummonerSpell> = new Map();
 	private items: Map<string, DdItem> = new Map();
 	private initialized = false;
+	private versionCheckTimer: ReturnType<typeof setInterval> | null = null;
+
+	/** How often to check for a new Data Dragon version (30 minutes). */
+	private static readonly VERSION_CHECK_INTERVAL = 30 * 60 * 1000;
 
 	/**
 	 * Whether Data Dragon has been successfully initialized with online data.
@@ -26,6 +30,7 @@ export class DataDragon {
 
 	/**
 	 * Initialize Data Dragon: fetches latest version and loads champion + spell data.
+	 * Starts a background timer to re-check the version every 30 minutes.
 	 */
 	async init(): Promise<void> {
 		if (this.initialized) return;
@@ -50,9 +55,45 @@ export class DataDragon {
 
 			this.initialized = true;
 			logger.info(`Data Dragon initialized: ${this.champions.size} champions, ${this.summonerSpells.size} spells, ${this.items.size} items`);
+
+			// Start periodic version check for patch-day refreshes
+			this.startVersionCheck();
 		} catch (e) {
 			logger.error(`Data Dragon init failed: ${e}`);
 		}
+	}
+
+	/**
+	 * Periodically checks if a new Data Dragon version has been released.
+	 * On patch day, this picks up new champions, items, and spell data
+	 * without requiring a Stream Deck restart.
+	 */
+	private startVersionCheck(): void {
+		if (this.versionCheckTimer) return;
+		this.versionCheckTimer = setInterval(() => this.checkForNewVersion().catch(() => {}), DataDragon.VERSION_CHECK_INTERVAL);
+	}
+
+	private async checkForNewVersion(): Promise<void> {
+		const versions = await this.fetchJson<string[]>(`${DD_BASE}/api/versions.json`);
+		if (!versions || versions.length === 0) return;
+
+		const latest = versions[0];
+		if (latest === this.version) return;
+
+		logger.info(`New Data Dragon version detected: ${this.version} → ${latest}`);
+		this.version = latest;
+
+		// Reload all data with the new version
+		this.champions.clear();
+		this.championsByKey.clear();
+		this.summonerSpells.clear();
+		this.items.clear();
+
+		await this.loadChampions();
+		await this.loadSummonerSpells();
+		await this.loadItems();
+
+		logger.info(`Data Dragon refreshed: ${this.champions.size} champions, ${this.summonerSpells.size} spells, ${this.items.size} items`);
 	}
 
 	/**

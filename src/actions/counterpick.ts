@@ -7,6 +7,7 @@ import {
 	TouchTapEvent,
 	WillAppearEvent,
 	WillDisappearEvent,
+	type FeedbackPayload,
 } from "@elgato/streamdeck";
 import streamDeck from "@elgato/streamdeck";
 import { lcuConnector } from "../services/lcu-connector";
@@ -91,7 +92,7 @@ export class Counterpick extends SingletonAction<CounterpickSettings> {
 	}
 
 	private async renderDialPick(
-		a: { setFeedback: (payload: any) => Promise<void> },
+		a: { setFeedback: (payload: FeedbackPayload) => Promise<void> },
 		state: CounterpickState,
 	): Promise<void> {
 		const pick = state.lastPicks[state.viewIndex];
@@ -192,9 +193,16 @@ export class Counterpick extends SingletonAction<CounterpickSettings> {
 			const role = settings.role ?? "top";
 			const state = this.getState(a.id);
 
-			const enemy = session.theirTeam.find(
+			// Try exact role match first, then fallback for blind/draft with empty positions
+			let enemy = session.theirTeam.find(
 				(p) => p.assignedPosition === role && p.championId > 0,
 			);
+			if (!enemy) {
+				// Fallback: pick the first enemy with a champion (blind pick / unassigned)
+				enemy = session.theirTeam.find(
+					(p) => p.championId > 0 && (!p.assignedPosition || p.assignedPosition === ""),
+				);
+			}
 
 			if (!enemy) {
 				if (a.isDial()) {

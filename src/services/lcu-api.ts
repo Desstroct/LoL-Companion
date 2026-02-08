@@ -41,6 +41,9 @@ export class LcuApi {
 		const cached = this.getCache.get(endpoint);
 		if (cached && Date.now() - cached.timestamp < this.GET_CACHE_TTL) {
 			return cached.data as T;
+		} else if (cached) {
+			// Evict stale entry to prevent unbounded Map growth
+			this.getCache.delete(endpoint);
 		}
 
 		return new Promise((resolve) => {

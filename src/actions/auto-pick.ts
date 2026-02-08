@@ -44,7 +44,7 @@ export class AutoPick extends SingletonAction<AutoPickSettings> {
 	}
 
 	override onWillDisappear(_ev: WillDisappearEvent<AutoPickSettings>): void | Promise<void> {
-		this.stopPolling();
+		if (this.actions.length === 0) this.stopPolling();
 	}
 
 	override async onKeyDown(ev: KeyDownEvent<AutoPickSettings>): Promise<void> {

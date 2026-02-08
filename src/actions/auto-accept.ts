@@ -43,7 +43,7 @@ export class AutoAccept extends SingletonAction<AutoAcceptSettings> {
 			clearTimeout(this.renderTimeout);
 			this.renderTimeout = null;
 		}
-		this.stopPolling();
+		if (this.actions.length === 0) this.stopPolling();
 	}
 
 	override async onKeyDown(ev: KeyDownEvent<AutoAcceptSettings>): Promise<void> {

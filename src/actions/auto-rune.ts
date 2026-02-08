@@ -7,6 +7,8 @@ import {
 	TouchTapEvent,
 	WillAppearEvent,
 	WillDisappearEvent,
+	type DialAction,
+	type KeyAction,
 } from "@elgato/streamdeck";
 import streamDeck from "@elgato/streamdeck";
 import { readFileSync } from "node:fs";
@@ -252,7 +254,7 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 	// ---- Rendering ----
 
 	private async renderAction(
-		a: any,
+		a: DialAction<AutoRuneSettings> | KeyAction<AutoRuneSettings>,
 		state: AutoRuneState,
 		_settings: AutoRuneSettings,
 	): Promise<void> {
@@ -312,7 +314,7 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 	 * Strategy: find or create an editable page named RUNE_PAGE_NAME, then update it.
 	 */
 	private async applyRunesForAction(
-		a: any,
+		a: DialAction<AutoRuneSettings> | KeyAction<AutoRuneSettings>,
 		state: AutoRuneState,
 		settings: AutoRuneSettings,
 	): Promise<void> {

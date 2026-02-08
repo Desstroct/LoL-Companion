@@ -7,6 +7,7 @@ import {
 	TouchTapEvent,
 	WillAppearEvent,
 	WillDisappearEvent,
+	type FeedbackPayload,
 } from "@elgato/streamdeck";
 import streamDeck from "@elgato/streamdeck";
 import { gameClient } from "../services/game-client";
@@ -271,7 +272,7 @@ export class SummonerTracker extends SingletonAction<SummonerTrackerSettings> {
 	}
 
 	private async renderDial(
-		a: { setFeedback: (payload: any) => Promise<void> },
+		a: { setFeedback: (payload: FeedbackPayload) => Promise<void> },
 		state: SpellTrackingState,
 		enemySlot: number,
 		spellSlot: number,

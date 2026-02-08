@@ -7,6 +7,7 @@ import {
 	TouchTapEvent,
 	WillAppearEvent,
 	WillDisappearEvent,
+	type FeedbackPayload,
 } from "@elgato/streamdeck";
 import streamDeck from "@elgato/streamdeck";
 import { lcuConnector } from "../services/lcu-connector";
@@ -100,7 +101,7 @@ export class BestPick extends SingletonAction<BestPickSettings> {
 	}
 
 	private async renderDialPick(
-		a: { setFeedback: (payload: any) => Promise<void> },
+		a: { setFeedback: (payload: FeedbackPayload) => Promise<void> },
 		state: BestPickState,
 	): Promise<void> {
 		const pick = state.lastPicks[state.viewIndex];
