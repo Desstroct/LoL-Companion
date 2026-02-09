@@ -81,19 +81,62 @@ export class DataDragon {
 		if (latest === this.version) return;
 
 		logger.info(`New Data Dragon version detected: ${this.version} → ${latest}`);
+
+		// Load into temporary maps first — only swap on success (atomic)
+		const oldVersion = this.version;
 		this.version = latest;
 
-		// Reload all data with the new version
-		this.champions.clear();
-		this.championsByKey.clear();
-		this.summonerSpells.clear();
-		this.items.clear();
+		const tmpChampions = new Map<string, import("../types/lol").DdChampion>();
+		const tmpChampionsByKey = new Map<string, import("../types/lol").DdChampion>();
+		const tmpSpells = new Map<string, import("../types/lol").DdSummonerSpell>();
+		const tmpItems = new Map<string, import("../types/lol").DdItem>();
 
-		await this.loadChampions();
-		await this.loadSummonerSpells();
-		await this.loadItems();
+		try {
+			const champData = await this.fetchJson<{ data: Record<string, import("../types/lol").DdChampion> }>(
+				`${DD_BASE}/cdn/${latest}/data/en_US/champion.json`,
+			);
+			if (champData?.data) {
+				for (const [id, champ] of Object.entries(champData.data)) {
+					tmpChampions.set(id, champ);
+					tmpChampionsByKey.set(champ.key, champ);
+				}
+			}
 
-		logger.info(`Data Dragon refreshed: ${this.champions.size} champions, ${this.summonerSpells.size} spells, ${this.items.size} items`);
+			const spellData = await this.fetchJson<{ data: Record<string, import("../types/lol").DdSummonerSpell> }>(
+				`${DD_BASE}/cdn/${latest}/data/en_US/summoner.json`,
+			);
+			if (spellData?.data) {
+				for (const [id, spell] of Object.entries(spellData.data)) {
+					tmpSpells.set(id, spell);
+				}
+			}
+
+			const itemData = await this.fetchJson<{ data: Record<string, import("../types/lol").DdItem> }>(
+				`${DD_BASE}/cdn/${latest}/data/en_US/item.json`,
+			);
+			if (itemData?.data) {
+				for (const [id, item] of Object.entries(itemData.data)) {
+					tmpItems.set(id, item);
+				}
+			}
+
+			// Verify we got meaningful data before swapping
+			if (tmpChampions.size === 0) {
+				throw new Error("Champion data empty after fetch");
+			}
+
+			// Atomic swap — old maps are GC'd
+			this.champions = tmpChampions;
+			this.championsByKey = tmpChampionsByKey;
+			this.summonerSpells = tmpSpells;
+			this.items = tmpItems;
+
+			logger.info(`Data Dragon refreshed: ${this.champions.size} champions, ${this.summonerSpells.size} spells, ${this.items.size} items`);
+		} catch (e) {
+			// Rollback version — keep old data intact
+			logger.error(`Data Dragon refresh failed, keeping ${oldVersion}: ${e}`);
+			this.version = oldVersion;
+		}
 	}
 
 	/**

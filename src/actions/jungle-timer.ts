@@ -59,6 +59,8 @@ export class JungleTimer extends SingletonAction<JungleTimerSettings> {
 	private pollInterval: ReturnType<typeof setInterval> | null = null;
 	private processedEventIds: Set<number> = new Set();
 	private dialStates: Map<string, { objective: Objective }> = new Map();
+	/** Tracks whether game data was active on the previous tick (for reset detection) */
+	private wasInGame = false;
 
 	// ── Dragon state ──
 	private dragonKillTime: number | null = null;
@@ -193,6 +195,7 @@ export class JungleTimer extends SingletonAction<JungleTimerSettings> {
 		this.heraldAlive = false;
 		this.baronKillTime = null;
 		this.baronAlive = false;
+		this.wasInGame = false;
 	}
 
 	// ─────────── Main update loop ───────────
@@ -213,10 +216,17 @@ export class JungleTimer extends SingletonAction<JungleTimerSettings> {
 		const allData = await gameClient.getAllData();
 
 		if (!allData) {
+			// Detect game→no-game transition: reset state for next game
+			if (this.wasInGame) {
+				logger.info("Game ended — resetting jungle timer state");
+				this.resetState();
+				this.wasInGame = false;
+			}
 			await this.renderIdle();
 			return;
 		}
 
+		this.wasInGame = true;
 		const gameTime = allData.gameData.gameTime;
 		if (allData.gameData.mapTerrain && allData.gameData.mapTerrain !== "Default") {
 			this.mapTerrain = allData.gameData.mapTerrain;

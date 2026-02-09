@@ -38,6 +38,8 @@ export class SummonerTracker extends SingletonAction<SummonerTrackerSettings> {
 	private trackedSpells: Map<string, SpellTrackingState> = new Map();
 	/** Per-dial instance state: current enemy/spell selection */
 	private dialStates: Map<string, DialInstanceState> = new Map();
+	/** Tracks whether game data was active on the previous tick (for reset detection) */
+	private wasInGame = false;
 
 	override onWillAppear(ev: WillAppearEvent<SummonerTrackerSettings>): void | Promise<void> {
 		this.startPolling();
@@ -165,6 +167,12 @@ export class SummonerTracker extends SingletonAction<SummonerTrackerSettings> {
 
 		const allData = await gameClient.getAllData();
 		if (!allData) {
+			// Detect game→no-game transition: clear spell states for next game
+			if (this.wasInGame) {
+				logger.info("Game ended — clearing tracked spell states");
+				this.trackedSpells.clear();
+				this.wasInGame = false;
+			}
 			// Not in game: show idle state
 			for (const a of this.actions) {
 				if (a.isDial()) {
@@ -197,6 +205,7 @@ export class SummonerTracker extends SingletonAction<SummonerTrackerSettings> {
 			.filter((p) => p.team !== me.team)
 			.sort((a, b) => positionOrder(a.position) - positionOrder(b.position));
 
+		this.wasInGame = true;
 		const gameTime = allData.gameData.gameTime;
 
 		for (const a of this.actions) {

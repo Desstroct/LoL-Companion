@@ -99,7 +99,7 @@ export class LobbyLevelTracker extends SingletonAction<LobbyLevelSettings> {
 	}
 
 	override onWillDisappear(_ev: WillDisappearEvent<LobbyLevelSettings>): void | Promise<void> {
-		this.stopPolling();
+		if (this.actions.length === 0) this.stopPolling();
 	}
 
 	override async onKeyDown(ev: KeyDownEvent<LobbyLevelSettings>): Promise<void> {

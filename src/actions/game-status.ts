@@ -57,7 +57,7 @@ export class GameStatus extends SingletonAction<GameStatusSettings> {
 	}
 
 	override onWillDisappear(_ev: WillDisappearEvent<GameStatusSettings>): void | Promise<void> {
-		this.stopPolling();
+		if (this.actions.length === 0) this.stopPolling();
 	}
 
 	override async onKeyDown(ev: KeyDownEvent<GameStatusSettings>): Promise<void> {
