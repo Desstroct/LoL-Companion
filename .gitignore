@@ -5,5 +5,12 @@ node_modules/
 *.sdPlugin/bin
 *.sdPlugin/logs
 
-# Debug scripts
+# Debug / exploration scripts (keep generate-icons.mjs tracked)
 scripts/debug-*
+scripts/test-*
+scripts/analyze-*
+scripts/extract-*
+scripts/find-*
+
+# Project notes (personal)
+CONTEXT.md
