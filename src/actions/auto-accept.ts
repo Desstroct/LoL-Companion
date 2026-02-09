@@ -101,7 +101,7 @@ export class AutoAccept extends SingletonAction<AutoAcceptSettings> {
 				// Reset display after 2 seconds
 				this.renderTimeout = setTimeout(() => {
 					this.renderTimeout = null;
-					this.renderAll();
+					this.renderAll().catch((e) => logger.error(`renderAll error: ${e}`));
 				}, 2000);
 			} else {
 				logger.warn("Failed to accept ready check");

@@ -157,6 +157,21 @@ export class AutoPick extends SingletonAction<AutoPickSettings> {
 						this.hasPicked = true; // prevent retrying
 						continue;
 					}
+
+					// Check if pick champion was already picked by a teammate
+					const pickedByTeammate = allActions.some(
+						(act) =>
+							act.type === "pick" &&
+							act.completed &&
+							act.championId === champToPick &&
+							act.actorCellId !== localCell,
+					);
+					if (pickedByTeammate) {
+						logger.warn(`${settings.pickChampion} already picked by a teammate`);
+						await a.setTitle(`TAKEN!\n${settings.pickChampion}`);
+						this.hasPicked = true;
+						continue;
+					}
 				}
 
 				const pickAction = myActions.find(

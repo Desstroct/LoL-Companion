@@ -1,5 +1,6 @@
 import { exec } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import https from "node:https";
 import { join } from "node:path";
 import streamDeck from "@elgato/streamdeck";
 import type { LcuCredentials } from "../types/lol";
@@ -65,17 +66,29 @@ export class LcuConnector {
 
 	/**
 	 * Try to discover the LCU credentials.
-	 * First tries process command line, then falls back to lockfile.
+	 * If already connected, verify with a lightweight HTTP ping instead
+	 * of spawning PowerShell on every tick.
 	 */
 	private async discover(): Promise<void> {
+		// Fast path: if we already have credentials, verify with HTTP ping
+		if (this.credentials) {
+			const alive = await this.pingLcu();
+			if (alive) return; // Still connected, skip expensive process scan
+
+			// Ping failed — client likely closed
+			this.credentials = null;
+			logger.info("LCU client lost (ping failed)");
+			this.notifyListeners();
+			return;
+		}
+
+		// Slow path: no credentials yet, discover from process/lockfile
 		try {
 			const creds = await this.discoverFromProcess();
 			if (creds) {
-				if (!this.credentials || this.credentials.port !== creds.port) {
-					this.credentials = creds;
-					logger.info(`LCU discovered on port ${creds.port}`);
-					this.notifyListeners();
-				}
+				this.credentials = creds;
+				logger.info(`LCU discovered on port ${creds.port}`);
+				this.notifyListeners();
 				return;
 			}
 		} catch {
@@ -85,23 +98,48 @@ export class LcuConnector {
 		try {
 			const creds = await this.discoverFromLockfile();
 			if (creds) {
-				if (!this.credentials || this.credentials.port !== creds.port) {
-					this.credentials = creds;
-					logger.info(`LCU discovered from lockfile on port ${creds.port}`);
-					this.notifyListeners();
-				}
+				this.credentials = creds;
+				logger.info(`LCU discovered from lockfile on port ${creds.port}`);
+				this.notifyListeners();
 				return;
 			}
 		} catch {
 			// Lockfile discovery failed too
 		}
+	}
 
-		// If we had credentials before but now can't find the client
-		if (this.credentials) {
-			this.credentials = null;
-			logger.info("LCU client lost");
-			this.notifyListeners();
-		}
+	/** Agent for LCU ping (self-signed cert) */
+	private pingAgent = new https.Agent({ rejectUnauthorized: false, keepAlive: true });
+
+	/**
+	 * Lightweight HTTP ping to verify the LCU is still running.
+	 * Much cheaper than spawning PowerShell on every tick.
+	 */
+	private pingLcu(): Promise<boolean> {
+		if (!this.credentials) return Promise.resolve(false);
+		const { port, password } = this.credentials;
+		return new Promise((resolve) => {
+			const req = https.request(
+				{
+					hostname: "127.0.0.1",
+					port,
+					path: "/riotclient/app-name",
+					method: "GET",
+					headers: {
+						Authorization: `Basic ${Buffer.from(`riot:${password}`).toString("base64")}`,
+					},
+					agent: this.pingAgent,
+					timeout: 2000,
+				},
+				(res) => {
+					res.resume(); // drain the response
+					resolve(res.statusCode === 200);
+				},
+			);
+			req.on("error", () => resolve(false));
+			req.on("timeout", () => { req.destroy(); resolve(false); });
+			req.end();
+		});
 	}
 
 	/**

@@ -26,6 +26,14 @@ const TIER2_BOOTS = new Set([
 	3158, // Ionian Boots of Lucidity
 ]);
 
+/** Per-action instance state for BestItem */
+interface BestItemState {
+	currentBuild: ItemBuild | null;
+	currentChampion: string | null;
+	currentLane: string | null;
+	browseIndex: number; // -1 = auto (next item)
+}
+
 /**
  * Best Item action — recommends the next item to buy based on live game data.
  *
@@ -36,11 +44,8 @@ const TIER2_BOOTS = new Set([
 @action({ UUID: "com.desstroct.lol-api.best-item" })
 export class BestItem extends SingletonAction {
 	private pollInterval: ReturnType<typeof setInterval> | null = null;
-	private currentBuild: ItemBuild | null = null;
-	private currentChampion: string | null = null;
-	private currentLane: string | null = null;
-	/** Index into fullBuild for dial browsing (-1 = auto / next item) */
-	private browseIndex = -1;
+	/** Per-action instance state for dial browsing and build data */
+	private actionStates = new Map<string, BestItemState>();
 	private fetchingBuild = false;
 
 	override onWillAppear(ev: WillAppearEvent): void | Promise<void> {
@@ -57,27 +62,38 @@ export class BestItem extends SingletonAction {
 		return ev.action.setTitle("Best Item\nWaiting...");
 	}
 
-	override onWillDisappear(_ev: WillDisappearEvent): void | Promise<void> {
+	override onWillDisappear(ev: WillDisappearEvent): void | Promise<void> {
+		this.actionStates.delete(ev.action.id);
 		if (this.actions.length === 0) this.stopPolling();
 	}
 
 	override onDialRotate(ev: DialRotateEvent): void | Promise<void> {
-		if (!this.currentBuild || this.currentBuild.fullBuild.length === 0) return;
+		const state = this.getState(ev.action.id);
+		if (!state.currentBuild || state.currentBuild.fullBuild.length === 0) return;
 
-		const len = this.currentBuild.fullBuild.length;
+		const len = state.currentBuild.fullBuild.length;
 
-		if (this.browseIndex === -1) {
+		if (state.browseIndex === -1) {
 			// First rotation: start at 0
-			this.browseIndex = ev.payload.ticks > 0 ? 0 : len - 1;
+			state.browseIndex = ev.payload.ticks > 0 ? 0 : len - 1;
 		} else {
-			this.browseIndex += ev.payload.ticks > 0 ? 1 : -1;
+			state.browseIndex += ev.payload.ticks > 0 ? 1 : -1;
 			// Wrap around
-			if (this.browseIndex >= len) this.browseIndex = 0;
-			if (this.browseIndex < 0) this.browseIndex = len - 1;
+			if (state.browseIndex >= len) state.browseIndex = 0;
+			if (state.browseIndex < 0) state.browseIndex = len - 1;
 		}
 
 		// Trigger immediate update
 		this.updateAll().catch((e) => logger.error(`updateAll error: ${e}`));
+	}
+
+	private getState(actionId: string): BestItemState {
+		let s = this.actionStates.get(actionId);
+		if (!s) {
+			s = { currentBuild: null, currentChampion: null, currentLane: null, browseIndex: -1 };
+			this.actionStates.set(actionId, s);
+		}
+		return s;
 	}
 
 	private startPolling(): void {
@@ -111,11 +127,13 @@ export class BestItem extends SingletonAction {
 		// ── No game running ──
 		if (!allData) {
 			// Reset state for next game
-			if (this.currentChampion) {
-				this.currentChampion = null;
-				this.currentLane = null;
-				this.currentBuild = null;
-				this.browseIndex = -1;
+			for (const s of this.actionStates.values()) {
+				if (s.currentChampion) {
+					s.currentChampion = null;
+					s.currentLane = null;
+					s.currentBuild = null;
+					s.browseIndex = -1;
+				}
 			}
 
 			for (const a of this.actions) {
@@ -153,68 +171,73 @@ export class BestItem extends SingletonAction {
 			return;
 		}
 
-		// ── Fetch build if not loaded yet ──
+		// ── Fetch build if not loaded yet (shared across instances — same champion) ──
 		const champName = me.championName;
 		const lane = gameMode.isARAM() ? "aram" : ItemBuilds.toLolalyticsLane(me.position);
 
-		if (champName !== this.currentChampion || lane !== this.currentLane) {
-			this.currentChampion = champName;
-			this.currentLane = lane;
-			this.currentBuild = null;
-			this.browseIndex = -1;
+		for (const a of this.actions) {
+			const state = this.getState(a.id);
 
-			if (!this.fetchingBuild) {
-				this.fetchingBuild = true;
+			if (champName !== state.currentChampion || lane !== state.currentLane) {
+				state.currentChampion = champName;
+				state.currentLane = lane;
+				state.currentBuild = null;
+				state.browseIndex = -1;
 
-				for (const a of this.actions) {
+				if (!this.fetchingBuild) {
+					this.fetchingBuild = true;
+
 					if (a.isDial()) {
 						await a.setFeedback({ item_name: "Loading build...", cost_text: "", status_text: "" });
 					} else {
 						await a.setTitle("Best Item\nLoading...");
 					}
-				}
 
-				const alias = ItemBuilds.toAlias(champName);
-				const build = await itemBuilds.getBuild(alias, lane);
-				this.currentBuild = build;
-				this.fetchingBuild = false;
+					const alias = ItemBuilds.toAlias(champName);
+					const build = await itemBuilds.getBuild(alias, lane);
 
-				if (!build) {
-					for (const a of this.actions) {
+					// Distribute build to all action states
+					for (const s of this.actionStates.values()) {
+						if (s.currentChampion === champName && s.currentLane === lane) {
+							s.currentBuild = build;
+						}
+					}
+
+					this.fetchingBuild = false;
+
+					if (!build) {
 						if (a.isDial()) {
 							await a.setFeedback({ item_name: "No data", cost_text: "", status_text: "" });
 						} else {
 							await a.setTitle("Best Item\nNo data");
 						}
+						continue;
 					}
-					return;
 				}
 			}
-		}
 
-		if (!this.currentBuild || this.currentBuild.fullBuild.length === 0) return;
+			if (!state.currentBuild || state.currentBuild.fullBuild.length === 0) continue;
 
-		// ── Determine which item to display ──
-		const playerItemIds = new Set(me.items.map((i) => i.itemID));
-		const playerGold = allData.activePlayer.currentGold;
-		const build = this.currentBuild.fullBuild;
+			// ── Determine which item to display ──
+			const playerItemIds = new Set(me.items.map((i) => i.itemID));
+			const playerGold = allData.activePlayer.currentGold;
+			const build = state.currentBuild.fullBuild;
 
-		let displayItemId: number;
-		let displaySlotLabel: string;
-		let isNextToBuy: boolean;
+			let displayItemId: number;
+			let displaySlotLabel: string;
+			let isNextToBuy: boolean;
 
-		if (this.browseIndex >= 0 && this.browseIndex < build.length) {
-			// ── Browse mode: show the item at browseIndex ──
-			displayItemId = build[this.browseIndex];
-			displaySlotLabel = `Item ${this.browseIndex + 1}/${build.length}`;
-			isNextToBuy = false;
-		} else {
-			// ── Auto mode: find next item to buy ──
-			const nextIdx = this.findNextItemIndex(build, playerItemIds);
+			if (state.browseIndex >= 0 && state.browseIndex < build.length) {
+				// ── Browse mode: show the item at browseIndex ──
+				displayItemId = build[state.browseIndex];
+				displaySlotLabel = `Item ${state.browseIndex + 1}/${build.length}`;
+				isNextToBuy = false;
+			} else {
+				// ── Auto mode: find next item to buy ──
+				const nextIdx = this.findNextItemIndex(build, playerItemIds);
 
-			if (nextIdx === -1) {
-				// Full build complete!
-				for (const a of this.actions) {
+				if (nextIdx === -1) {
+					// Full build complete!
 					if (a.isDial()) {
 						await a.setFeedback({
 							item_icon: "",
@@ -222,56 +245,54 @@ export class BestItem extends SingletonAction {
 							item_name: "Complete!",
 							cost_text: `${formatGold(playerGold)}g`,
 							gold_bar: { value: 100, bar_fill_c: "#2ECC71" },
-							status_text: "Full build ✓",
+							status_text: "Full build \u2713",
 						});
 					} else {
 						await a.setImage("");
 						await a.setTitle("Build\nComplete!");
 					}
+					continue;
 				}
-				return;
+
+				displayItemId = build[nextIdx];
+				displaySlotLabel = `NEXT (${nextIdx + 1}/${build.length})`;
+				isNextToBuy = true;
 			}
 
-			displayItemId = build[nextIdx];
-			displaySlotLabel = `NEXT (${nextIdx + 1}/${build.length})`;
-			isNextToBuy = true;
-		}
+			// ── Get item info ──
+			const itemName = dataDragon.getItemName(displayItemId);
+			const itemCost = dataDragon.getItemCost(displayItemId);
+			const itemIcon = await getItemIcon(displayItemId);
 
-		// ── Get item info ──
-		const itemName = dataDragon.getItemName(displayItemId);
-		const itemCost = dataDragon.getItemCost(displayItemId);
-		const itemIcon = await getItemIcon(displayItemId);
+			const canAfford = playerGold >= itemCost;
+			const owned = this.isItemOwned(displayItemId, playerItemIds);
 
-		const canAfford = playerGold >= itemCost;
-		const owned = this.isItemOwned(displayItemId, playerItemIds);
+			// Gold progress towards item (0-100%)
+			const goldProgress = itemCost > 0
+				? Math.min(100, Math.round((playerGold / itemCost) * 100))
+				: 100;
 
-		// Gold progress towards item (0-100%)
-		const goldProgress = itemCost > 0
-			? Math.min(100, Math.round((playerGold / itemCost) * 100))
-			: 100;
+			// Status text
+			let statusText: string;
+			let barColor: string;
+			if (owned) {
+				statusText = "Owned \u2713";
+				barColor = "#2ECC71";
+			} else if (canAfford && isNextToBuy) {
+				statusText = "BUY NOW!";
+				barColor = "#2ECC71";
+			} else if (isNextToBuy) {
+				const needed = itemCost - playerGold;
+				statusText = `Need ${formatGold(needed)}g`;
+				barColor = "#F1C40F";
+			} else {
+				statusText = `${formatGold(itemCost)}g`;
+				barColor = "#888888";
+			}
 
-		// Status text
-		let statusText: string;
-		let barColor: string;
-		if (owned) {
-			statusText = "Owned ✓";
-			barColor = "#2ECC71";
-		} else if (canAfford && isNextToBuy) {
-			statusText = "BUY NOW!";
-			barColor = "#2ECC71";
-		} else if (isNextToBuy) {
-			const needed = itemCost - playerGold;
-			statusText = `Need ${formatGold(needed)}g`;
-			barColor = "#F1C40F";
-		} else {
-			statusText = `${formatGold(itemCost)}g`;
-			barColor = "#888888";
-		}
+			const costText = `${formatGold(itemCost)}g | ${formatGold(playerGold)}g`;
 
-		const costText = `${formatGold(itemCost)}g | ${formatGold(playerGold)}g`;
-
-		// ── Update displays ──
-		for (const a of this.actions) {
+			// ── Update display ──
 			if (a.isDial()) {
 				await a.setFeedback({
 					item_icon: itemIcon ?? "",
@@ -286,7 +307,7 @@ export class BestItem extends SingletonAction {
 				});
 			} else {
 				if (itemIcon) await a.setImage(itemIcon);
-				const keyStatus = owned ? "✓" : canAfford && isNextToBuy ? "BUY" : `${formatGold(itemCost)}g`;
+				const keyStatus = owned ? "\u2713" : canAfford && isNextToBuy ? "BUY" : `${formatGold(itemCost)}g`;
 				await a.setTitle(`${truncate(itemName, 12)}\n${keyStatus}`);
 			}
 		}
