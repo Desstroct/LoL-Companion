@@ -83,6 +83,22 @@ async function createKeyImage(sourceBuffer, outDir, baseName = 'key', size1x = 7
 
   const bg = await sharp(Buffer.from(bgSvg)).png().toBuffer();
 
+  // Subtle gold inner glow (radial gradient behind the icon)
+  const glowR = Math.round(size2x * 0.38);
+  const cx = Math.round(size2x / 2);
+  const cy = Math.round(size2x / 2);
+  const glowSvg = `<svg width="${size2x}" height="${size2x}" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <radialGradient id="g" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="${GOLD}" stop-opacity="0.22"/>
+        <stop offset="55%" stop-color="${GOLD}" stop-opacity="0.07"/>
+        <stop offset="100%" stop-color="${GOLD}" stop-opacity="0"/>
+      </radialGradient>
+    </defs>
+    <circle cx="${cx}" cy="${cy}" r="${glowR}" fill="url(#g)"/>
+  </svg>`;
+  const glowLayer = await sharp(Buffer.from(glowSvg)).resize(size2x, size2x).png().toBuffer();
+
   // Resize source icon to fit inside the border
   const iconSize = size2x - innerPadding * 2;
   const resizedIcon = await sharp(sourceBuffer)
@@ -90,9 +106,12 @@ async function createKeyImage(sourceBuffer, outDir, baseName = 'key', size1x = 7
     .png()
     .toBuffer();
 
-  // Composite icon centered on background
+  // Composite: background → glow → icon
   const buf2x = await sharp(bg)
-    .composite([{ input: resizedIcon, left: innerPadding, top: innerPadding }])
+    .composite([
+      { input: glowLayer, left: 0, top: 0 },
+      { input: resizedIcon, left: innerPadding, top: innerPadding },
+    ])
     .png()
     .toBuffer();
 
@@ -148,14 +167,14 @@ function getAssetUrls(ddVersion) {
     // KDA Tracker → Mejai's Soulstealer (stacks on kills/assists!)
     'kda-tracker': `${DD}/img/item/3041.png`,
 
-    // Auto Accept → Guardian Angel (auto-revive ≈ auto-accept)
-    'auto-accept': `${DD}/img/item/3026.png`,
+    // Auto Accept → Stopwatch (timing — accepting at the right moment)
+    'auto-accept': `${DD}/img/item/2420.png`,
 
     // Counterpick → Thornmail (THE counter item in LoL)
     'counterpick': `${DD}/img/item/3075.png`,
 
-    // Best Pick → Infinity Edge (THE iconic best item)
-    'best-pick': `${DD}/img/item/3031.png`,
+    // Best Pick → B.F. Sword (raw power — the best champion choice)
+    'best-pick': `${DD}/img/item/1038.png`,
 
     // Lobby Level → Doran's Ring (classic starting item)
     'lobby-level': `${DD}/img/item/1056.png`,
@@ -172,8 +191,11 @@ function getAssetUrls(ddVersion) {
     // Best Item → Rabadon's Deathcap (THE best item — wizard hat)
     'best-item': `${DD}/img/item/3089.png`,
 
-    // LP Tracker → Watchful Wardstone (ranked/LP tracking)
-    'lp-tracker': `${DD}/img/item/3108.png`,
+    // LP Tracker → Dark Seal (tracks glory stacks — LP progress metaphor)
+    'lp-tracker': `${DD}/img/item/1082.png`,
+
+    // Profile Switch → Teleport (switching/teleporting between profiles)
+    'profile-switch': `${DD}/img/spell/SummonerTeleport.png`,
   };
 }
 
