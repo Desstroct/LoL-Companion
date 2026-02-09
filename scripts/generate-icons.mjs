@@ -234,6 +234,23 @@ function getKeystoneUrls() {
   };
 }
 
+// ─────────────────── Rune Tree Style Icons ───────────────────
+
+/**
+ * Tree style icons (the small circular emblems for each rune tree).
+ * Used to show the secondary tree on the key image alongside the keystone.
+ */
+function getTreeStyleUrls() {
+  const CD = 'https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1';
+  return {
+    8000: `${CD}/perk-images/styles/7201_precision.png`,
+    8100: `${CD}/perk-images/styles/7200_domination.png`,
+    8200: `${CD}/perk-images/styles/7202_sorcery.png`,
+    8400: `${CD}/perk-images/styles/7204_resolve.png`,
+    8300: `${CD}/perk-images/styles/7203_whimsy.png`,
+  };
+}
+
 // ─────────────────── Marketplace / Category SVGs ───────────────────
 
 const CATEGORY_SVG = `
@@ -312,6 +329,23 @@ async function main() {
       const buf = await download(url);
       console.log(`    ✓ Downloaded (${buf.length} bytes)`);
       await createKeyImage(buf, keystoneDir, String(id), 72);
+    } catch (err) {
+      console.log(`    ✗ Failed: ${err.message}`);
+    }
+  }
+
+  // 3b. Rune tree style icons (small emblems for secondary tree display)
+  console.log('\n── Rune Tree Style Icons ──');
+  const treeStyles = getTreeStyleUrls();
+  const treeDir = path.join(IMGS, 'actions', 'auto-rune', 'trees');
+  for (const [id, url] of Object.entries(treeStyles)) {
+    console.log(`  Tree ${id}:`);
+    console.log(`    ↓ ${url}`);
+    try {
+      const buf = await download(url);
+      console.log(`    ✓ Downloaded (${buf.length} bytes)`);
+      // Save as simple resized PNGs (48×48 for @2x badge, 24×24 for @1x)
+      await createSidebarIcon(buf, treeDir, String(id), 24);
     } catch (err) {
       console.log(`    ✗ Failed: ${err.message}`);
     }

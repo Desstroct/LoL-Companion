@@ -23,22 +23,97 @@ import { ChampionStats } from "../services/champion-stats";
 
 const logger = streamDeck.logger.createScope("AutoRune");
 
-// ─── Keystone image cache ───
+// ─── Image caches ───
 const PLUGIN_DIR = join(dirname(fileURLToPath(import.meta.url)), "..");
-const keystoneCache = new Map<number, string>();
+const keystoneCache = new Map<number, string>(); // keystoneId → raw base64
+const treeCache = new Map<number, string>(); // treeStyleId → raw base64
+const composedCache = new Map<string, string>(); // "keystoneId:treeId" → data URI
 
-/** Load a keystone icon from disk as a base64 data URI (cached) */
-function getKeystoneImage(keystoneId: number): string | null {
+/** Load a keystone icon from disk as raw base64 (cached) */
+function getKeystoneBase64(keystoneId: number): string | null {
 	if (keystoneCache.has(keystoneId)) return keystoneCache.get(keystoneId)!;
 	try {
 		const imgPath = join(PLUGIN_DIR, "imgs", "actions", "auto-rune", "keystones", `${keystoneId}@2x.png`);
-		const buf = readFileSync(imgPath);
-		const dataUri = `data:image/png;base64,${buf.toString("base64")}`;
-		keystoneCache.set(keystoneId, dataUri);
-		return dataUri;
+		const b64 = readFileSync(imgPath).toString("base64");
+		keystoneCache.set(keystoneId, b64);
+		return b64;
 	} catch {
 		return null;
 	}
+}
+
+/** Load a rune tree style icon from disk as raw base64 (cached) */
+function getTreeBase64(treeStyleId: number): string | null {
+	if (treeCache.has(treeStyleId)) return treeCache.get(treeStyleId)!;
+	try {
+		const imgPath = join(PLUGIN_DIR, "imgs", "actions", "auto-rune", "trees", `${treeStyleId}@2x.png`);
+		const b64 = readFileSync(imgPath).toString("base64");
+		treeCache.set(treeStyleId, b64);
+		return b64;
+	} catch {
+		return null;
+	}
+}
+
+// LoL color palette (must match generate-icons.mjs)
+const GOLD = "#C89B3C";
+const DARK_BLUE = "#0A1428";
+
+/**
+ * Compose an SVG key image with primary keystone (large, centered) and
+ * secondary tree icon (small badge, bottom-right corner).
+ * Returns a data:image/svg+xml;base64 URI ready for setImage().
+ */
+function composeRuneImage(keystoneId: number, subStyleId: number): string | null {
+	const cacheKey = `${keystoneId}:${subStyleId}`;
+	if (composedCache.has(cacheKey)) return composedCache.get(cacheKey)!;
+
+	const ksB64 = getKeystoneBase64(keystoneId);
+	if (!ksB64) return null;
+	const treeB64 = getTreeBase64(subStyleId);
+
+	const S = 144; // @2x key size
+	const br = 3; // border width
+	const cr = 14; // corner radius
+	const pad = 14; // inner padding for keystone
+	const ksSize = S - pad * 2; // keystone icon area
+
+	// Secondary tree badge position (bottom-right)
+	const badgeSize = 44;
+	const badgeX = S - badgeSize - 6;
+	const badgeY = S - badgeSize - 6;
+	const badgeCx = badgeX + badgeSize / 2;
+	const badgeCy = badgeY + badgeSize / 2;
+	const badgeR = badgeSize / 2;
+
+	const treeBadge = treeB64
+		? `<circle cx="${badgeCx}" cy="${badgeCy}" r="${badgeR + 3}" fill="${DARK_BLUE}" stroke="${GOLD}" stroke-width="1.5"/>
+		   <clipPath id="tc"><circle cx="${badgeCx}" cy="${badgeCy}" r="${badgeR}"/></clipPath>
+		   <image href="data:image/png;base64,${treeB64}" x="${badgeX}" y="${badgeY}" width="${badgeSize}" height="${badgeSize}" clip-path="url(#tc)"/>`
+		: "";
+
+	const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${S}" height="${S}">
+		<rect width="${S}" height="${S}" rx="${cr}" fill="${DARK_BLUE}"/>
+		<defs><radialGradient id="g" cx="50%" cy="50%" r="50%">
+			<stop offset="0%" stop-color="${GOLD}" stop-opacity="0.22"/>
+			<stop offset="55%" stop-color="${GOLD}" stop-opacity="0.07"/>
+			<stop offset="100%" stop-color="${GOLD}" stop-opacity="0"/>
+		</radialGradient></defs>
+		<circle cx="72" cy="72" r="55" fill="url(#g)"/>
+		<rect x="${br}" y="${br}" width="${S - br * 2}" height="${S - br * 2}" rx="${cr - br}" stroke="${GOLD}" stroke-width="${br}" fill="none"/>
+		<image href="data:image/png;base64,${ksB64}" x="${pad}" y="${pad}" width="${ksSize}" height="${ksSize}"/>
+		${treeBadge}
+	</svg>`;
+
+	const dataUri = `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
+	composedCache.set(cacheKey, dataUri);
+	return dataUri;
+}
+
+/** Legacy helper: keystone-only data URI (for dial feedback that needs just the icon) */
+function getKeystoneImage(keystoneId: number): string | null {
+	const b64 = getKeystoneBase64(keystoneId);
+	return b64 ? `data:image/png;base64,${b64}` : null;
 }
 
 /** Name used for the managed rune page in the client */
@@ -52,16 +127,17 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 
 	override onWillAppear(ev: WillAppearEvent<AutoRuneSettings>): void | Promise<void> {
 		this.startPolling();
-		const role = ev.payload.settings.role ?? "top";
+		const role = ev.payload.settings.role ?? "auto";
+		const roleLabel = role === "auto" ? "AUTO" : role.toUpperCase();
 		if (ev.action.isDial()) {
 			return ev.action.setFeedback({
-				title: `Auto Rune · ${role.toUpperCase()}`,
+				title: `Auto Rune · ${roleLabel}`,
 				rune_name: "Waiting...",
 				rune_info: "",
 				wr_bar: { value: 0 },
 			});
 		}
-		return ev.action.setTitle(`Auto Rune\n${role.toUpperCase()}`);
+		return ev.action.setTitle(`Auto Rune\n${roleLabel}`);
 	}
 
 	override onWillDisappear(ev: WillDisappearEvent<AutoRuneSettings>): void | Promise<void> {
@@ -161,18 +237,19 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 			if (hadState) {
 				for (const a of this.actions) {
 					const s = (await a.getSettings()) as AutoRuneSettings;
-					const role = s.role ?? "top";
+					const role = s.role ?? "auto";
+					const roleLabel = role === "auto" ? "AUTO" : role.toUpperCase();
 					if (a.isDial()) {
 						await a.setFeedback({
 							keystone_icon: "",
-							title: `Auto Rune · ${role.toUpperCase()}`,
+							title: `Auto Rune · ${roleLabel}`,
 							rune_name: "Waiting...",
 							rune_info: "",
 							wr_bar: { value: 0 },
 						});
 					} else {
 						await a.setImage("");
-						await a.setTitle(`Auto Rune\n${role.toUpperCase()}`);
+						await a.setTitle(`Auto Rune\n${roleLabel}`);
 					}
 				}
 			}
@@ -229,7 +306,9 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 
 			const lane = gameMode.isARAM()
 				? "aram"
-				: ChampionStats.toLolalyticsLane(s.role ?? me.assignedPosition ?? "top");
+				: ChampionStats.toLolalyticsLane(
+						(s.role && s.role !== "auto" ? s.role : null) ?? me.assignedPosition ?? "top",
+				  );
 
 			try {
 				const runes = await runeData.getRecommendedRunes(champAlias, lane);
@@ -297,8 +376,11 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 				wr_bar: { value: rune.winRate, bar_fill_c: barColor },
 			});
 		} else {
-			// Set the key image to the keystone icon
-			if (keystoneImg) {
+			// Set key image: primary keystone + secondary tree badge
+			const composedImg = composeRuneImage(keystoneId, rune.subStyleId);
+			if (composedImg) {
+				await a.setImage(composedImg);
+			} else if (keystoneImg) {
 				await a.setImage(keystoneImg);
 			}
 			await a.setTitle(

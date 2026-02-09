@@ -204,13 +204,22 @@ export class AutoPick extends SingletonAction<AutoPickSettings> {
 
 	/**
 	 * Execute a champ select action (pick or ban) via LCU API.
+	 * Two-step: hover the champion first, then lock-in.
 	 */
 	private async performAction(actionId: number, championId: number, complete: boolean): Promise<void> {
 		try {
+			// Step 1: Hover the champion
 			await lcuApi.patch(`/lol-champ-select/v1/session/actions/${actionId}`, {
 				championId,
-				completed: complete,
 			});
+
+			// Step 2: Lock-in if requested (small delay to let the client register the hover)
+			if (complete) {
+				await new Promise((r) => setTimeout(r, 300));
+				await lcuApi.patch(`/lol-champ-select/v1/session/actions/${actionId}`, {
+					completed: true,
+				});
+			}
 		} catch (e) {
 			logger.error(`performAction error: ${e}`);
 		}
