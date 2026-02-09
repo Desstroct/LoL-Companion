@@ -80,7 +80,8 @@ export class ProfileSwitch extends SingletonAction<ProfileSwitchSettings> {
 	private pollInterval: ReturnType<typeof setInterval> | null = null;
 	private currentPhase: GameflowPhase = "None";
 	private enabled = true;
-	private lastSwitchedProfile: string | null = null;
+	/** Per-device tracking to avoid blocking retries on other devices. */
+	private lastSwitchedProfile = new Map<string, string>();
 
 	override async onWillAppear(ev: WillAppearEvent<ProfileSwitchSettings>): Promise<void> {
 		this.enabled = ev.payload.settings.enabled ?? true;
@@ -89,7 +90,7 @@ export class ProfileSwitch extends SingletonAction<ProfileSwitchSettings> {
 	}
 
 	override onWillDisappear(_ev: WillDisappearEvent<ProfileSwitchSettings>): void | Promise<void> {
-		this.stopPolling();
+		if (this.actions.length === 0) this.stopPolling();
 	}
 
 	override async onKeyDown(ev: KeyDownEvent<ProfileSwitchSettings>): Promise<void> {
@@ -146,10 +147,7 @@ export class ProfileSwitch extends SingletonAction<ProfileSwitchSettings> {
 		const profileMap = gameMode.isTFT() ? TFT_PHASE_TO_PROFILE : PHASE_TO_PROFILE;
 		const targetProfile = profileMap[this.currentPhase] ?? null;
 
-		// Don't switch if target is null (phase=None) or if we're already on the right profile
-		if (!targetProfile || targetProfile === this.lastSwitchedProfile) {
-			return;
-		}
+		if (!targetProfile) return;
 
 		// Collect unique device IDs from all visible instances of this action
 		const deviceIds = new Set<string>();
@@ -158,10 +156,13 @@ export class ProfileSwitch extends SingletonAction<ProfileSwitchSettings> {
 		}
 
 		for (const deviceId of deviceIds) {
+			// Skip if this device is already on the target profile
+			if (this.lastSwitchedProfile.get(deviceId) === targetProfile) continue;
+
 			try {
 				logger.info(`Switching to profile "${targetProfile}" on device ${deviceId}`);
 				await streamDeck.profiles.switchToProfile(deviceId, targetProfile);
-				this.lastSwitchedProfile = targetProfile;
+				this.lastSwitchedProfile.set(deviceId, targetProfile);
 			} catch (e) {
 				logger.error(`Failed to switch profile on ${deviceId}: ${e}`);
 			}

@@ -227,6 +227,8 @@ export class ChampionStats {
 
 		if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
 			return cached.data;
+		} else if (cached) {
+			this.cache.delete(key);
 		}
 
 		// Extract major.minor patch from Data Dragon version (e.g. "16.3.1" → "16.3")

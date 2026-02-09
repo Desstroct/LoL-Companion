@@ -7,9 +7,11 @@ const logger = streamDeck.logger.createScope("LoLIcons");
  * Unified in-memory icon cache: key → base64 data URI (bounded to 500 entries).
  * A value of "" means the fetch was attempted and failed (negative cache).
  */
-const iconCache = new Map<string, string>();
+const iconCache = new Map<string, { data: string; timestamp: number }>();
 const ICON_CACHE_MAX = 500;
 const NEGATIVE_SENTINEL = "";
+/** Negative cache entries expire after 5 minutes (allows retry on transient failures). */
+const NEGATIVE_TTL = 5 * 60 * 1000;
 
 // ────────────────── Generic fetch ──────────────────
 
@@ -20,12 +22,20 @@ const NEGATIVE_SENTINEL = "";
  */
 async function fetchIcon(cacheKey: string, url: string): Promise<string | null> {
 	const cached = iconCache.get(cacheKey);
-	if (cached !== undefined) return cached || null; // "" → null (negative cache)
+	if (cached !== undefined) {
+		// Negative cache entries expire after NEGATIVE_TTL
+		if (cached.data === NEGATIVE_SENTINEL) {
+			if (Date.now() - cached.timestamp < NEGATIVE_TTL) return null;
+			iconCache.delete(cacheKey); // expired — retry
+		} else {
+			return cached.data;
+		}
+	}
 	try {
 		const response = await fetch(url);
 		if (!response.ok) {
 			logger.warn(`Icon fetch failed (${response.status}): ${url}`);
-			iconCache.set(cacheKey, NEGATIVE_SENTINEL);
+			iconCache.set(cacheKey, { data: NEGATIVE_SENTINEL, timestamp: Date.now() });
 			return null;
 		}
 		const buffer = Buffer.from(await response.arrayBuffer());
@@ -35,11 +45,11 @@ async function fetchIcon(cacheKey: string, url: string): Promise<string | null> 
 			const firstKey = iconCache.keys().next().value;
 			if (firstKey) iconCache.delete(firstKey);
 		}
-		iconCache.set(cacheKey, dataUri);
+		iconCache.set(cacheKey, { data: dataUri, timestamp: Date.now() });
 		return dataUri;
 	} catch (e) {
 		logger.error(`Icon fetch error: ${url} — ${e}`);
-		iconCache.set(cacheKey, NEGATIVE_SENTINEL);
+		iconCache.set(cacheKey, { data: NEGATIVE_SENTINEL, timestamp: Date.now() });
 		return null;
 	}
 }

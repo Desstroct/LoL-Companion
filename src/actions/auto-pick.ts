@@ -145,12 +145,25 @@ export class AutoPick extends SingletonAction<AutoPickSettings> {
 
 			// ── Auto-pick ──
 			if (!this.hasPicked && settings.pickChampion) {
+				// Check if pick champion was banned
+				const champToPick = this.resolveChampionId(settings.pickChampion);
+				if (champToPick) {
+					const isBanned = allActions.some(
+						(act) => act.type === "ban" && act.completed && act.championId === champToPick,
+					);
+					if (isBanned) {
+						logger.warn(`${settings.pickChampion} was banned — cannot auto-pick`);
+						await a.setTitle(`BANNED!\n${settings.pickChampion}`);
+						this.hasPicked = true; // prevent retrying
+						continue;
+					}
+				}
+
 				const pickAction = myActions.find(
 					(act) => act.type === "pick" && act.isInProgress && !act.completed,
 				);
 
 				if (pickAction) {
-					const champToPick = this.resolveChampionId(settings.pickChampion);
 					if (champToPick) {
 						logger.info(`Auto-picking ${settings.pickChampion} (ID: ${champToPick})`);
 						await this.performAction(pickAction.id, champToPick, settings.autoLock !== false);

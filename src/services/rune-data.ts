@@ -74,6 +74,8 @@ export class RuneData {
 
 		if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
 			return cached.data;
+		} else if (cached) {
+			this.cache.delete(key);
 		}
 
 		try {

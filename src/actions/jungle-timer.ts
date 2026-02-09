@@ -204,6 +204,12 @@ export class JungleTimer extends SingletonAction<JungleTimerSettings> {
 			return;
 		}
 
+		// ARAM has no jungle camps (no Dragon, Baron, Herald, Grubs)
+		if (gameMode.isARAM()) {
+			await this.renderIdle("N/A ARAM");
+			return;
+		}
+
 		const allData = await gameClient.getAllData();
 
 		if (!allData) {
