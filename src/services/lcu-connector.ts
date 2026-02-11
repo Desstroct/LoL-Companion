@@ -113,6 +113,7 @@ export class LcuConnector {
 
 	/**
 	 * Lightweight HTTP ping to verify the LCU is still running.
+	 * Uses /Help endpoint which always responds 200 if LCU is alive.
 	 * Much cheaper than spawning PowerShell on every tick.
 	 */
 	private pingLcu(): Promise<boolean> {
@@ -123,7 +124,7 @@ export class LcuConnector {
 				{
 					hostname: "127.0.0.1",
 					port,
-					path: "/riotclient/app-name",
+					path: "/Help",
 					method: "GET",
 					headers: {
 						Authorization: `Basic ${Buffer.from(`riot:${password}`).toString("base64")}`,
@@ -133,11 +134,21 @@ export class LcuConnector {
 				},
 				(res) => {
 					res.resume(); // drain the response
+					if (res.statusCode !== 200) {
+						logger.warn(`LCU ping got status ${res.statusCode}`);
+					}
 					resolve(res.statusCode === 200);
 				},
 			);
-			req.on("error", () => resolve(false));
-			req.on("timeout", () => { req.destroy(); resolve(false); });
+			req.on("error", (e) => {
+				logger.warn(`LCU ping error: ${e.message}`);
+				resolve(false);
+			});
+			req.on("timeout", () => {
+				logger.warn("LCU ping timeout");
+				req.destroy();
+				resolve(false);
+			});
 			req.end();
 		});
 	}
