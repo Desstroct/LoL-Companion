@@ -1,6 +1,6 @@
 {
 	"Name": "LoL Companion",
-	"Version": "1.2.1.0",
+	"Version": "1.2.2.0",
 	"Author": "Desstroct",
 	"Actions": [
 		{
@@ -316,46 +316,6 @@
 					"TitleAlignment": "middle"
 				}
 			]
-		}
-		,
-		{
-			"Name": "Profile Switch",
-			"UUID": "com.desstroct.lol-api.profile-switch",
-			"Icon": "imgs/actions/profile-switch/icon",
-			"Tooltip": "Automatically switches Stream Deck profiles based on LoL game phase (Lobby → Champ Select → In Game). Press to toggle.",
-			"PropertyInspectorPath": "ui/profile-switch.html",
-			"Controllers": [
-				"Keypad"
-			],
-			"States": [
-				{
-					"Image": "imgs/actions/profile-switch/key",
-					"TitleAlignment": "middle"
-				}
-			]
-		}
-	],
-	"Profiles": [
-		{
-			"Name": "profiles/LoL Lobby",
-			"DeviceType": 0,
-			"Readonly": false,
-			"DontAutoSwitchWhenInstalled": true,
-			"AutoInstall": true
-		},
-		{
-			"Name": "profiles/LoL Champ Select",
-			"DeviceType": 0,
-			"Readonly": false,
-			"DontAutoSwitchWhenInstalled": true,
-			"AutoInstall": true
-		},
-		{
-			"Name": "profiles/LoL In Game",
-			"DeviceType": 0,
-			"Readonly": false,
-			"DontAutoSwitchWhenInstalled": true,
-			"AutoInstall": true
 		}
 	],
 	"Category": "LoL Companion",

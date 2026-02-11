@@ -63,7 +63,6 @@ import { EnemyBuilds } from "./actions/enemy-builds";
 import { DeathTimer } from "./actions/death-timer";
 import { AutoPick } from "./actions/auto-pick";
 import { LpTracker } from "./actions/lp-tracker";
-import { ProfileSwitch } from "./actions/profile-switch";
 import { lcuConnector } from "./services/lcu-connector";
 import { gameMode } from "./services/game-mode";
 import { dataDragon } from "./services/data-dragon";
@@ -126,7 +125,6 @@ streamDeck.actions.registerAction(new EnemyBuilds());
 streamDeck.actions.registerAction(new DeathTimer());
 streamDeck.actions.registerAction(new AutoPick());
 streamDeck.actions.registerAction(new LpTracker());
-streamDeck.actions.registerAction(new ProfileSwitch());
 
 // Connect to Stream Deck and initialize
 streamDeck.connect().then(() => {
