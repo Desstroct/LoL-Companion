@@ -93,6 +93,12 @@ This plugin only uses **official Riot-sanctioned APIs**:
 - ❌ Game files
 - ❌ Input injection
 
+## Support
+
+If this plugin helps you climb, consider supporting development:
+
+[![PayPal](https://img.shields.io/badge/PayPal-Donate-blue?logo=paypal)](https://paypal.me/Desstroct)
+
 ## License
 
-MIT License — See [LICENSE](LICENSE) for details.
+Proprietary — See [LICENSE](LICENSE) for details.
