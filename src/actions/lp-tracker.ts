@@ -14,12 +14,11 @@ import { getRankedEmblemIcon } from "../services/lol-icons";
 const logger = streamDeck.logger.createScope("LpTracker");
 
 /** Queue types the user can cycle through */
-const QUEUE_KEYS = ["RANKED_SOLO_5x5", "RANKED_FLEX_SR", "RANKED_TFT", "RANKED_TFT_TURBO", "RANKED_TFT_DOUBLE_UP"] as const;
+const QUEUE_KEYS = ["RANKED_SOLO_5x5", "RANKED_FLEX_SR", "RANKED_TFT", "RANKED_TFT_DOUBLE_UP"] as const;
 const QUEUE_LABELS: Record<string, string> = {
 	RANKED_SOLO_5x5: "Solo/Duo",
 	RANKED_FLEX_SR: "Flex",
 	RANKED_TFT: "TFT",
-	RANKED_TFT_TURBO: "TFT Hyper",
 	RANKED_TFT_DOUBLE_UP: "TFT Duo",
 };
 
