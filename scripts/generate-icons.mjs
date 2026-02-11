@@ -196,6 +196,18 @@ function getAssetUrls(ddVersion) {
 
     // Profile Switch → Teleport (switching/teleporting between profiles)
     'profile-switch': `${DD}/img/spell/SummonerTeleport.png`,
+
+    // Enemy Builds → Guardian Angel (seeing enemy defensive itemization)
+    'enemy-builds': `${DD}/img/item/3026.png`,
+
+    // Team Comp → Banner of Command (team coordination symbol)
+    'team-comp': `${DD}/img/spell/SummonerBarrier.png`,
+
+    // Power Spike → Infinity Edge (power spike item — amplifies damage)
+    'power-spike': `${DD}/img/item/3031.png`,
+
+    // Dodge Advisor → Zhonya's Hourglass (dodge/stasis metaphor)
+    'dodge-advisor': `${DD}/img/item/3157.png`,
   };
 }
 

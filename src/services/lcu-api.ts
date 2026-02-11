@@ -213,9 +213,13 @@ export class LcuApi {
 
 	/**
 	 * Generic PATCH request to the LCU API.
+	 * Returns the parsed response on success, or undefined if body is empty.
+	 * Returns null on error.
 	 */
-	async patch<T = unknown>(endpoint: string, body?: unknown): Promise<T | null> {
-		return this.request<T>("PATCH", endpoint, body);
+	async patch<T = unknown>(endpoint: string, body?: unknown): Promise<T | undefined | null> {
+		logger.debug(`PATCH ${endpoint} body: ${JSON.stringify(body)}`);
+		const result = await this.request<T>("PATCH", endpoint, body);
+		return result;
 	}
 
 	/**

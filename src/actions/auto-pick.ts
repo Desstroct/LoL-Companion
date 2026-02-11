@@ -134,20 +134,28 @@ export class AutoPick extends SingletonAction<AutoPickSettings> {
 
 			// ── Auto-ban ──
 			if (!this.hasBanned && settings.banChampion) {
+				// Look for our ban action: either in progress OR not yet started but available
 				const banAction = myActions.find(
-					(act) => act.type === "ban" && act.isInProgress && !act.completed,
+					(act) => act.type === "ban" && !act.completed,
 				);
 
 				if (banAction) {
-					const champToBan = this.resolveChampionId(settings.banChampion);
-					if (champToBan) {
-						logger.info(`Auto-banning ${settings.banChampion} (ID: ${champToBan})`);
-						await this.performAction(banAction.id, champToBan, settings.autoLock !== false);
-						this.hasBanned = true;
+					logger.debug(`Found ban action: id=${banAction.id}, isInProgress=${banAction.isInProgress}, completed=${banAction.completed}`);
 
-						await a.setTitle(`Banned!\n${settings.banChampion}`);
-					} else {
-						logger.warn(`Could not resolve ban champion: ${settings.banChampion}`);
+					// Only act if it's our turn (isInProgress)
+					if (banAction.isInProgress) {
+						const champToBan = this.resolveChampionId(settings.banChampion);
+						if (champToBan) {
+							logger.info(`Auto-banning ${settings.banChampion} (ID: ${champToBan})`);
+							const autoLock = settings.autoLock !== false;
+							const success = await this.performAction(banAction.id, champToBan, autoLock);
+							if (success) {
+								this.hasBanned = true;
+								await a.setTitle(`Banned!\n${settings.banChampion}`);
+							}
+						} else {
+							logger.warn(`Could not resolve ban champion: ${settings.banChampion}`);
+						}
 					}
 				}
 			} else if (!this.hasBanned && !settings.banChampion) {
@@ -186,19 +194,25 @@ export class AutoPick extends SingletonAction<AutoPickSettings> {
 				}
 
 				const pickAction = myActions.find(
-					(act) => act.type === "pick" && act.isInProgress && !act.completed,
+					(act) => act.type === "pick" && !act.completed,
 				);
 
 				if (pickAction) {
-					if (champToPick) {
-						logger.info(`Auto-picking ${settings.pickChampion} (ID: ${champToPick})`);
-						await this.performAction(pickAction.id, champToPick, settings.autoLock !== false);
-						this.hasPicked = true;
+					logger.debug(`Found pick action: id=${pickAction.id}, isInProgress=${pickAction.isInProgress}, completed=${pickAction.completed}`);
 
-						const champ = dataDragon.getChampionByKey(String(champToPick));
-						const icon = champ ? await getChampionIcon(champ.id) : null;
-						if (icon) await a.setImage(icon);
-						await a.setTitle(`Picked!\n${settings.pickChampion}`);
+					// Only act if it's our turn (isInProgress)
+					if (pickAction.isInProgress && champToPick) {
+						logger.info(`Auto-picking ${settings.pickChampion} (ID: ${champToPick})`);
+						const autoLock = settings.autoLock !== false;
+						const success = await this.performAction(pickAction.id, champToPick, autoLock);
+						if (success) {
+							this.hasPicked = true;
+
+							const champ = dataDragon.getChampionByKey(String(champToPick));
+							const icon = champ ? await getChampionIcon(champ.id) : null;
+							if (icon) await a.setImage(icon);
+							await a.setTitle(`Picked!\n${settings.pickChampion}`);
+						}
 					}
 				}
 			}
@@ -232,24 +246,26 @@ export class AutoPick extends SingletonAction<AutoPickSettings> {
 	 * Execute a champ select action (pick or ban) via LCU API.
 	 * Two-step: hover the champion first, then lock-in.
 	 */
-	private async performAction(actionId: number, championId: number, complete: boolean): Promise<void> {
+	private async performAction(actionId: number, championId: number, complete: boolean): Promise<boolean> {
 		try {
 			// Step 1: Hover the champion
-			const hoverResult = await lcuApi.patch(`/lol-champ-select/v1/session/actions/${actionId}`, {
+			const hoverSuccess = await lcuApi.patch(`/lol-champ-select/v1/session/actions/${actionId}`, {
 				championId,
 			});
-			logger.debug(`Hover result for action ${actionId}: ${hoverResult !== null ? "success" : "failed"}`);
+			logger.info(`Hover action ${actionId} with champion ${championId}: ${hoverSuccess !== undefined ? "sent" : "failed"}`);
 
 			// Step 2: Lock-in if requested (small delay to let the client register the hover)
 			if (complete) {
-				await new Promise((r) => setTimeout(r, 300));
-				const lockResult = await lcuApi.patch(`/lol-champ-select/v1/session/actions/${actionId}`, {
+				await new Promise((r) => setTimeout(r, 400));
+				const lockSuccess = await lcuApi.patch(`/lol-champ-select/v1/session/actions/${actionId}`, {
 					completed: true,
 				});
-				logger.debug(`Lock result for action ${actionId}: ${lockResult !== null ? "success" : "failed"}`);
+				logger.info(`Lock action ${actionId}: ${lockSuccess !== undefined ? "sent" : "failed"}`);
 			}
+			return true;
 		} catch (e) {
 			logger.error(`performAction error: ${e}`);
+			return false;
 		}
 	}
 }
