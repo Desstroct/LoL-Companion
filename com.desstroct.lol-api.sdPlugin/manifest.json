@@ -1,6 +1,6 @@
 {
 	"Name": "LoL Companion",
-	"Version": "1.2.0.0",
+	"Version": "1.2.1.0",
 	"Author": "Desstroct",
 	"Actions": [
 		{
@@ -172,31 +172,6 @@
 			"States": [
 				{
 					"Image": "imgs/actions/lobby-level/key",
-					"TitleAlignment": "middle"
-				}
-			]
-		},
-		{
-			"Name": "Dodge Advisor",
-			"UUID": "com.desstroct.lol-api.dodge-advisor",
-			"Icon": "imgs/actions/dodge-advisor/icon",
-			"Tooltip": "Analyzes teammates during champ select to help decide whether to dodge. Shows win rates, games on champion, and autofill detection.",
-			"PropertyInspectorPath": "ui/dodge-advisor.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "layouts/dodge-advisor.json",
-				"TriggerDescription": {
-					"Rotate": "Cycle teammates",
-					"Push": "Refresh",
-					"Touch": "Refresh"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/dodge-advisor/key",
 					"TitleAlignment": "middle"
 				}
 			]
