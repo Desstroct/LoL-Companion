@@ -186,6 +186,31 @@
 			]
 		},
 		{
+			"Name": "Team Comp",
+			"UUID": "com.desstroct.lol-api.team-comp",
+			"Icon": "imgs/actions/team-comp/icon",
+			"Tooltip": "Analyzes team composition during champion select. Shows damage distribution, role balance, strengths and weaknesses.",
+			"PropertyInspectorPath": "ui/team-comp.html",
+			"Controllers": [
+				"Keypad",
+				"Encoder"
+			],
+			"Encoder": {
+				"layout": "layouts/team-comp.json",
+				"TriggerDescription": {
+					"Rotate": "Ally/Enemy",
+					"Push": "Refresh",
+					"Touch": "Refresh"
+				}
+			},
+			"States": [
+				{
+					"Image": "imgs/actions/team-comp/key",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
 			"Name": "Lobby Level",
 			"UUID": "com.desstroct.lol-api.lobby-level",
 			"Icon": "imgs/actions/lobby-level/icon",
@@ -197,6 +222,31 @@
 			"States": [
 				{
 					"Image": "imgs/actions/lobby-level/key",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "Dodge Advisor",
+			"UUID": "com.desstroct.lol-api.dodge-advisor",
+			"Icon": "imgs/actions/dodge-advisor/icon",
+			"Tooltip": "Analyzes teammates during champ select to help decide whether to dodge. Shows win rates, games on champion, and autofill detection.",
+			"PropertyInspectorPath": "ui/dodge-advisor.html",
+			"Controllers": [
+				"Keypad",
+				"Encoder"
+			],
+			"Encoder": {
+				"layout": "layouts/dodge-advisor.json",
+				"TriggerDescription": {
+					"Rotate": "Cycle teammates",
+					"Push": "Refresh",
+					"Touch": "Refresh"
+				}
+			},
+			"States": [
+				{
+					"Image": "imgs/actions/dodge-advisor/key",
 					"TitleAlignment": "middle"
 				}
 			]
@@ -247,6 +297,56 @@
 			"States": [
 				{
 					"Image": "imgs/actions/best-item/key",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "Enemy Builds",
+			"UUID": "com.desstroct.lol-api.enemy-builds",
+			"Icon": "imgs/actions/enemy-builds/icon",
+			"Tooltip": "Track enemy items in real-time during the game. Dial: rotate to cycle enemies, see their items and gold spent.",
+			"PropertyInspectorPath": "ui/enemy-builds.html",
+			"Controllers": [
+				"Keypad",
+				"Encoder"
+			],
+			"Encoder": {
+				"layout": "layouts/enemy-builds.json",
+				"TriggerDescription": {
+					"Rotate": "Cycle enemies",
+					"Push": "Refresh",
+					"Touch": "Refresh"
+				}
+			},
+			"States": [
+				{
+					"Image": "imgs/actions/enemy-builds/key",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "Power Spike",
+			"UUID": "com.desstroct.lol-api.power-spike",
+			"Icon": "imgs/actions/power-spike/icon",
+			"Tooltip": "Alerts when enemies hit level 6/11/16 or complete major items. Dial: rotate to scroll through recent spike events.",
+			"PropertyInspectorPath": "ui/power-spike.html",
+			"Controllers": [
+				"Keypad",
+				"Encoder"
+			],
+			"Encoder": {
+				"layout": "layouts/power-spike.json",
+				"TriggerDescription": {
+					"Rotate": "Scroll events",
+					"Push": "Refresh",
+					"Touch": "Refresh"
+				}
+			},
+			"States": [
+				{
+					"Image": "imgs/actions/power-spike/key",
 					"TitleAlignment": "middle"
 				}
 			]

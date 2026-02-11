@@ -1,0 +1,44 @@
+{
+	"$schema": "https://schemas.elgato.com/streamdeck/plugins/layout.json",
+	"id": "dodge-advisor",
+	"items": [
+		{
+			"key": "champ_icon",
+			"type": "pixmap",
+			"rect": [4, 8, 64, 64]
+		},
+		{
+			"key": "player_name",
+			"type": "text",
+			"rect": [74, 0, 126, 20],
+			"font": { "size": 11, "weight": 600 },
+			"alignment": "left",
+			"color": "#FFFFFF"
+		},
+		{
+			"key": "stats_line",
+			"type": "text",
+			"rect": [74, 22, 126, 20],
+			"font": { "size": 10 },
+			"alignment": "left",
+			"color": "#AAAAAA"
+		},
+		{
+			"key": "score_text",
+			"type": "text",
+			"rect": [148, 48, 52, 20],
+			"font": { "size": 12, "weight": 700 },
+			"alignment": "right",
+			"color": "#FFFFFF"
+		},
+		{
+			"key": "score_bar",
+			"type": "bar",
+			"rect": [74, 72, 126, 16],
+			"range": { "min": 0, "max": 100 },
+			"value": 0,
+			"bar_fill_c": "#3498DB",
+			"bar_bg_c": "#333333"
+		}
+	]
+}

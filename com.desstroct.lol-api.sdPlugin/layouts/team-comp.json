@@ -1,0 +1,46 @@
+{
+	"$schema": "https://schemas.elgato.com/streamdeck/plugins/layout.json",
+	"id": "team-comp",
+	"items": [
+		{
+			"key": "team_label",
+			"type": "text",
+			"rect": [4, 2, 192, 18],
+			"font": { "size": 12, "weight": 700 },
+			"alignment": "center",
+			"color": "#3498DB"
+		},
+		{
+			"key": "damage_split",
+			"type": "text",
+			"rect": [4, 22, 192, 18],
+			"font": { "size": 11, "weight": 600 },
+			"alignment": "center",
+			"color": "#FFFFFF"
+		},
+		{
+			"key": "roles_text",
+			"type": "text",
+			"rect": [4, 42, 192, 16],
+			"font": { "size": 10 },
+			"alignment": "center",
+			"color": "#AAAAAA"
+		},
+		{
+			"key": "strengths",
+			"type": "text",
+			"rect": [4, 60, 192, 16],
+			"font": { "size": 10 },
+			"alignment": "center",
+			"color": "#2ECC71"
+		},
+		{
+			"key": "weaknesses",
+			"type": "text",
+			"rect": [4, 76, 192, 16],
+			"font": { "size": 10 },
+			"alignment": "center",
+			"color": "#E74C3C"
+		}
+	]
+}
