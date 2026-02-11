@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Smart Pick Settings</title>
+    <script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
+</head>
+<body>
+    <sdpi-item label="Your Role">
+        <sdpi-select setting="role">
+            <option value="top">Top</option>
+            <option value="jungle">Jungle</option>
+            <option value="middle">Mid</option>
+            <option value="bottom">Bot (ADC)</option>
+            <option value="utility">Support</option>
+        </sdpi-select>
+    </sdpi-item>
+    <sdpi-item label="Default Mode">
+        <sdpi-select setting="defaultMode">
+            <option value="counter">Counter (vs lane opponent)</option>
+            <option value="best">Best (all enemies + synergy)</option>
+        </sdpi-select>
+    </sdpi-item>
+    <sdpi-item label="Info">
+        <details>
+            <summary>How it works</summary>
+            <p style="font-size: 11px; color: #999; padding: 8px;">
+                <strong>Counter mode:</strong> Finds the best counter picks against your lane opponent.<br><br>
+                <strong>Best mode:</strong> Considers all visible enemy picks + ally synergy to suggest optimal picks.<br><br>
+                <strong>Controls:</strong><br>
+                • Press key/dial to toggle between modes<br>
+                • Rotate dial to scroll through suggestions<br>
+                • Touch to refresh data<br><br>
+                Data from Lolalytics.
+            </p>
+        </details>
+    </sdpi-item>
+</body>
+</html>

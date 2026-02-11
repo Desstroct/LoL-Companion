@@ -1,7 +1,9 @@
 import {
 	action,
+	type DialAction,
 	DialRotateEvent,
 	DialUpEvent,
+	type KeyAction,
 	KeyDownEvent,
 	SingletonAction,
 	TouchTapEvent,
@@ -167,7 +169,7 @@ export class EnemyBuilds extends SingletonAction<EnemyBuildsSettings> {
 	}
 
 	private async updateForEnemy(
-		action: InstanceType<typeof SingletonAction>["actions"][number],
+		action: DialAction<EnemyBuildsSettings> | KeyAction<EnemyBuildsSettings>,
 		enemy: GamePlayer,
 		index: number,
 		totalEnemies: number,

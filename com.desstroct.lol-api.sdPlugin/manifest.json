@@ -1,6 +1,6 @@
 {
 	"Name": "LoL Companion",
-	"Version": "1.1.0.0",
+	"Version": "1.2.0.0",
 	"Author": "Desstroct",
 	"Actions": [
 		{
@@ -136,76 +136,26 @@
 			]
 		},
 		{
-			"Name": "Counterpick",
-			"UUID": "com.desstroct.lol-api.counterpick",
+			"Name": "Smart Pick",
+			"UUID": "com.desstroct.lol-api.smart-pick",
 			"Icon": "imgs/actions/counterpick/icon",
-			"Tooltip": "Suggests the best counter picks for your lane opponent. Dial: rotate to scroll through counters.",
-			"PropertyInspectorPath": "ui/counterpick.html",
+			"Tooltip": "Suggests counter picks or best overall picks. Press to toggle mode. Dial: rotate to scroll picks, press to toggle counter/best mode.",
+			"PropertyInspectorPath": "ui/smart-pick.html",
 			"Controllers": [
 				"Keypad",
 				"Encoder"
 			],
 			"Encoder": {
-				"layout": "layouts/counterpick.json",
+				"layout": "layouts/smart-pick.json",
 				"TriggerDescription": {
-					"Rotate": "Scroll counters",
-					"Push": "Refresh",
+					"Rotate": "Scroll picks",
+					"Push": "Toggle mode",
 					"Touch": "Refresh"
 				}
 			},
 			"States": [
 				{
 					"Image": "imgs/actions/counterpick/key",
-					"TitleAlignment": "middle"
-				}
-			]
-		},
-		{
-			"Name": "Best Pick",
-			"UUID": "com.desstroct.lol-api.best-pick",
-			"Icon": "imgs/actions/best-pick/icon",
-			"Tooltip": "Suggests the best overall champion considering enemies and ally synergy. Dial: rotate to scroll picks.",
-			"PropertyInspectorPath": "ui/best-pick.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "layouts/best-pick.json",
-				"TriggerDescription": {
-					"Rotate": "Scroll picks",
-					"Push": "Refresh",
-					"Touch": "Refresh"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/best-pick/key",
-					"TitleAlignment": "middle"
-				}
-			]
-		},
-		{
-			"Name": "Team Comp",
-			"UUID": "com.desstroct.lol-api.team-comp",
-			"Icon": "imgs/actions/team-comp/icon",
-			"Tooltip": "Analyzes team composition during champion select. Shows damage distribution, role balance, strengths and weaknesses.",
-			"PropertyInspectorPath": "ui/team-comp.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "layouts/team-comp.json",
-				"TriggerDescription": {
-					"Rotate": "Ally/Enemy",
-					"Push": "Refresh",
-					"Touch": "Refresh"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/team-comp/key",
 					"TitleAlignment": "middle"
 				}
 			]
@@ -326,31 +276,7 @@
 				}
 			]
 		},
-		{
-			"Name": "Power Spike",
-			"UUID": "com.desstroct.lol-api.power-spike",
-			"Icon": "imgs/actions/power-spike/icon",
-			"Tooltip": "Alerts when enemies hit level 6/11/16 or complete major items. Dial: rotate to scroll through recent spike events.",
-			"PropertyInspectorPath": "ui/power-spike.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "layouts/power-spike.json",
-				"TriggerDescription": {
-					"Rotate": "Scroll events",
-					"Push": "Refresh",
-					"Touch": "Refresh"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/power-spike/key",
-					"TitleAlignment": "middle"
-				}
-			]
-		},
+		
 		{
 			"Name": "Death Timer",
 			"UUID": "com.desstroct.lol-api.death-timer",
