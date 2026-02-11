@@ -194,7 +194,12 @@ export class BestPick extends SingletonAction<BestPickSettings> {
 		}
 
 		const session = await lcuApi.getChampSelectSession();
-		if (!session) return;
+		if (!session) {
+			logger.debug("No champ select session available");
+			return;
+		}
+
+		logger.debug(`ChampSelect session: myTeam=${session.myTeam.length}, theirTeam=${session.theirTeam.length}`);
 
 		for (const a of this.actions) {
 			const settings = (await a.getSettings()) as BestPickSettings;

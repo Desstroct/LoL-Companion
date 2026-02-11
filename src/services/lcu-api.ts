@@ -284,7 +284,11 @@ export class LcuApi {
 						try {
 							if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300 && data.length > 0) {
 								resolve(JSON.parse(data) as T);
+							} else if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+								// Success but no body (e.g. PATCH returns empty on success)
+								resolve(null);
 							} else {
+								logger.warn(`LCU ${method} ${endpoint} returned ${res.statusCode}: ${data.slice(0, 200)}`);
 								resolve(null);
 							}
 						} catch {
@@ -294,7 +298,10 @@ export class LcuApi {
 				},
 			);
 
-			req.on("error", () => resolve(null));
+			req.on("error", (e) => {
+				logger.warn(`LCU ${method} ${endpoint} error: ${e.message}`);
+				resolve(null);
+			});
 			req.setTimeout(3000, () => { req.destroy(); resolve(null); });
 			req.write(postData);
 			req.end();

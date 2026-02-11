@@ -186,7 +186,12 @@ export class Counterpick extends SingletonAction<CounterpickSettings> {
 		}
 
 		const session = await lcuApi.getChampSelectSession();
-		if (!session) return;
+		if (!session) {
+			logger.debug("No champ select session available");
+			return;
+		}
+
+		logger.debug(`ChampSelect session: myTeam=${session.myTeam.length}, theirTeam=${session.theirTeam.length}, localCell=${session.localPlayerCellId}`);
 
 		for (const a of this.actions) {
 			const settings = (await a.getSettings()) as CounterpickSettings;
@@ -198,13 +203,18 @@ export class Counterpick extends SingletonAction<CounterpickSettings> {
 				(p) => p.assignedPosition === role && p.championId > 0,
 			);
 			if (!enemy) {
-				// Fallback: pick the first enemy with a champion (blind pick / unassigned)
+				// Fallback 1: pick enemy with empty/unassigned position (blind pick)
 				enemy = session.theirTeam.find(
 					(p) => p.championId > 0 && (!p.assignedPosition || p.assignedPosition === ""),
 				);
 			}
+			if (!enemy) {
+				// Fallback 2: just pick any enemy with a champion (they may not have positions yet)
+				enemy = session.theirTeam.find((p) => p.championId > 0);
+			}
 
 			if (!enemy) {
+				logger.debug(`No enemy found for role=${role}. TheirTeam: ${JSON.stringify(session.theirTeam.map(p => ({ pos: p.assignedPosition, champId: p.championId })))}`);
 				if (a.isDial()) {
 					await a.setFeedback({ title: `Counter · ${role.toUpperCase()}`, pick_name: "No enemy yet", pick_info: "", champ_icon: "", wr_bar: { value: 0 } });
 				} else {

@@ -175,6 +175,12 @@ export class BestItem extends SingletonAction {
 		const champName = me.championName;
 		const lane = gameMode.isARAM() ? "aram" : ItemBuilds.toLolalyticsLane(me.position);
 
+		// Guard: if champion name isn't available yet (loading screen), skip
+		if (!champName || champName === "") {
+			logger.debug("Champion name not available yet, skipping build fetch");
+			return;
+		}
+
 		for (const a of this.actions) {
 			const state = this.getState(a.id);
 

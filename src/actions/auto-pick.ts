@@ -122,6 +122,13 @@ export class AutoPick extends SingletonAction<AutoPickSettings> {
 		const allActions = session.actions.flat();
 		const myActions = allActions.filter((act) => act.actorCellId === localCell);
 
+		// Debug: log what actions we have
+		const banActions = myActions.filter((act) => act.type === "ban");
+		const pickActions = myActions.filter((act) => act.type === "pick");
+		if (banActions.length > 0 || pickActions.length > 0) {
+			logger.debug(`My actions: bans=${JSON.stringify(banActions.map(a => ({ id: a.id, inProgress: a.isInProgress, completed: a.completed })))}, picks=${JSON.stringify(pickActions.map(a => ({ id: a.id, inProgress: a.isInProgress, completed: a.completed })))}`);
+		}
+
 		for (const a of this.actions) {
 			const settings = (await a.getSettings()) as AutoPickSettings;
 
@@ -139,8 +146,12 @@ export class AutoPick extends SingletonAction<AutoPickSettings> {
 						this.hasBanned = true;
 
 						await a.setTitle(`Banned!\n${settings.banChampion}`);
+					} else {
+						logger.warn(`Could not resolve ban champion: ${settings.banChampion}`);
 					}
 				}
+			} else if (!this.hasBanned && !settings.banChampion) {
+				// No ban champion configured
 			}
 
 			// ── Auto-pick ──
@@ -224,16 +235,18 @@ export class AutoPick extends SingletonAction<AutoPickSettings> {
 	private async performAction(actionId: number, championId: number, complete: boolean): Promise<void> {
 		try {
 			// Step 1: Hover the champion
-			await lcuApi.patch(`/lol-champ-select/v1/session/actions/${actionId}`, {
+			const hoverResult = await lcuApi.patch(`/lol-champ-select/v1/session/actions/${actionId}`, {
 				championId,
 			});
+			logger.debug(`Hover result for action ${actionId}: ${hoverResult !== null ? "success" : "failed"}`);
 
 			// Step 2: Lock-in if requested (small delay to let the client register the hover)
 			if (complete) {
 				await new Promise((r) => setTimeout(r, 300));
-				await lcuApi.patch(`/lol-champ-select/v1/session/actions/${actionId}`, {
+				const lockResult = await lcuApi.patch(`/lol-champ-select/v1/session/actions/${actionId}`, {
 					completed: true,
 				});
+				logger.debug(`Lock result for action ${actionId}: ${lockResult !== null ? "success" : "failed"}`);
 			}
 		} catch (e) {
 			logger.error(`performAction error: ${e}`);

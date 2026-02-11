@@ -236,7 +236,7 @@ export class ChampionStats {
 		const patchParts = ddVersion.split(".");
 		const patch = `${patchParts[0]}.${patchParts[1]}`;
 
-		const url = `${LOLALYTICS_API}/mega/?ep=counter&p=d&v=1&patch=${patch}&c=${championAlias}&lane=${lane}&tier=emerald_plus&queue=420&region=all`;
+		const url = `${LOLALYTICS_API}/mega/?ep=counter&p=d&v=1&patch=${patch}&c=${championAlias}&lane=${lane}&tier=emerald_plus&queue=ranked&region=all`;
 		const maxRetries = 2;
 
 		for (let attempt = 0; attempt <= maxRetries; attempt++) {
