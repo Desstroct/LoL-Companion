@@ -298,7 +298,6 @@ export class BestItem extends SingletonAction {
 
 			const costText = `${formatGold(itemCost)}g | ${formatGold(playerGold)}g`;
 
-			// ── Update display ──
 			if (a.isDial()) {
 				await a.setFeedback({
 					item_icon: itemIcon ?? "",

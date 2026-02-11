@@ -81,7 +81,6 @@ process.on("unhandledRejection", (reason) => {
 	try { logger.error(`Unhandled rejection: ${reason}`); } catch { /* swallow */ }
 });
 
-// Initialize services
 async function init() {
 	logger.info("LoL Companion plugin starting...");
 

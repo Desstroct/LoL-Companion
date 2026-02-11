@@ -47,7 +47,6 @@ export class AutoAccept extends SingletonAction<AutoAcceptSettings> {
 	}
 
 	override async onKeyDown(ev: KeyDownEvent<AutoAcceptSettings>): Promise<void> {
-		// Toggle
 		this.enabled = !this.enabled;
 		await ev.action.setSettings({ enabled: this.enabled });
 		logger.info(`Auto-accept ${this.enabled ? "enabled" : "disabled"}`);
@@ -77,7 +76,6 @@ export class AutoAccept extends SingletonAction<AutoAcceptSettings> {
 
 		const phase = await lcuApi.getGameflowPhase();
 
-		// Phase changed
 		if (phase !== this.lastPhase) {
 			// Reset accept flag when leaving ReadyCheck
 			if (this.lastPhase === "ReadyCheck" && phase !== "ReadyCheck") {
@@ -87,7 +85,6 @@ export class AutoAccept extends SingletonAction<AutoAcceptSettings> {
 			await this.renderAll();
 		}
 
-		// Auto-accept logic
 		if (this.enabled && phase === "ReadyCheck" && !this.hasAcceptedCurrent) {
 			logger.info("Ready check detected! Auto-accepting...");
 			const ok = await lcuApi.post("/lol-matchmaking/v1/ready-check/accept");
