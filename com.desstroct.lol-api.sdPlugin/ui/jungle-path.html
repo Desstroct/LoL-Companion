@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Jungle Path Settings</title>
+    <script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
+</head>
+<body>
+    <sdpi-item label="Map Side">
+        <sdpi-select setting="side">
+            <option value="auto">Auto-detect</option>
+            <option value="blue">Blue Side (bottom)</option>
+            <option value="red">Red Side (top)</option>
+        </sdpi-select>
+    </sdpi-item>
+    <sdpi-item label="Info">
+        <details>
+            <summary>How it works</summary>
+            <p style="font-size: 11px; color: #999; padding: 8px;">
+                Shows the recommended jungle clear path based on your champion and map side.
+                Automatically detects your champion during Champ Select (if assigned Jungle)
+                or in-game (if you have Smite).
+                <br/><br/>
+                <strong>Key:</strong> Press to cycle between recommended path variants.<br/>
+                <strong>Dial:</strong> Rotate to scroll camp-by-camp through the path.
+                Press to switch between path variants. Touch to refresh.
+                <br/><br/>
+                Camp positions are adjusted based on your side of the map:
+                <br/>• Blue Side: Blue buff = Bot, Red buff = Top
+                <br/>• Red Side: Blue buff = Top, Red buff = Bot
+                <br/><br/>
+                Supports 60+ junglers with tailored paths (power farmer, ganker, invader).
+                Unknown champions will get default flexible paths.
+            </p>
+        </details>
+    </sdpi-item>
+</body>
+</html>

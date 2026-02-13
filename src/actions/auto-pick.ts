@@ -116,6 +116,15 @@ export class AutoPick extends SingletonAction<AutoPickSettings> {
 		const session = await lcuApi.getChampSelectSession();
 		if (!session) return;
 
+		// ── Guard: don't act during PLANNING phase (intent hover before bans) ──
+		// Actions may appear as isInProgress during PLANNING but the LCU rejects
+		// actual pick/ban completions. Only proceed during BAN_PICK or FINALIZATION.
+		const timerPhase = session.timer?.phase;
+		if (timerPhase === "PLANNING") {
+			logger.debug("Still in PLANNING phase — skipping auto-pick/ban");
+			return;
+		}
+
 		const localCell = session.localPlayerCellId;
 
 		// Find our pending actions (ban or pick)

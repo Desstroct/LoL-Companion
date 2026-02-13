@@ -197,6 +197,28 @@ export async function getGrubsIcon(): Promise<string | null> {
 	return fetchIcon("grubs", GRUBS_ICON_URL);
 }
 
+// ────────────────── Jungle camp icons ──────────────────
+
+/** Community Dragon URLs for jungle camp minimap icons */
+const CAMP_ICON_URLS: Record<string, string> = {
+	blue: `${CD_ICONS}/blue.png`,
+	red: `${CD_ICONS}/red.png`,
+	gromp: `${CD_ICONS}/gromp.png`,
+	wolves: `${CD_ICONS}/wolf.png`,
+	raptors: `${CD_ICONS}/razorbeak.png`,
+	krugs: `${CD_ICONS}/krug.png`,
+	scuttle: `${CD_ICONS}/crab.png`,
+};
+
+/**
+ * Get a jungle camp icon by camp name (blue, red, gromp, wolves, raptors, krugs, scuttle).
+ */
+export async function getCampIcon(camp: string): Promise<string | null> {
+	const url = CAMP_ICON_URLS[camp];
+	if (!url) return null;
+	return fetchIcon(`camp:${camp}`, url);
+}
+
 // ────────────────── Profile icons ──────────────────
 
 /**

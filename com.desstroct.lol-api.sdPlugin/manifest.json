@@ -71,6 +71,31 @@
 			]
 		},
 		{
+			"Name": "Jungle Path",
+			"UUID": "com.desstroct.lol-api.jungle-path",
+			"Icon": "imgs/actions/jungle-path/icon",
+			"Tooltip": "Shows the recommended jungle clear path based on your champion and map side. Dial: rotate to scroll camps, press to switch path variant.",
+			"PropertyInspectorPath": "ui/jungle-path.html",
+			"Controllers": [
+				"Keypad",
+				"Encoder"
+			],
+			"Encoder": {
+				"layout": "layouts/jungle-path.json",
+				"TriggerDescription": {
+					"Rotate": "Scroll camps",
+					"Push": "Switch path",
+					"Touch": "Refresh"
+				}
+			},
+			"States": [
+				{
+					"Image": "imgs/actions/jungle-path/key",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
 			"Name": "Jungle Timer",
 			"UUID": "com.desstroct.lol-api.jungle-timer",
 			"Icon": "imgs/actions/jungle-timer/icon",

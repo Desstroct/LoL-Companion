@@ -200,6 +200,9 @@ function getAssetUrls(ddVersion) {
     // Enemy Builds → Guardian Angel (seeing enemy defensive itemization)
     'enemy-builds': `${DD}/img/item/3026.png`,
 
+    // Jungle Path → Stalker's Blade / Jungle item (pathing through the jungle)
+    'jungle-path': `${DD}/img/item/3113.png`,
+
     // Team Comp → Banner of Command (team coordination symbol)
     'team-comp': `${DD}/img/spell/SummonerBarrier.png`,
 
