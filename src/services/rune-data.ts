@@ -1,11 +1,20 @@
 import streamDeck from "@elgato/streamdeck";
+import { dataDragon } from "./data-dragon";
+import { throttledFetch } from "./lolalytics-throttle";
 
 const logger = streamDeck.logger.createScope("RuneData");
 
-const LOLALYTICS_BASE = "https://lolalytics.com";
-const FETCH_HEADERS = {
-	"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-};
+/**
+ * Lolalytics JSON API — `rune` endpoint.
+ *
+ * Returns structured rune data at:
+ *   summary.runes.pick  → most common rune page (wr, n, page{pri,sec}, set{pri[4],sec[2],mod[3]})
+ *   summary.runes.win   → highest win-rate rune page (same shape)
+ *
+ * Tree index → Riot style ID mapping:
+ *   0=Precision(8000), 1=Domination(8100), 2=Sorcery(8200), 3=Resolve(8400), 4=Inspiration(8300)
+ */
+const LOLALYTICS_API = "https://a1.lolalytics.com";
 
 /**
  * Lolalytics tree index → Riot tree style ID.
@@ -57,8 +66,9 @@ export interface RunePageData {
 }
 
 /**
- * Fetches recommended rune pages from Lolalytics build pages.
- * Parses the Qwik SSR-serialized state to extract rune configurations.
+ * Fetches recommended rune pages from Lolalytics JSON API.
+ * Uses the `rune` endpoint which returns structured data directly,
+ * avoiding fragile Qwik SSR HTML parsing.
  */
 export class RuneData {
 	private cache: Map<string, { data: RunePageData[]; timestamp: number }> = new Map();
@@ -66,7 +76,7 @@ export class RuneData {
 
 	/**
 	 * Get recommended rune pages for a champion + lane.
-	 * Returns up to 2 pages: highest win rate and most common.
+	 * Returns up to 2 pages: most common and highest win rate.
 	 */
 	async getRecommendedRunes(championAlias: string, lane: string): Promise<RunePageData[]> {
 		const key = `${championAlias}:${lane}`;
@@ -78,22 +88,31 @@ export class RuneData {
 			this.cache.delete(key);
 		}
 
-		try {
-			// ARAM uses a different URL path: /lol/{champ}/aram/build/
-			const url =
-				lane === "aram"
-					? `${LOLALYTICS_BASE}/lol/${championAlias}/aram/build/`
-					: `${LOLALYTICS_BASE}/lol/${championAlias}/build/?lane=${lane}`;
-			logger.debug(`Fetching runes: ${url}`);
+		const ddVersion = dataDragon.getVersion();
+		const patchParts = ddVersion.split(".");
+		const patch = `${patchParts[0]}.${patchParts[1]}`;
 
-			const response = await fetch(url, { headers: FETCH_HEADERS, signal: AbortSignal.timeout(10_000) });
+		const queueParam = lane === "aram" ? "&queue=450" : "&queue=ranked";
+		const apiLane = lane === "aram" ? "default" : lane;
+		const url = `${LOLALYTICS_API}/mega/?ep=rune&v=1&patch=${patch}&c=${championAlias}&lane=${apiLane}&tier=emerald_plus${queueParam}&region=all`;
+
+		try {
+			logger.debug(`Fetching runes (API): ${url}`);
+
+			const response = await throttledFetch(url, { signal: AbortSignal.timeout(10_000) });
 			if (!response.ok) {
-				logger.warn(`Lolalytics returned ${response.status} for rune data`);
+				logger.warn(`Lolalytics API returned ${response.status} for rune data`);
 				return cached?.data ?? [];
 			}
 
-			const html = await response.text();
-			const data = this.parseQwikRunes(html);
+			const json = (await response.json()) as RuneApiResponse;
+
+			if (!json?.summary?.runes) {
+				logger.warn(`Invalid rune API response for ${championAlias} ${lane}`);
+				return cached?.data ?? [];
+			}
+
+			const data = this.parseApiRunes(json.summary.runes);
 
 			if (data.length > 0) {
 				logger.info(
@@ -112,155 +131,60 @@ export class RuneData {
 		}
 	}
 
+	// ─────────── API response parsing ───────────
+
 	/**
-	 * Parse the Qwik SSR state embedded in the Lolalytics build page HTML.
+	 * Parse rune pages from the `rune` API response.
 	 */
-	private parseQwikRunes(html: string): RunePageData[] {
-		// Extract the Qwik serialized JSON block
-		const qwikMatch = html.match(/<script\s+type="qwik\/json">([\s\S]*?)<\/script>/);
-		if (!qwikMatch) {
-			logger.warn("No Qwik JSON state found in HTML");
-			return [];
-		}
-
-		let qData: { objs: unknown[] };
-		try {
-			qData = JSON.parse(qwikMatch[1]) as { objs: unknown[] };
-		} catch {
-			logger.warn("Failed to parse Qwik JSON");
-			return [];
-		}
-
-		const objs = qData.objs;
-		if (!Array.isArray(objs)) return [];
-
-		// Base-36 reference resolver
-		const r = (ref: unknown): unknown => {
-			if (typeof ref !== "string") return ref;
-			const idx = parseInt(ref, 36);
-			if (!isNaN(idx) && idx >= 0 && idx < objs.length) return objs[idx];
-			return ref;
-		};
-
-		// Deep-resolve references up to a given depth
-		const deepResolve = (ref: unknown, depth = 0): unknown => {
-			if (depth > 6) return ref;
-			const val = r(ref);
-			if (typeof val === "object" && val !== null && !Array.isArray(val)) {
-				const result: Record<string, unknown> = {};
-				for (const [k, v] of Object.entries(val as Record<string, unknown>)) {
-					result[k] = deepResolve(v, depth + 1);
-				}
-				return result;
-			}
-			if (Array.isArray(val)) {
-				return val.map((v) => deepResolve(v, depth + 1));
-			}
-			return val;
-		};
-
-		// Discover build objects containing rune data
-		const buildIndices = this.findRuneObjects(objs, r);
+	private parseApiRunes(runes: { pick?: RuneApiEntry; win?: RuneApiEntry }): RunePageData[] {
 		const results: RunePageData[] = [];
 
-		for (const { index, label } of buildIndices) {
-			try {
-				const obj = objs[index] as Record<string, unknown>;
-				const runesResolved = deepResolve(obj.runes, 0) as Record<string, unknown> | null;
+		if (runes.pick) {
+			const page = this.convertApiEntry(runes.pick, "most_common");
+			if (page) results.push(page);
+		}
 
-				if (!runesResolved?.set || !runesResolved?.page) continue;
-
-				const set = runesResolved.set as { pri: number[]; sec: number[]; mod: number[] };
-				const page = runesResolved.page as { pri: number; sec: number };
-				const wr = typeof runesResolved.wr === "number" ? runesResolved.wr : 0;
-				const n = typeof runesResolved.n === "number" ? runesResolved.n : 0;
-
-				// Validate arrays
-				if (
-					!Array.isArray(set.pri) ||
-					!Array.isArray(set.sec) ||
-					!Array.isArray(set.mod) ||
-					set.pri.length !== 4 ||
-					set.sec.length !== 2 ||
-					set.mod.length !== 3
-				) {
-					continue;
-				}
-
-				// Map tree indices to Riot style IDs
-				const primaryStyleId = TREE_STYLE_IDS[page.pri] ?? this.treeFromKeystoneId(set.pri[0]);
-				const subStyleId = TREE_STYLE_IDS[page.sec] ?? this.treeFromRuneId(set.sec[0]);
-
-				if (!primaryStyleId || !subStyleId) continue;
-
-				const selectedPerkIds = [...set.pri, ...set.sec, ...set.mod];
-				const keystoneName = KEYSTONE_NAMES[set.pri[0]] ?? `Keystone ${set.pri[0]}`;
-
-				results.push({
-					primaryStyleId,
-					subStyleId,
-					selectedPerkIds,
-					winRate: wr,
-					games: n,
-					source: label,
-					keystoneName,
-				});
-			} catch (e) {
-				logger.debug(`Skipped rune object at ${index}: ${e}`);
-			}
+		if (runes.win) {
+			const page = this.convertApiEntry(runes.win, "highest_wr");
+			if (page) results.push(page);
 		}
 
 		return results;
 	}
-
-	/** Expected keys on a per-build Qwik object (order-independent). */
-	private static readonly BUILD_OBJECT_KEYS = new Set(["skillpriority", "skillorder", "sums", "runes", "items"]);
 
 	/**
-	 * Scan the Qwik state for build objects that contain rune data.
-	 *
-	 * Build objects are identified by their key signature rather than
-	 * hardcoded array indices, making this resilient to Qwik re-serialization
-	 * across Lolalytics deployments.
+	 * Convert a single API rune entry into our RunePageData format.
 	 */
-	private findRuneObjects(
-		objs: unknown[],
-		r: (ref: unknown) => unknown,
-	): { index: number; label: "highest_wr" | "most_common" }[] {
-		const hits: { index: number; n: number }[] = [];
+	private convertApiEntry(entry: RuneApiEntry, source: "most_common" | "highest_wr"): RunePageData | null {
+		const { set, page, wr, n } = entry;
 
-		for (let i = 0; i < objs.length; i++) {
-			const obj = objs[i];
-			if (typeof obj !== "object" || obj === null) continue;
-
-			const keys = Object.keys(obj);
-			// Must have ALL expected build-object keys
-			if (keys.length < RuneData.BUILD_OBJECT_KEYS.size) continue;
-			if (!keys.every((k) => RuneData.BUILD_OBJECT_KEYS.has(k))) continue;
-
-			// Quick-validate the runes sub-object
-			const runesVal = r((obj as Record<string, unknown>).runes);
-			if (typeof runesVal !== "object" || runesVal === null) continue;
-			const rv = runesVal as Record<string, unknown>;
-			if (!("set" in rv && "page" in rv && "wr" in rv)) continue;
-
-			const n = typeof rv.n === "number" ? rv.n : 0;
-			hits.push({ index: i, n });
-			if (hits.length >= 4) break; // safety cap
+		if (
+			!set?.pri || !set?.sec || !set?.mod || !page ||
+			set.pri.length !== 4 || set.sec.length !== 2 || set.mod.length !== 3
+		) {
+			return null;
 		}
 
-		if (hits.length === 0) return [];
+		const primaryStyleId = TREE_STYLE_IDS[page.pri] ?? this.treeFromKeystoneId(set.pri[0]);
+		const subStyleId = TREE_STYLE_IDS[page.sec] ?? this.treeFromRuneId(set.sec[0]);
 
-		// Sort by sample size descending — largest n = most common
-		hits.sort((a, b) => b.n - a.n);
+		if (!primaryStyleId || !subStyleId) return null;
 
-		const results: { index: number; label: "highest_wr" | "most_common" }[] = [];
-		results.push({ index: hits[0].index, label: "most_common" });
-		if (hits.length > 1) {
-			results.push({ index: hits[1].index, label: "highest_wr" });
-		}
-		return results;
+		const selectedPerkIds = [...set.pri, ...set.sec, ...set.mod];
+		const keystoneName = KEYSTONE_NAMES[set.pri[0]] ?? `Keystone ${set.pri[0]}`;
+
+		return {
+			primaryStyleId,
+			subStyleId,
+			selectedPerkIds,
+			winRate: wr ?? 0,
+			games: n ?? 0,
+			source,
+			keystoneName,
+		};
 	}
+
+	// ─────────── Tree ID helpers ───────────
 
 	/**
 	 * Derive tree style ID from a keystone ID.
@@ -268,8 +192,7 @@ export class RuneData {
 	 */
 	private treeFromKeystoneId(id: number): number {
 		if (id >= 8000 && id < 8500) return Math.floor(id / 100) * 100;
-		// Hail of Blades special case
-		if (id === 9923) return 8100;
+		if (id === 9923) return 8100; // Hail of Blades
 		return 8000;
 	}
 
@@ -282,10 +205,28 @@ export class RuneData {
 		if (id >= 8200 && id < 8300) return 8200; // Sorcery
 		if (id >= 8100 && id < 8200) return 8100; // Domination
 		if (id >= 8000 && id < 8100) return 8000; // Precision
-		// 9xxx runes are Precision
 		if (id >= 9100 && id < 9200) return 8000;
 		return 8000;
 	}
+}
+
+// ─────────── API response types ───────────
+
+interface RuneApiEntry {
+	wr: number;
+	n: number;
+	page: { pri: number; sec: number };
+	set: { pri: number[]; sec: number[]; mod: number[] };
+}
+
+interface RuneApiResponse {
+	summary?: {
+		runes?: {
+			pick?: RuneApiEntry;
+			win?: RuneApiEntry;
+		};
+	};
+	response?: { valid?: boolean };
 }
 
 /** Singleton instance */

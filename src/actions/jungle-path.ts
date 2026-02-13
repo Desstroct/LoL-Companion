@@ -30,17 +30,6 @@ const CAMP_LABEL: Record<Camp, string> = {
 	scuttle: "Scuttle",
 	gank: "Gank",
 };
-const CAMP_EMOJI: Record<Camp, string> = {
-	blue: "🔵",
-	gromp: "🐸",
-	wolves: "🐺",
-	raptors: "🐦",
-	red: "🔴",
-	krugs: "🪨",
-	scuttle: "🦀",
-	gank: "⚔️",
-};
-
 // ──────────── Path definitions ────────────
 interface JunglePathRoute {
 	name: string;
@@ -222,7 +211,6 @@ type JunglePathSettings = {
 export class JunglePath extends SingletonAction<JunglePathSettings> {
 	private pollInterval: ReturnType<typeof setInterval> | null = null;
 	private dialStates = new Map<string, { pathIndex: number; stepIndex: number }>();
-	private lastHash = "";
 
 	// Cached state
 	private currentChampAlias = "";
@@ -236,24 +224,31 @@ export class JunglePath extends SingletonAction<JunglePathSettings> {
 
 	// ─────────── Lifecycle ───────────
 
-	override onWillAppear(ev: WillAppearEvent<JunglePathSettings>): void | Promise<void> {
+	override async onWillAppear(ev: WillAppearEvent<JunglePathSettings>): Promise<void> {
+		// Always reset interval on appear (handles SD restart cleanly)
+		this.stopPolling();
 		this.startPolling();
+
 		if (ev.action.isDial()) {
 			this.getDialState(ev.action.id);
-			return ev.action.setFeedback({
+			await ev.action.setFeedback({
 				champ_icon: "",
 				title: "Jungle Path",
 				path_name: "Waiting...",
-				path_detail: "",
+				camp_route: "",
 				step_bar: { value: 0 },
 			});
+		} else {
+			await ev.action.setTitle("JGL Path\nWaiting...");
 		}
-		return ev.action.setTitle("JGL Path\nWaiting...");
 	}
 
 	override onWillDisappear(ev: WillDisappearEvent<JunglePathSettings>): void | Promise<void> {
 		this.dialStates.delete(ev.action.id);
-		if (this.actions.length === 0) this.stopPolling();
+		if (this.actions.length === 0) {
+			this.stopPolling();
+			this.resetState();
+		}
 	}
 
 	override async onKeyDown(ev: KeyDownEvent<JunglePathSettings>): Promise<void> {
@@ -287,7 +282,6 @@ export class JunglePath extends SingletonAction<JunglePathSettings> {
 	}
 
 	override async onTouchTap(_ev: TouchTapEvent<JunglePathSettings>): Promise<void> {
-		this.lastHash = "";
 		await this.updateAll();
 	}
 
@@ -307,6 +301,8 @@ export class JunglePath extends SingletonAction<JunglePathSettings> {
 			clearInterval(this.pollInterval);
 			this.pollInterval = null;
 		}
+		// Clear stale dial states on stop so restart is clean
+		this.dialStates.clear();
 	}
 
 	private getDialState(actionId: string): { pathIndex: number; stepIndex: number } {
@@ -331,21 +327,25 @@ export class JunglePath extends SingletonAction<JunglePathSettings> {
 		for (const a of this.actions) {
 			const settings = (await a.getSettings()) as JunglePathSettings;
 			const ds = this.getDialState(a.id);
+
+			// Clamp indices if paths changed
+			if (this.currentPaths.length > 0) {
+				ds.pathIndex = ds.pathIndex % this.currentPaths.length;
+			}
 			const path = this.currentPaths[ds.pathIndex];
 
 			if (!this.currentChampAlias || this.currentPaths.length === 0) {
-				// No data yet
 				if (a.isDial()) {
 					await a.setFeedback({
 						champ_icon: "",
 						title: "Jungle Path",
-						path_name: !lcuConnector.isConnected() ? "Offline" : "Not in JGL",
-						path_detail: "",
+						path_name: !lcuConnector.isConnected() ? "Offline" : "Pick a JGL champ",
+						camp_route: "",
 						step_bar: { value: 0 },
 					});
 				} else {
 					await a.setImage("");
-					await a.setTitle("JGL Path\n" + (!lcuConnector.isConnected() ? "Offline" : "Not JGL"));
+					await a.setTitle(!lcuConnector.isConnected() ? "JGL Path\nOffline" : "JGL Path\nPick JGL");
 				}
 				continue;
 			}
@@ -353,63 +353,89 @@ export class JunglePath extends SingletonAction<JunglePathSettings> {
 			const side = settings.side && settings.side !== "auto" ? settings.side : this.currentSide;
 
 			if (a.isDial() && path) {
-				const camp = path.camps[ds.stepIndex];
-				const campLabel = campContext(camp, side);
-				const stepNum = ds.stepIndex + 1;
-				const totalSteps = path.camps.length;
-				const progress = Math.round((stepNum / totalSteps) * 100);
-
-				// Get camp icon for the current step (fall back to champion icon)
-				const campIcon = camp !== "gank" ? await getCampIcon(camp) : null;
-				const champIcon = await this.getChampIcon();
-				const displayIcon = campIcon ?? champIcon;
-
-				// Build mini-route with arrows — highlight current step
-				const routeVisual = path.camps.map((c, i) => {
-					const label = CAMP_EMOJI[c];
-					return i === ds.stepIndex ? `[${label}]` : label;
-				}).join("→");
-
-				const sideTag = side === "blue" ? "🔷" : "🔶";
-				const enemyTag = this.enemyJunglerName ? ` vs ${this.enemyJunglerName}` : "";
-				const barColor = this.getBarColor(camp);
-
-				await a.setFeedback({
-					champ_icon: displayIcon ?? "",
-					title: `${sideTag} ${this.currentChampName}${enemyTag} · ${path.shortName}`,
-					path_name: `${stepNum}/${totalSteps} ${CAMP_EMOJI[camp]} ${campLabel}`,
-					path_detail: this.currentTip || routeVisual,
-					step_bar: { value: progress, bar_fill_c: barColor },
-				});
+				await this.renderDial(a, ds, path, side);
 			} else if (path) {
-				// Key mode — show camp icon for current step on the key
-				const ds2 = this.getDialState(a.id);
-				const camp = path.camps[ds2.stepIndex];
-				const campIcon = camp !== "gank" ? await getCampIcon(camp) : null;
-				const champIcon = await this.getChampIcon();
-
-				if (campIcon) {
-					await a.setImage(campIcon);
-				} else if (champIcon) {
-					await a.setImage(champIcon);
-				}
-
-				const sideChar = side === "blue" ? "B" : "R";
-				const stepNum = ds2.stepIndex + 1;
-				const totalSteps = path.camps.length;
-				const campLabel = campContext(camp, side);
-				const enemyLine = this.enemyJunglerName ? `vs ${this.enemyJunglerName}` : "";
-
-				// Compact multi-line: ChampName / Step / Path
-				const lines = [
-					this.currentChampName,
-					`${sideChar} ${stepNum}/${totalSteps}: ${campLabel}`,
-				];
-				if (enemyLine) lines.push(enemyLine);
-
-				await a.setTitle(lines.join("\n"));
+				await this.renderKey(a, ds, path, side);
 			}
 		}
+	}
+
+	/** Render the dial/encoder touchscreen */
+	private async renderDial(
+		a: any,
+		ds: { pathIndex: number; stepIndex: number },
+		path: JunglePathRoute,
+		side: "blue" | "red",
+	): Promise<void> {
+		if (!a.isDial()) return;
+
+		const camp = path.camps[ds.stepIndex];
+		const stepNum = ds.stepIndex + 1;
+		const totalSteps = path.camps.length;
+		const progress = Math.round((stepNum / totalSteps) * 100);
+
+		// Icon: camp icon for current step, champion icon as fallback
+		const campIcon = camp !== "gank" ? await getCampIcon(camp) : null;
+		const champIcon = await this.getChampIcon();
+		const displayIcon = campIcon ?? champIcon;
+
+		// Line 1 (title): "Hecarim · Blue Side" or "Hecarim vs Lee Sin"
+		const sideLabel = side === "blue" ? "Blue" : "Red";
+		const enemyPart = this.enemyJunglerName ? ` vs ${this.enemyJunglerName}` : "";
+		const titleLine = `${this.currentChampName}${enemyPart} · ${sideLabel}`;
+
+		// Line 2 (path_name): "▸ 3/7  Red Buff" — clear current step
+		const campName = campContext(camp, side);
+		const pathNameLine = `▸ ${stepNum}/${totalSteps}  ${campName}`;
+
+		// Line 3 (camp_route): compact route with current step highlighted
+		// e.g. "Full Blue:  Blue → Gromp → [Wolves] → Raptors → Red → Krugs → Scuttle"
+		const routeParts = path.camps.map((c, i) => {
+			const label = CAMP_LABEL[c];
+			return i === ds.stepIndex ? `[${label}]` : label;
+		});
+		const routeLine = `${path.shortName}: ${routeParts.join(" → ")}`;
+
+		// Tip override if we have one from enemy analysis
+		const detailLine = this.currentTip || routeLine;
+
+		const barColor = this.getBarColor(camp);
+
+		await a.setFeedback({
+			champ_icon: displayIcon ?? "",
+			title: titleLine,
+			path_name: pathNameLine,
+			camp_route: detailLine,
+			step_bar: { value: progress, bar_fill_c: barColor },
+		});
+	}
+
+	/** Render the key (button) display */
+	private async renderKey(
+		a: any,
+		ds: { pathIndex: number; stepIndex: number },
+		path: JunglePathRoute,
+		side: "blue" | "red",
+	): Promise<void> {
+		const camp = path.camps[ds.stepIndex];
+
+		// Show camp icon on key (visually identifies where to go)
+		const campIcon = camp !== "gank" ? await getCampIcon(camp) : null;
+		const champIcon = await this.getChampIcon();
+		if (campIcon) {
+			await a.setImage(campIcon);
+		} else if (champIcon) {
+			await a.setImage(champIcon);
+		}
+
+		// Simple and readable title:
+		// Line 1: "Full Blue 3/7"
+		// Line 2: "→ Wolves"
+		const stepNum = ds.stepIndex + 1;
+		const totalSteps = path.camps.length;
+		const campName = campContext(camp, side);
+
+		await a.setTitle(`${path.shortName} ${stepNum}/${totalSteps}\n→ ${campName}`);
 	}
 
 	/** Return a contextual bar color based on the camp type */
@@ -430,8 +456,18 @@ export class JunglePath extends SingletonAction<JunglePathSettings> {
 	// ─────────── State detection ───────────
 
 	private async detectState(): Promise<void> {
+		// ── Always try the Live Game Client first (works without LCU) ──
+		// This is critical when SD starts mid-game or LCU hasn't connected yet.
+		const gameData = await gameClient.getAllData();
+		if (gameData?.activePlayer) {
+			await this.detectFromGame();
+			return;
+		}
+
+		// ── Fallback to LCU for champ-select detection ──
 		if (!lcuConnector.isConnected()) {
-			this.resetState();
+			// Neither game client nor LCU available
+			if (!this.currentChampAlias) this.resetState();
 			return;
 		}
 
@@ -444,7 +480,8 @@ export class JunglePath extends SingletonAction<JunglePathSettings> {
 
 		if (phase === "ChampSelect") {
 			await this.detectFromChampSelect();
-		} else if (phase === "InProgress") {
+		} else if (phase === "InProgress" || phase === "GameStart" || phase === "Reconnect") {
+			// In case game client didn't respond above, retry from LCU context
 			await this.detectFromGame();
 		} else {
 			// Keep previous state if we had one (e.g. during loading screen)
@@ -498,6 +535,11 @@ export class JunglePath extends SingletonAction<JunglePathSettings> {
 	}
 
 	private async detectFromGame(): Promise<void> {
+		// Ensure DataDragon is loaded (might have failed at plugin boot)
+		if (!dataDragon.isReady()) {
+			await dataDragon.init();
+		}
+
 		const allData = await gameClient.getAllData();
 		if (!allData) return;
 
@@ -508,18 +550,24 @@ export class JunglePath extends SingletonAction<JunglePathSettings> {
 		const me = allData.allPlayers?.find(
 			(p) => p.summonerName === activePlayer.summonerName || p.riotIdGameName === activePlayer.summonerName,
 		);
-		if (!me) return;
+		if (!me) {
+			logger.warn("detectFromGame: could not find active player in allPlayers list");
+			return;
+		}
 
-		// Check if the player has Smite (a jungle indicator)
-		const hasSmite =
-			me.summonerSpells?.summonerSpellOne?.displayName === "Smite" ||
-			me.summonerSpells?.summonerSpellTwo?.displayName === "Smite";
+		// Check if the player has Smite or is assigned Jungle position
+		const spell1 = (me.summonerSpells?.summonerSpellOne?.displayName ?? "").toLowerCase();
+		const spell2 = (me.summonerSpells?.summonerSpellTwo?.displayName ?? "").toLowerCase();
+		const hasSmite = spell1.includes("smite") || spell2.includes("smite");
+		const isJungle = hasSmite || (me.position ?? "").toUpperCase() === "JUNGLE";
 
-		if (!hasSmite) {
+		if (!isJungle) {
 			// Keep state if already set from champ select
 			if (!this.currentChampAlias) this.resetState();
 			return;
 		}
+
+		logger.info(`detectFromGame: JGL detected — ${me.championName}, team=${me.team}`);
 
 		const champName = me.championName;
 		if (champName) {
@@ -539,11 +587,11 @@ export class JunglePath extends SingletonAction<JunglePathSettings> {
 		// Detect enemy jungler from allPlayers (enemy team with Smite)
 		const myTeam = me.team;
 		const enemies = allData.allPlayers?.filter((p) => p.team !== myTeam) ?? [];
-		const enemyJgl = enemies.find(
-			(p) =>
-				p.summonerSpells?.summonerSpellOne?.displayName === "Smite" ||
-				p.summonerSpells?.summonerSpellTwo?.displayName === "Smite",
-		);
+		const enemyJgl = enemies.find((p) => {
+			const s1 = (p.summonerSpells?.summonerSpellOne?.displayName ?? "").toLowerCase();
+			const s2 = (p.summonerSpells?.summonerSpellTwo?.displayName ?? "").toLowerCase();
+			return s1.includes("smite") || s2.includes("smite") || (p.position ?? "").toUpperCase() === "JUNGLE";
+		});
 		if (enemyJgl?.championName) {
 			this.enemyJunglerName = enemyJgl.championName;
 			const enemyChamp = dataDragon.getChampionByName(enemyJgl.championName);

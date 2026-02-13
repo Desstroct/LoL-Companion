@@ -1,12 +1,20 @@
 import streamDeck from "@elgato/streamdeck";
 import { dataDragon } from "./data-dragon";
+import { throttledFetch } from "./lolalytics-throttle";
 
 const logger = streamDeck.logger.createScope("ItemBuilds");
 
-const LOLALYTICS_BASE = "https://lolalytics.com";
-const FETCH_HEADERS = {
-	"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-};
+/**
+ * Lolalytics JSON API — `build-itemset` endpoint.
+ *
+ * Returns structured item set data:
+ *   itemSet1..5:     arrays of [itemIds, games, wins] without boots
+ *   itemBootSet1..6: arrays of [itemIds, games, wins] with boots included
+ *
+ * Item IDs within an entry are underscore-separated (e.g. "3161_3047_6699").
+ * Entries are NOT pre-sorted — we sort by games played (index 1) or win rate.
+ */
+const LOLALYTICS_API = "https://a1.lolalytics.com";
 
 export interface ItemBuild {
 	/** Starting items (e.g., Doran's Blade + Health Potion) */
@@ -42,11 +50,15 @@ export class ItemBuilds {
 			this.cache.delete(key);
 		}
 
-		// ARAM uses a different URL path: /lol/{champ}/aram/build/
-		const url =
-			lane === "aram"
-				? `${LOLALYTICS_BASE}/lol/${championAlias}/aram/build/`
-				: `${LOLALYTICS_BASE}/lol/${championAlias}/build/?lane=${lane}`;
+		const ddVersion = dataDragon.getVersion();
+		const patchParts = ddVersion.split(".");
+		const patch = `${patchParts[0]}.${patchParts[1]}`;
+
+		// ARAM uses queue=450 instead of ranked
+		const queueParam = lane === "aram" ? "&queue=450" : "&queue=ranked";
+		const apiLane = lane === "aram" ? "default" : lane;
+		const url = `${LOLALYTICS_API}/mega/?ep=build-itemset&v=1&patch=${patch}&c=${championAlias}&lane=${apiLane}&tier=emerald_plus${queueParam}&region=all`;
+
 		const maxRetries = 2;
 
 		for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -57,16 +69,25 @@ export class ItemBuilds {
 					await new Promise((r) => setTimeout(r, delay));
 				}
 
-				logger.debug(`Fetching build: ${url}`);
+				logger.debug(`Fetching build (API): ${url}`);
 
-				const response = await fetch(url, { headers: FETCH_HEADERS, signal: AbortSignal.timeout(10_000) });
+				const response = await throttledFetch(url, { signal: AbortSignal.timeout(10_000) });
 				if (!response.ok) {
-					logger.warn(`Lolalytics returned ${response.status} for ${championAlias} ${lane} build`);
+					logger.warn(`Lolalytics API returned ${response.status} for ${championAlias} ${lane} build`);
 					continue;
 				}
 
-				const html = await response.text();
-				const build = this.parseBuildPage(html);
+				const json = (await response.json()) as {
+					itemSets?: Record<string, [string, number, number][]>;
+					response?: { valid?: boolean };
+				};
+
+				if (!json?.itemSets) {
+					logger.warn(`Invalid API response for ${championAlias} ${lane} build`);
+					continue;
+				}
+
+				const build = this.extractBuild(json.itemSets);
 
 				if (!build || build.fullBuild.length === 0) {
 					logger.warn(`Parsed no build data for ${championAlias} ${lane} (attempt ${attempt + 1})`);
@@ -75,8 +96,8 @@ export class ItemBuilds {
 
 				logger.info(
 					`Parsed build for ${championAlias} ${lane}: ` +
-					`start=[${build.startingItems.join(",")}] ` +
-					`build=[${build.fullBuild.join(",")}]`,
+						`start=[${build.startingItems.join(",")}] ` +
+						`build=[${build.fullBuild.join(",")}]`,
 				);
 
 				this.cache.set(key, { data: build, timestamp: Date.now() });
@@ -90,214 +111,105 @@ export class ItemBuilds {
 		return cached?.data ?? null;
 	}
 
+	// ─────────── Build extraction ───────────
+
 	/**
-	 * Parse the Lolalytics build page Qwik SSR state for item data.
+	 * Extract the best full build from the `build-itemset` API data.
 	 *
-	 * Build objects in the Qwik JSON have keys:
-	 *   skillpriority, skillorder, sums, runes, items
-	 *
-	 * The `items` sub-object has the shape:
-	 *   { start: { set: number[], ... }, core: { set: number[], ... },
-	 *     item4: [{ id, n, wr }], item5: [...], item6: [...] }
+	 * Strategy:
+	 * 1. Full build (6 items with boots): pick from `itemBootSet6` by most played
+	 *    → fallback to building slot-by-slot from `itemSet1..5` + boots
+	 * 2. Starting items: inferred (API doesn't provide them explicitly)
 	 */
-	private parseBuildPage(html: string): ItemBuild | null {
-		// First try: structured Qwik JSON (robust)
-		const qwikResult = this.parseQwikItems(html);
-		if (qwikResult) return qwikResult;
+	private extractBuild(sets: Record<string, [string, number, number][]>): ItemBuild | null {
+		// ── Full build (6 items with boots) ──
+		let fullBuild = this.getBestSet(sets.itemBootSet6, 6);
 
-		// Fallback: HTML section marker parsing (legacy)
-		logger.warn("Qwik JSON parsing failed, falling back to HTML scraping");
-		return this.parseHtmlSections(html);
-	}
-
-	/** Expected keys on a per-build Qwik object. */
-	private static readonly BUILD_KEYS = new Set(["skillpriority", "skillorder", "sums", "runes", "items"]);
-
-	/**
-	 * Extract item build from the Qwik SSR JSON block.
-	 */
-	private parseQwikItems(html: string): ItemBuild | null {
-		const qwikMatch = html.match(/<script\s+type="qwik\/json">([\s\S]*?)<\/script>/);
-		if (!qwikMatch) return null;
-
-		let qData: { objs: unknown[] };
-		try {
-			qData = JSON.parse(qwikMatch[1]) as { objs: unknown[] };
-		} catch {
-			return null;
+		// Fallback: build slot-by-slot
+		if (fullBuild.length < 4) {
+			fullBuild = this.buildSlotBySlot(sets);
 		}
 
-		const objs = qData.objs;
-		if (!Array.isArray(objs)) return null;
+		if (fullBuild.length === 0) return null;
 
-		// Base-36 reference resolver
-		const resolve = (ref: unknown): unknown => {
-			if (typeof ref !== "string") return ref;
-			const idx = parseInt(ref, 36);
-			if (!isNaN(idx) && idx >= 0 && idx < objs.length) return objs[idx];
-			return ref;
-		};
-
-		// Deep-resolve references
-		const deep = (ref: unknown, depth = 0): unknown => {
-			if (depth > 6) return ref;
-			const val = resolve(ref);
-			if (Array.isArray(val)) return val.map((v) => deep(v, depth + 1));
-			if (typeof val === "object" && val !== null) {
-				const result: Record<string, unknown> = {};
-				for (const [k, v] of Object.entries(val as Record<string, unknown>)) {
-					result[k] = deep(v, depth + 1);
-				}
-				return result;
-			}
-			return val;
-		};
-
-		// Find build objects by key signature (most_common has highest sample size)
-		let bestBuild: Record<string, unknown> | null = null;
-		let bestN = -1;
-
-		for (let i = 0; i < objs.length; i++) {
-			const obj = objs[i];
-			if (typeof obj !== "object" || obj === null) continue;
-			const keys = Object.keys(obj);
-			if (keys.length < ItemBuilds.BUILD_KEYS.size) continue;
-			if (!keys.every((k) => ItemBuilds.BUILD_KEYS.has(k))) continue;
-
-			// Quick-validate the items sub-object has a start or core field
-			const itemsRef = resolve((obj as Record<string, unknown>).items);
-			if (typeof itemsRef !== "object" || itemsRef === null) continue;
-			const iv = itemsRef as Record<string, unknown>;
-			if (!("start" in iv || "core" in iv)) continue;
-
-			// Resolve start to read sample size
-			const startRef = resolve(iv.start);
-			const n = typeof startRef === "object" && startRef !== null
-				? (startRef as Record<string, unknown>).n as number ?? 0
-				: 0;
-
-			if (n > bestN) {
-				bestN = n;
-				bestBuild = obj as Record<string, unknown>;
-			}
-		}
-
-		if (!bestBuild) return null;
-
-		const items = deep(bestBuild.items, 0) as Record<string, unknown>;
-		if (!items) return null;
-
-		return this.extractBuildFromQwikItems(items);
-	}
-
-	/**
-	 * Convert the resolved Qwik items object into an ItemBuild.
-	 */
-	private extractBuildFromQwikItems(items: Record<string, unknown>): ItemBuild | null {
-		const start = items.start as { set?: number[] } | undefined;
-		const core = items.core as { set?: number[] } | undefined;
-
-		const startingItems = Array.isArray(start?.set) ? start!.set.filter((id) => typeof id === "number") : [];
-		const coreSet = Array.isArray(core?.set) ? core!.set.filter((id) => typeof id === "number") : [];
-
-		if (coreSet.length === 0) return null;
-
-		const fullBuild = [...coreSet];
-		const seen = new Set(fullBuild);
-
-		// Pick the best (highest n) item from slots 4, 5, 6
-		for (const slot of ["item4", "item5", "item6"]) {
-			const candidates = items[slot];
-			if (!Array.isArray(candidates)) continue;
-
-			for (const c of candidates) {
-				const id = typeof c === "object" && c !== null ? (c as { id?: number }).id : undefined;
-				if (typeof id === "number" && !seen.has(id)) {
-					fullBuild.push(id);
-					seen.add(id);
-					break;
-				}
-			}
-		}
+		// ── Starting items (common defaults — Best Item action handles in-game) ──
+		const startingItems = [1055, 2003]; // Doran's Blade + Health Potion
 
 		return { startingItems, fullBuild };
 	}
 
 	/**
-	 * Legacy HTML section marker parser (fallback).
-	 *
-	 * Sections appear in order:
-	 *   1. "Starting Items" – 2-3 starting items
-	 *   2. "Core Build"     – 3 core items (boots + 2)
-	 *   3. "Item 4"         – item 4 + alternatives
-	 *   4. "Item 5"         – item 5 + alternatives
-	 *   5. "Item 6"         – item 6 + alternatives
-	 *
-	 * Item images use: cdn5.lolalytics.com/item64/{id}.webp
+	 * Pick the most-played entry from a set and return its item IDs.
 	 */
-	private parseHtmlSections(html: string): ItemBuild | null {
-		const startIdx = html.indexOf("Starting Items");
-		const coreIdx = html.indexOf("Core Build");
-		const item4Idx = html.indexOf("Item 4");
-		const item5Idx = html.indexOf("Item 5");
-		const item6Idx = html.indexOf("Item 6");
+	private getBestSet(entries: [string, number, number][] | undefined, expectedLen: number): number[] {
+		if (!entries || entries.length === 0) return [];
 
-		if (startIdx === -1 || coreIdx === -1) {
-			logger.warn("Could not find Starting Items / Core Build sections");
-			return null;
+		const sorted = [...entries]
+			.map(([ids, games]) => ({ ids, games }))
+			.filter((e) => e.games >= 5)
+			.sort((a, b) => b.games - a.games);
+
+		for (const entry of sorted) {
+			const items = entry.ids.split("_").map(Number).filter((n) => !isNaN(n) && n > 0);
+			if (items.length >= expectedLen) return items;
 		}
 
-		const startingItems = this.extractItemIds(html, startIdx, coreIdx);
-		const coreEnd = item4Idx !== -1 ? item4Idx : coreIdx + 3000;
-		const coreItems = this.extractItemIds(html, coreIdx, coreEnd);
-
-		const fullBuild = [...coreItems];
-		const seen = new Set(fullBuild);
-
-		const laterSections = [
-			{ start: item4Idx, end: item5Idx },
-			{ start: item5Idx, end: item6Idx },
-			{ start: item6Idx, end: item6Idx !== -1 ? item6Idx + 3000 : -1 },
-		];
-
-		for (const section of laterSections) {
-			if (section.start === -1) continue;
-			const end = section.end !== -1 && section.end > section.start
-				? section.end
-				: section.start + 3000;
-
-			const candidates = this.extractItemIds(html, section.start, end);
-			for (const id of candidates) {
-				if (!seen.has(id)) {
-					fullBuild.push(id);
-					seen.add(id);
-					break;
-				}
-			}
+		if (sorted.length > 0) {
+			return sorted[0].ids.split("_").map(Number).filter((n) => !isNaN(n) && n > 0);
 		}
 
-		return { startingItems, fullBuild };
+		return [];
 	}
 
 	/**
-	 * Extract item IDs from a slice of HTML using Lolalytics CDN image URL pattern.
+	 * Build a full item set slot-by-slot from itemSet1..5 + boots.
 	 */
-	private extractItemIds(html: string, start: number, end: number): number[] {
-		const slice = html.substring(start, end);
-		const regex = /item64\/(\d+)\.webp/g;
-		const ids: number[] = [];
+	private buildSlotBySlot(sets: Record<string, [string, number, number][]>): number[] {
+		const result: number[] = [];
 		const seen = new Set<number>();
 
-		let match: RegExpExecArray | null;
-		while ((match = regex.exec(slice)) !== null) {
-			const id = parseInt(match[1], 10);
-			if (!isNaN(id) && !seen.has(id)) {
-				ids.push(id);
-				seen.add(id);
+		for (let slot = 1; slot <= 5; slot++) {
+			const entries = sets[`itemSet${slot}`];
+			if (!entries) continue;
+
+			const sorted = [...entries]
+				.map(([ids, games]) => ({ ids: ids.split("_").map(Number), games }))
+				.filter((e) => e.games >= 3)
+				.sort((a, b) => b.games - a.games);
+
+			for (const entry of sorted) {
+				const lastItem = entry.ids[entry.ids.length - 1];
+				if (lastItem && !seen.has(lastItem)) {
+					result.push(lastItem);
+					seen.add(lastItem);
+					break;
+				}
 			}
 		}
 
-		return ids;
+		// Add boots from itemBootSet1
+		const bootEntries = sets.itemBootSet1;
+		if (bootEntries) {
+			const boots = [...bootEntries]
+				.map(([ids, games]) => ({ id: Number(ids), games }))
+				.filter((e) => !isNaN(e.id) && e.games >= 5 && this.isBootsItem(e.id))
+				.sort((a, b) => b.games - a.games);
+
+			if (boots.length > 0 && !seen.has(boots[0].id)) {
+				result.splice(1, 0, boots[0].id); // Insert as 2nd item
+			}
+		}
+
+		return result;
+	}
+
+	/** Check if an item ID is a boots item. */
+	private isBootsItem(itemId: number): boolean {
+		return (
+			(itemId >= 3006 && itemId <= 3020) ||
+			itemId === 3047 || itemId === 3111 ||
+			itemId === 3117 || itemId === 3158 || itemId === 3009
+		);
 	}
 
 	/**

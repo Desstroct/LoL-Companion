@@ -1,5 +1,6 @@
 import streamDeck from "@elgato/streamdeck";
 import { dataDragon } from "./data-dragon";
+import { throttledFetch } from "./lolalytics-throttle";
 
 const logger = streamDeck.logger.createScope("ChampionStats");
 
@@ -13,9 +14,6 @@ const logger = streamDeck.logger.createScope("ChampionStats");
  * - allWr: overall win rate of the counter champion
  */
 const LOLALYTICS_API = "https://a1.lolalytics.com";
-const FETCH_HEADERS = {
-	"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-};
 
 export interface MatchupData {
 	/** Champion alias as used in Lolalytics URLs (lowercase, no spaces) */
@@ -249,8 +247,7 @@ export class ChampionStats {
 
 				logger.debug(`Fetching matchups: ${url}`);
 
-				const response = await fetch(url, {
-					headers: FETCH_HEADERS,
+				const response = await throttledFetch(url, {
 					signal: AbortSignal.timeout(10_000),
 				});
 

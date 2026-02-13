@@ -116,20 +116,30 @@ export class AutoPick extends SingletonAction<AutoPickSettings> {
 		const session = await lcuApi.getChampSelectSession();
 		if (!session) return;
 
-		// ── Guard: don't act during PLANNING phase (intent hover before bans) ──
-		// Actions may appear as isInProgress during PLANNING but the LCU rejects
-		// actual pick/ban completions. Only proceed during BAN_PICK or FINALIZATION.
 		const timerPhase = session.timer?.phase;
-		if (timerPhase === "PLANNING") {
-			logger.debug("Still in PLANNING phase — skipping auto-pick/ban");
-			return;
-		}
-
 		const localCell = session.localPlayerCellId;
-
-		// Find our pending actions (ban or pick)
 		const allActions = session.actions.flat();
 		const myActions = allActions.filter((act) => act.actorCellId === localCell);
+
+		// ── PLANNING phase: pre-select pick champion as intent (hover only) ──
+		if (timerPhase === "PLANNING") {
+			for (const a of this.actions) {
+				const settings = (await a.getSettings()) as AutoPickSettings;
+				if (settings.pickChampion && !this.hasPicked) {
+					const champId = this.resolveChampionId(settings.pickChampion);
+					if (champId) {
+						const pickAction = myActions.find((act) => act.type === "pick" && !act.completed);
+						if (pickAction && pickAction.championId !== champId) {
+							logger.info(`PLANNING: hovering ${settings.pickChampion} as intent`);
+							await lcuApi.patch(`/lol-champ-select/v1/session/actions/${pickAction.id}`, {
+								championId: champId,
+							});
+						}
+					}
+				}
+			}
+			return; // Don't ban/lock during PLANNING
+		}
 
 		// Debug: log what actions we have
 		const banActions = myActions.filter((act) => act.type === "ban");
@@ -253,23 +263,31 @@ export class AutoPick extends SingletonAction<AutoPickSettings> {
 
 	/**
 	 * Execute a champ select action (pick or ban) via LCU API.
-	 * Two-step: hover the champion first, then lock-in.
+	 * Two-step: hover the champion, then POST /complete to lock-in.
 	 */
 	private async performAction(actionId: number, championId: number, complete: boolean): Promise<boolean> {
 		try {
 			// Step 1: Hover the champion
-			const hoverSuccess = await lcuApi.patch(`/lol-champ-select/v1/session/actions/${actionId}`, {
+			await lcuApi.patch(`/lol-champ-select/v1/session/actions/${actionId}`, {
 				championId,
 			});
-			logger.info(`Hover action ${actionId} with champion ${championId}: ${hoverSuccess !== undefined ? "sent" : "failed"}`);
+			logger.info(`Hover action ${actionId} with champion ${championId}: sent`);
 
-			// Step 2: Lock-in if requested (small delay to let the client register the hover)
+			// Step 2: Lock-in via POST /complete (the correct LCU endpoint)
 			if (complete) {
-				await new Promise((r) => setTimeout(r, 400));
-				const lockSuccess = await lcuApi.patch(`/lol-champ-select/v1/session/actions/${actionId}`, {
-					completed: true,
-				});
-				logger.info(`Lock action ${actionId}: ${lockSuccess !== undefined ? "sent" : "failed"}`);
+				await new Promise((r) => setTimeout(r, 500));
+				const locked = await lcuApi.post(
+					`/lol-champ-select/v1/session/actions/${actionId}/complete`,
+				);
+				logger.info(`Lock action ${actionId}: ${locked ? "success" : "failed"}`);
+				if (!locked) {
+					// Retry once after a short delay
+					await new Promise((r) => setTimeout(r, 500));
+					const retry = await lcuApi.post(
+						`/lol-champ-select/v1/session/actions/${actionId}/complete`,
+					);
+					logger.info(`Lock retry action ${actionId}: ${retry ? "success" : "failed"}`);
+				}
 			}
 			return true;
 		} catch (e) {
