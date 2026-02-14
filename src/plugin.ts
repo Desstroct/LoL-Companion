@@ -51,15 +51,12 @@ import streamDeck from "@elgato/streamdeck";
 
 import { GameStatus } from "./actions/game-status";
 import { LobbyScannerAction } from "./actions/lobby-scanner";
-import { SummonerTracker } from "./actions/summoner-tracker";
-import { JungleTimer } from "./actions/jungle-timer";
 import { KdaTracker } from "./actions/kda-tracker";
 import { AutoAccept } from "./actions/auto-accept";
 import { SmartPick } from "./actions/smart-pick";
 import { LobbyLevelTracker } from "./actions/lobby-level";
 import { AutoRune } from "./actions/auto-rune";
 import { BestItem } from "./actions/best-item";
-import { EnemyBuilds } from "./actions/enemy-builds";
 import { DeathTimer } from "./actions/death-timer";
 import { AutoPick } from "./actions/auto-pick";
 import { LpTracker } from "./actions/lp-tracker";
@@ -113,15 +110,12 @@ async function init() {
 // Register actions
 streamDeck.actions.registerAction(new GameStatus());
 streamDeck.actions.registerAction(new LobbyScannerAction());
-streamDeck.actions.registerAction(new SummonerTracker());
-streamDeck.actions.registerAction(new JungleTimer());
 streamDeck.actions.registerAction(new KdaTracker());
 streamDeck.actions.registerAction(new AutoAccept());
 streamDeck.actions.registerAction(new SmartPick());
 streamDeck.actions.registerAction(new LobbyLevelTracker());
 streamDeck.actions.registerAction(new AutoRune());
 streamDeck.actions.registerAction(new BestItem());
-streamDeck.actions.registerAction(new EnemyBuilds());
 streamDeck.actions.registerAction(new DeathTimer());
 streamDeck.actions.registerAction(new AutoPick());
 streamDeck.actions.registerAction(new LpTracker());
