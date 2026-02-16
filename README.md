@@ -2,11 +2,11 @@
 
 A comprehensive League of Legends companion plugin for Elgato Stream Deck and Stream Deck+.
 
-**Version:** 1.2.3  
+**Version:** 1.2.4  
 **Author:** Desstroct  
 **License:** MIT
 
-## Features (14 Actions)
+## Features (13 Actions)
 
 ### Lobby & Queue
 
@@ -23,7 +23,8 @@ A comprehensive League of Legends companion plugin for Elgato Stream Deck and St
 | **Lobby Scanner** | Player info (champion, rank, win rate) | Dial: cycle players |
 | **Lobby Level** | Average summoner level in lobby | Key |
 | **Smart Pick** | Counter picks + Best picks combined (toggle mode) | Dial: scroll/toggle |
-| **Auto Rune** | Auto-import optimal runes from Lolalytics | Dial: WR/Popular |
+| **Auto Rune** | Auto-import optimal runes + summoner spells from Lolalytics | Dial: WR/Popular |
+| **Skill Order** | Recommended skill max order (Q > E > W) with level-by-level grid | Dial: Common/WR |
 | **Auto Pick/Ban** | Automatically pick and ban your configured champions | Key toggle |
 
 ### In-Game
@@ -31,11 +32,9 @@ A comprehensive League of Legends companion plugin for Elgato Stream Deck and St
 | Action | Description | Stream Deck+ |
 | -------- | ------------- | -------------- |
 | **KDA Tracker** | Live KDA, CS/min, gold | Dial: dashboard |
-| **Summoner Tracker** | Enemy summoner spell cooldowns | Dial: cycle enemies |
-| **Jungle Timer** | Dragon, Voidgrubs, Herald, Baron timers | Dial: cycle objectives |
-| **Enemy Builds** | Enemy items in real-time | Dial: cycle enemies |
 | **Best Item** | Next recommended item with gold progress | Dial: browse build |
 | **Death Timer** | Respawn countdown + level | Dial |
+| **Jungle Path** | Recommended jungle clear path for your champion | Dial: scroll camps |
 
 ## Supported Game Modes
 

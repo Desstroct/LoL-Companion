@@ -181,8 +181,10 @@ export class LolaBuildParser {
 			};
 
 			// Helper: deep-resolve references up to a max depth
+			// Depth 12 is needed to fully resolve rune set perk IDs which sit
+			// ~10 levels deep: summary → pick → runes → set → pri → [element] → id
 			const deepResolve = (ref: unknown, depth = 0): unknown => {
-				if (depth > 6 || ref === undefined || ref === null) return ref;
+				if (depth > 12 || ref === undefined || ref === null) return ref;
 				if (typeof ref === "number" || typeof ref === "boolean") return ref;
 				if (typeof ref !== "string") {
 					if (Array.isArray(ref)) return ref.map((x) => deepResolve(x, depth + 1));
@@ -230,7 +232,7 @@ export class LolaBuildParser {
 				return null;
 			}
 
-			const runes = this.extractRunes(summary);
+			const runes = this.extractRunes(summary, objs);
 			const summonerSpells = this.extractSummonerSpells(summary);
 			const skillPriority = this.extractSkillPriority(summary);
 			const skillOrder = this.extractSkillOrder(summary);
@@ -247,16 +249,16 @@ export class LolaBuildParser {
 
 	// ─────────── Data extraction helpers ───────────
 
-	private extractRunes(summary: { pick?: SummarySection; win?: SummarySection }): RunePageData[] {
+	private extractRunes(summary: { pick?: SummarySection; win?: SummarySection }, objs: unknown[]): RunePageData[] {
 		const results: RunePageData[] = [];
 
 		if (summary.pick?.runes) {
-			const page = this.convertRuneData(summary.pick.runes, "most_common");
+			const page = this.convertRuneData(summary.pick.runes, "most_common", objs);
 			if (page) results.push(page);
 		}
 
 		if (summary.win?.runes) {
-			const page = this.convertRuneData(summary.win.runes, "highest_wr");
+			const page = this.convertRuneData(summary.win.runes, "highest_wr", objs);
 			if (page) results.push(page);
 		}
 
@@ -266,6 +268,7 @@ export class LolaBuildParser {
 	private convertRuneData(
 		runes: SummaryRunes,
 		source: "most_common" | "highest_wr",
+		objs: unknown[],
 	): RunePageData | null {
 		const { set, page, wr, n } = runes;
 		if (!set?.pri || !set?.sec || !set?.mod || !page) return null;
@@ -273,12 +276,35 @@ export class LolaBuildParser {
 		if (!Array.isArray(set.sec) || set.sec.length !== 2) return null;
 		if (!Array.isArray(set.mod) || set.mod.length !== 3) return null;
 
-		const primaryStyleId = TREE_STYLE_IDS[page.pri] ?? this.treeFromKeystoneId(set.pri[0]);
-		const subStyleId = TREE_STYLE_IDS[page.sec] ?? this.treeFromRuneId(set.sec[0]);
+		// Resolve any remaining base-36 string references in perk ID arrays.
+		// deepResolve may not reach these at very deep nesting levels.
+		const resolveId = (v: unknown): number => {
+			if (typeof v === "number") return v;
+			if (typeof v === "string") {
+				const idx = parseInt(v, 36);
+				if (!isNaN(idx) && idx < objs.length && typeof objs[idx] === "number") {
+					return objs[idx] as number;
+				}
+			}
+			return 0;
+		};
+
+		const pri = set.pri.map(resolveId);
+		const sec = set.sec.map(resolveId);
+		const mod = set.mod.map(resolveId);
+
+		// Validate: keystone must be a known rune ID (8000+ range)
+		if (pri[0] < 8000) {
+			logger.warn(`Invalid keystone ID ${pri[0]} after resolution (source: ${source})`);
+			return null;
+		}
+
+		const primaryStyleId = TREE_STYLE_IDS[page.pri] ?? this.treeFromKeystoneId(pri[0]);
+		const subStyleId = TREE_STYLE_IDS[page.sec] ?? this.treeFromRuneId(sec[0]);
 		if (!primaryStyleId || !subStyleId) return null;
 
-		const selectedPerkIds = [...set.pri, ...set.sec, ...set.mod];
-		const keystoneName = KEYSTONE_NAMES[set.pri[0]] ?? `Keystone ${set.pri[0]}`;
+		const selectedPerkIds = [...pri, ...sec, ...mod];
+		const keystoneName = KEYSTONE_NAMES[pri[0]] ?? `Keystone ${pri[0]}`;
 
 		return {
 			primaryStyleId,
