@@ -1,6 +1,8 @@
 import streamDeck from "@elgato/streamdeck";
 import { dataDragon } from "./data-dragon";
 import { throttledFetch } from "./lolalytics-throttle";
+import { lolaBuild } from "./lolalytics-build";
+import { ChampionStats } from "./champion-stats";
 
 const logger = streamDeck.logger.createScope("RuneData");
 
@@ -66,9 +68,10 @@ export interface RunePageData {
 }
 
 /**
- * Fetches recommended rune pages from Lolalytics JSON API.
- * Uses the `rune` endpoint which returns structured data directly,
- * avoiding fragile Qwik SSR HTML parsing.
+ * Fetches recommended rune pages from Lolalytics.
+ *
+ * Primary strategy: parse the build page SSR (Qwik) data.
+ * Fallback: try the JSON API endpoint (may be deprecated).
  */
 export class RuneData {
 	private cache: Map<string, { data: RunePageData[]; timestamp: number }> = new Map();
@@ -88,6 +91,29 @@ export class RuneData {
 			this.cache.delete(key);
 		}
 
+		// Primary: SSR build page parser (reliable)
+		try {
+			const buildData = await lolaBuild.getBuildData(championAlias, lane);
+			if (buildData && buildData.runes.length > 0) {
+				logger.info(
+					`Parsed ${buildData.runes.length} rune page(s) via SSR for ${championAlias} ${lane}: ` +
+						buildData.runes.map((d) => `${d.source} ${d.keystoneName} ${d.winRate}%`).join(", "),
+				);
+				this.cache.set(key, { data: buildData.runes, timestamp: Date.now() });
+				return buildData.runes;
+			}
+		} catch (e) {
+			logger.warn(`SSR rune fetch failed for ${championAlias} ${lane}: ${e}`);
+		}
+
+		// Fallback: JSON API (may be deprecated)
+		return this.fetchFromApi(championAlias, lane, cached?.data ?? []);
+	}
+
+	/**
+	 * Legacy JSON API fetch (fallback if SSR parsing fails).
+	 */
+	private async fetchFromApi(championAlias: string, lane: string, fallback: RunePageData[]): Promise<RunePageData[]> {
 		const ddVersion = dataDragon.getVersion();
 		const patchParts = ddVersion.split(".");
 		const patch = `${patchParts[0]}.${patchParts[1]}`;
@@ -97,37 +123,36 @@ export class RuneData {
 		const url = `${LOLALYTICS_API}/mega/?ep=rune&v=1&patch=${patch}&c=${championAlias}&lane=${apiLane}&tier=emerald_plus${queueParam}&region=all`;
 
 		try {
-			logger.debug(`Fetching runes (API): ${url}`);
+			logger.debug(`Fetching runes (API fallback): ${url}`);
 
 			const response = await throttledFetch(url, { signal: AbortSignal.timeout(10_000) });
 			if (!response.ok) {
 				logger.warn(`Lolalytics API returned ${response.status} for rune data`);
-				return cached?.data ?? [];
+				return fallback;
 			}
 
 			const json = (await response.json()) as RuneApiResponse;
 
 			if (!json?.summary?.runes) {
 				logger.warn(`Invalid rune API response for ${championAlias} ${lane}`);
-				return cached?.data ?? [];
+				return fallback;
 			}
 
 			const data = this.parseApiRunes(json.summary.runes);
 
 			if (data.length > 0) {
 				logger.info(
-					`Parsed ${data.length} rune page(s) for ${championAlias} ${lane}: ` +
+					`Parsed ${data.length} rune page(s) via API for ${championAlias} ${lane}: ` +
 						data.map((d) => `${d.source} ${d.keystoneName} ${d.winRate}%`).join(", "),
 				);
-				this.cache.set(key, { data, timestamp: Date.now() });
-			} else {
-				logger.warn(`No rune data found for ${championAlias} ${lane}`);
+				return data;
 			}
 
-			return data;
+			logger.warn(`No rune data found via API for ${championAlias} ${lane}`);
+			return fallback;
 		} catch (e) {
-			logger.error(`Failed to fetch runes for ${championAlias} ${lane}: ${e}`);
-			return cached?.data ?? [];
+			logger.error(`API rune fetch failed for ${championAlias} ${lane}: ${e}`);
+			return fallback;
 		}
 	}
 

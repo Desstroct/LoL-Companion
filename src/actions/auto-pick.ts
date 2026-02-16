@@ -275,18 +275,24 @@ export class AutoPick extends SingletonAction<AutoPickSettings> {
 
 			// Step 2: Lock-in via POST /complete (the correct LCU endpoint)
 			if (complete) {
-				await new Promise((r) => setTimeout(r, 500));
+				await new Promise((r) => setTimeout(r, 600));
 				const locked = await lcuApi.post(
 					`/lol-champ-select/v1/session/actions/${actionId}/complete`,
+					{},
 				);
 				logger.info(`Lock action ${actionId}: ${locked ? "success" : "failed"}`);
 				if (!locked) {
 					// Retry once after a short delay
-					await new Promise((r) => setTimeout(r, 500));
+					await new Promise((r) => setTimeout(r, 800));
 					const retry = await lcuApi.post(
 						`/lol-champ-select/v1/session/actions/${actionId}/complete`,
+						{},
 					);
 					logger.info(`Lock retry action ${actionId}: ${retry ? "success" : "failed"}`);
+					if (!retry) {
+						logger.warn(`Failed to lock action ${actionId} after retry — will retry next poll`);
+						return false;
+					}
 				}
 			}
 			return true;

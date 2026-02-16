@@ -20,6 +20,7 @@ import { gameMode } from "../services/game-mode";
 import { dataDragon } from "../services/data-dragon";
 import { runeData, RunePageData } from "../services/rune-data";
 import { ChampionStats } from "../services/champion-stats";
+import { lolaBuild, type SummonerSpellCombo } from "../services/lolalytics-build";
 
 const logger = streamDeck.logger.createScope("AutoRune");
 
@@ -175,7 +176,7 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 	private getState(actionId: string): AutoRuneState {
 		let s = this.actionStates.get(actionId);
 		if (!s) {
-			s = { lastChampKey: "", lastRunes: [], selectedIndex: 0, applied: false };
+			s = { lastChampKey: "", lastRunes: [], selectedIndex: 0, applied: false, spells: [], spellsApplied: false };
 			this.actionStates.set(actionId, s);
 		}
 		return s;
@@ -233,6 +234,8 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 				s.lastRunes = [];
 				s.selectedIndex = 0;
 				s.applied = false;
+				s.spells = [];
+				s.spellsApplied = false;
 			}
 			if (hadState) {
 				for (const a of this.actions) {
@@ -291,6 +294,8 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 			state.lastChampKey = champKey;
 			state.selectedIndex = 0;
 			state.applied = false;
+			state.spells = [];
+			state.spellsApplied = false;
 
 			// Show loading state
 			if (a.isDial()) {
@@ -313,6 +318,17 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 			try {
 				const runes = await runeData.getRecommendedRunes(champAlias, lane);
 				state.lastRunes = runes;
+
+				// Also fetch summoner spell data from the build page
+				try {
+					const buildData = await lolaBuild.getBuildData(champAlias, lane);
+					if (buildData && buildData.summonerSpells.length > 0) {
+						state.spells = buildData.summonerSpells;
+						logger.info(`Spells for ${champ.name} ${lane}: ${state.spells[0].ids.join("+")} (${state.spells[0].winRate}%)`);
+					}
+				} catch (e) {
+					logger.warn(`Failed to fetch spells for ${champ.name}: ${e}`);
+				}
 
 				if (runes.length > 0) {
 					logger.info(`Runes for ${champ.name} ${lane}: ${runes[0].keystoneName} (${runes[0].winRate}%)`);
@@ -358,7 +374,7 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 		}
 
 		const label = rune.source === "highest_wr" ? "Best WR" : "Popular";
-		const appliedMark = state.applied ? " ✅" : "";
+		const appliedMark = state.applied && state.spellsApplied ? " ✅" : state.applied ? " ✓" : "";
 		const gamesStr = rune.games >= 1000 ? `${(rune.games / 1000).toFixed(1)}k` : `${rune.games}`;
 		const barColor = rune.winRate >= 54 ? "#2ECC71" : rune.winRate >= 50 ? "#F1C40F" : "#E74C3C";
 
@@ -465,6 +481,22 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 				}
 			}
 
+			// Apply summoner spells if enabled (defaults to true)
+			if (settings.autoSpells !== false && state.spells.length > 0 && !state.spellsApplied) {
+				const bestSpells = state.spells[0];
+				try {
+					const spellOk = await lcuApi.setSummonerSpells(bestSpells.ids[0], bestSpells.ids[1]);
+					if (spellOk) {
+						state.spellsApplied = true;
+						logger.info(`Applied summoner spells: ${bestSpells.ids.join("+")} (${bestSpells.winRate}% WR)`);
+					} else {
+						logger.warn("setSummonerSpells returned false");
+					}
+				} catch (e) {
+					logger.warn(`Failed to set summoner spells: ${e}`);
+				}
+			}
+
 			// Re-render to show the ✅ mark
 			await this.renderAction(a, state, settings);
 		} catch (e) {
@@ -478,10 +510,16 @@ interface AutoRuneState {
 	lastRunes: RunePageData[];
 	selectedIndex: number;
 	applied: boolean;
+	/** Recommended summoner spells from Lolalytics */
+	spells: SummonerSpellCombo[];
+	/** Whether summoner spells have been applied */
+	spellsApplied: boolean;
 }
 
 type AutoRuneSettings = {
 	role?: string;
 	/** When true, runes are applied automatically when a champion is locked */
 	autoApply?: boolean;
+	/** When true, summoner spells are also applied automatically (defaults to true) */
+	autoSpells?: boolean;
 };

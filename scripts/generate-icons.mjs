@@ -203,6 +203,9 @@ function getAssetUrls(ddVersion) {
     // Jungle Path → Stalker's Blade / Jungle item (pathing through the jungle)
     'jungle-path': `${DD}/img/item/3113.png`,
 
+    // Skill Order → Amplifying Tome (spellbook — leveling your abilities)
+    'skill-order': `${DD}/img/item/1052.png`,
+
     // Team Comp → Banner of Command (team coordination symbol)
     'team-comp': `${DD}/img/spell/SummonerBarrier.png`,
 

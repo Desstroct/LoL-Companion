@@ -61,6 +61,7 @@ import { DeathTimer } from "./actions/death-timer";
 import { AutoPick } from "./actions/auto-pick";
 import { LpTracker } from "./actions/lp-tracker";
 import { JunglePath } from "./actions/jungle-path";
+import { SkillOrder } from "./actions/skill-order";
 import { lcuConnector } from "./services/lcu-connector";
 import { gameMode } from "./services/game-mode";
 import { dataDragon } from "./services/data-dragon";
@@ -120,6 +121,7 @@ streamDeck.actions.registerAction(new DeathTimer());
 streamDeck.actions.registerAction(new AutoPick());
 streamDeck.actions.registerAction(new LpTracker());
 streamDeck.actions.registerAction(new JunglePath());
+streamDeck.actions.registerAction(new SkillOrder());
 
 // Connect to Stream Deck and initialize
 streamDeck.connect().then(() => {

@@ -121,6 +121,18 @@ const STROKE_ICONS = {
     <polyline points="28,8 36,8 36,16"/>
     <line x1="4" y1="36" x2="36" y2="36"/>
   </svg>`,
+
+  // Skill Order → Numbered list / ascending levels (Q>W>E)
+  'skill-order': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="4" y="4" width="12" height="12" rx="2"/>
+    <text x="10" y="14" text-anchor="middle" font-size="10" font-weight="bold" fill="#FFFFFF" stroke="none" font-family="sans-serif">Q</text>
+    <rect x="4" y="20" width="12" height="12" rx="2"/>
+    <text x="10" y="30" text-anchor="middle" font-size="10" font-weight="bold" fill="#FFFFFF" stroke="none" font-family="sans-serif">W</text>
+    <line x1="20" y1="10" x2="36" y2="10" stroke-width="2.5"/>
+    <line x1="20" y1="26" x2="32" y2="26" stroke-width="2.5"/>
+    <line x1="20" y1="36" x2="28" y2="36" stroke-width="2"/>
+    <polyline points="30,6 36,10 30,14" stroke-width="1.5"/>
+  </svg>`,
 };
 
 // Category icon → LoL diamond/hexagon emblem (white stroke)

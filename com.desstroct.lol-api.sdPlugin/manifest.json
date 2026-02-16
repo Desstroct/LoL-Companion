@@ -44,7 +44,6 @@
 				}
 			]
 		},
-
 		{
 			"Name": "Jungle Path",
 			"UUID": "com.desstroct.lol-api.jungle-path",
@@ -70,7 +69,6 @@
 				}
 			]
 		},
-
 		{
 			"Name": "KDA Tracker",
 			"UUID": "com.desstroct.lol-api.kda-tracker",
@@ -266,12 +264,37 @@
 					"TitleAlignment": "middle"
 				}
 			]
+		},
+		{
+			"Name": "Skill Order",
+			"UUID": "com.desstroct.lol-api.skill-order",
+			"Icon": "imgs/actions/skill-order/icon",
+			"Tooltip": "Shows the recommended skill max order and level-by-level skill priority during Champion Select. Data from Lolalytics.",
+			"PropertyInspectorPath": "ui/skill-order.html",
+			"Controllers": [
+				"Keypad",
+				"Encoder"
+			],
+			"Encoder": {
+				"layout": "layouts/skill-order.json",
+				"TriggerDescription": {
+					"Rotate": "Common / Best WR",
+					"Push": "Toggle detail view",
+					"Touch": "Refresh"
+				}
+			},
+			"States": [
+				{
+					"Image": "imgs/actions/skill-order/key",
+					"TitleAlignment": "bottom"
+				}
+			]
 		}
 	],
 	"Category": "LoL Companion",
 	"CategoryIcon": "imgs/plugin/category-icon",
 	"CodePath": "bin/plugin.js",
-	"Description": "League of Legends companion for Stream Deck. Monitor your game status, track your rank and LP gains, and get real-time stats on your keys and dials.\n\nFeatures:\n• Game Status — See your current client state (Lobby, Queue, Champion Select, In Game)\n• LP Tracker — Track your rank, LP, win rate, and session gains across Solo/Duo and Flex\n• Auto Accept — Automatically accept the match ready check\n• Lobby Scanner — View player ranks and win rates during Champion Select\n• Smart Pick — Get data-driven champion recommendations and counter picks\n• Auto Rune — Automatically import optimal rune pages when you lock in a champion\n• Auto Pick/Ban — Pre-configure picks and bans for instant selection\n• KDA Tracker — Live K/D/A, CS/min, and gold display during games\n• Best Item — See your recommended next item purchase based on champion and gold\n• Death Timer — Respawn countdown on your Stream Deck\n• Jungle Path — Recommended jungle clear paths for your champion\n\nSupports Stream Deck keys and dials (SD+). Requires the League of Legends client to be running. Data sourced from the official Riot Live Client API and public champion statistics.",
+	"Description": "League of Legends companion for Stream Deck. Monitor your game status, track your rank and LP gains, and get real-time stats on your keys and dials.\n\nFeatures:\n• Game Status — See your current client state (Lobby, Queue, Champion Select, In Game)\n• LP Tracker — Track your rank, LP, win rate, and session gains across Solo/Duo and Flex\n• Auto Accept — Automatically accept the match ready check\n• Lobby Scanner — View player ranks and win rates during Champion Select\n• Smart Pick — Get data-driven champion recommendations and counter picks\n• Auto Rune — Automatically import optimal rune pages and summoner spells when you lock in a champion\n• Skill Order — Shows the recommended skill max order during Champion Select\n• Auto Pick/Ban — Pre-configure picks and bans for instant selection\n• KDA Tracker — Live K/D/A, CS/min, and gold display during games\n• Best Item — See your recommended next item purchase based on champion and gold\n• Death Timer — Respawn countdown on your Stream Deck\n• Jungle Path — Recommended jungle clear paths for your champion\n\nSupports Stream Deck keys and dials (SD+). Requires the League of Legends client to be running. Data sourced from the official Riot Live Client API and public champion statistics.",
 	"URL": "https://github.com/Desstroct/LoL-Companion",
 	"Icon": "imgs/plugin/marketplace",
 	"SDKVersion": 3,

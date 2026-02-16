@@ -350,6 +350,23 @@ export class LcuApi {
 	async deleteRunePage(id: number): Promise<boolean> {
 		return this.del(`/lol-perks/v1/pages/${id}`);
 	}
+
+	// ---- Summoner Spells ----
+
+	/**
+	 * Update the current player's summoner spells during champion select.
+	 * Uses PATCH /lol-champ-select/v1/session/my-selection.
+	 *
+	 * @param spell1Id First summoner spell ID (e.g. 4 = Flash)
+	 * @param spell2Id Second summoner spell ID (e.g. 14 = Ignite)
+	 */
+	async setSummonerSpells(spell1Id: number, spell2Id: number): Promise<boolean> {
+		const result = await this.patch("/lol-champ-select/v1/session/my-selection", {
+			spell1Id,
+			spell2Id,
+		});
+		return result !== null;
+	}
 }
 
 // Singleton instance

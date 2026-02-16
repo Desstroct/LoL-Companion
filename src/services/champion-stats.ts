@@ -24,6 +24,8 @@ export interface MatchupData {
 	winRateVs: number;
 	/** Number of games in matchup sample */
 	games: number;
+	/** Default/primary lane for this champion (from Lolalytics) */
+	defaultLane?: string;
 }
 
 /**
@@ -88,6 +90,11 @@ export class ChampionStats {
 
 		for (const counters of allCounters) {
 			for (const c of counters) {
+				// Filter: only keep champions that are viable in the player's lane
+				if (c.defaultLane && !this.isViableInLane(c.defaultLane, c.alias, lane)) {
+					continue;
+				}
+
 				const existing = allMatchups.get(c.alias);
 				if (existing) {
 					existing.totalWr += c.winRateVs;
@@ -278,6 +285,7 @@ export class ChampionStats {
 						name,
 						winRateVs: c.vsWr,
 						games: c.n,
+						defaultLane: c.defaultLane,
 					});
 				}
 
@@ -296,6 +304,48 @@ export class ChampionStats {
 
 		logger.error(`All ${maxRetries + 1} attempts failed for ${championAlias} ${lane}`);
 		return cached?.data ?? [];
+	}
+
+	/**
+	 * Check if a champion is viable in a given lane.
+	 * Uses the champion's defaultLane from Lolalytics + a table of known flex picks.
+	 */
+	private isViableInLane(defaultLane: string, _alias: string, targetLane: string): boolean {
+		// Normalize lane names
+		const normalize = (l: string) => {
+			const map: Record<string, string> = {
+				mid: "middle", middle: "middle",
+				top: "top",
+				jungle: "jungle", jng: "jungle",
+				bot: "bottom", bottom: "bottom", adc: "bottom",
+				sup: "support", support: "support", utility: "support",
+			};
+			return map[l.toLowerCase()] ?? l.toLowerCase();
+		};
+
+		const champLane = normalize(defaultLane);
+		const myLane = normalize(targetLane);
+
+		// Direct match: champion's primary lane matches the player's lane
+		if (champLane === myLane) return true;
+
+		// Known flex-lane groupings (champions commonly played in multiple roles)
+		const flexGroups: string[][] = [
+			["top", "jungle"],      // Many bruisers/fighters flex
+			["top", "middle"],      // Some AP/melee mids flex top
+			["middle", "bottom"],   // Some mages flex bot (APC)
+			["middle", "support"],  // Some mages flex support
+			["bottom", "middle"],   // Some ADCs flex mid
+			["support", "middle"],  // Some support mages flex mid
+		];
+
+		for (const group of flexGroups) {
+			if (group.includes(champLane) && group.includes(myLane)) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**

@@ -19,6 +19,9 @@
     <sdpi-item label="Auto Apply">
         <sdpi-checkbox setting="autoApply" label="Apply runes when champion is locked"></sdpi-checkbox>
     </sdpi-item>
+    <sdpi-item label="Auto Spells">
+        <sdpi-checkbox setting="autoSpells" label="Also set optimal summoner spells" default="true"></sdpi-checkbox>
+    </sdpi-item>
     <sdpi-item label="Info">
         <details>
             <summary>How it works</summary>
@@ -26,7 +29,8 @@
                 During Champion Select, fetches the optimal rune page from Lolalytics for your locked champion.<br><br>
                 <b>Key/Touch:</b> Apply runes to the client.<br>
                 <b>Dial rotate:</b> Switch between "Highest WR" and "Most Popular" builds.<br>
-                <b>Auto Apply:</b> When enabled, runes are set automatically when you lock a champion.
+                <b>Auto Apply:</b> When enabled, runes are set automatically when you lock a champion.<br>
+                <b>Auto Spells:</b> When enabled, summoner spells are also set to the highest win-rate combo.
             </p>
         </details>
     </sdpi-item>

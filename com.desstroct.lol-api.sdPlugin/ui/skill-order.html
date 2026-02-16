@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Skill Order Settings</title>
+    <script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
+</head>
+<body>
+    <sdpi-item label="Your Role">
+        <sdpi-select setting="role">
+            <option value="auto">Auto (detect from lobby)</option>
+            <option value="top">Top</option>
+            <option value="jungle">Jungle</option>
+            <option value="middle">Mid</option>
+            <option value="bottom">Bot (ADC)</option>
+            <option value="utility">Support</option>
+        </sdpi-select>
+    </sdpi-item>
+    <sdpi-item label="Info">
+        <details>
+            <summary>How it works</summary>
+            <p style="font-size: 11px; color: #999; padding: 8px;">
+                During Champion Select, fetches the optimal skill max order from Lolalytics for your locked champion.<br><br>
+                <b>Key:</b> Press to toggle between priority view (Q > E > W) and level-by-level grid.<br>
+                <b>Dial rotate:</b> Switch between "Most Common" and "Highest WR" skill orders.<br>
+                <b>Dial press:</b> Toggle detail view.
+            </p>
+        </details>
+    </sdpi-item>
+</body>
+</html>
