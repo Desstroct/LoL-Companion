@@ -11,7 +11,7 @@ A comprehensive League of Legends companion plugin for Elgato Stream Deck and St
 ### Lobby & Queue
 
 | Action | Description | Stream Deck+ |
-|--------|-------------|--------------|
+| -------- | ------------- | -------------- |
 | **Game Status** | Shows LoL client state (Lobby, Queue, ChampSelect, InGame) | Key |
 | **LP Tracker** | Current rank, LP, win rate, session gains | Dial: Solo/Flex/TFT |
 | **Auto Accept** | Automatically accept match ready check | Key toggle |
@@ -19,7 +19,7 @@ A comprehensive League of Legends companion plugin for Elgato Stream Deck and St
 ### Champion Select
 
 | Action | Description | Stream Deck+ |
-|--------|-------------|--------------|
+| -------- | ------------- | -------------- |
 | **Lobby Scanner** | Player info (champion, rank, win rate) | Dial: cycle players |
 | **Lobby Level** | Average summoner level in lobby | Key |
 | **Smart Pick** | Counter picks + Best picks combined (toggle mode) | Dial: scroll/toggle |
@@ -29,7 +29,7 @@ A comprehensive League of Legends companion plugin for Elgato Stream Deck and St
 ### In-Game
 
 | Action | Description | Stream Deck+ |
-|--------|-------------|--------------|
+| -------- | ------------- | -------------- |
 | **KDA Tracker** | Live KDA, CS/min, gold | Dial: dashboard |
 | **Summoner Tracker** | Enemy summoner spell cooldowns | Dial: cycle enemies |
 | **Jungle Timer** | Dragon, Voidgrubs, Herald, Baron timers | Dial: cycle objectives |
@@ -40,7 +40,7 @@ A comprehensive League of Legends companion plugin for Elgato Stream Deck and St
 ## Supported Game Modes
 
 | Mode | Support |
-|------|---------|
+| ------ | --------- |
 | **Ranked Solo/Duo** | ✅ Full |
 | **Ranked Flex** | ✅ Full |
 | **Draft Pick** | ✅ Full |
@@ -83,11 +83,13 @@ npm run watch
 ## Vanguard Compliance
 
 This plugin only uses **official Riot-sanctioned APIs**:
+
 - ✅ LCU API (League Client)
 - ✅ Live Client Data API (in-game, 127.0.0.1:2999)
 - ✅ Public websites/CDNs (Lolalytics, Data Dragon)
 
 **Never touches:**
+
 - ❌ Game process memory
 - ❌ Network packets
 - ❌ Game files
