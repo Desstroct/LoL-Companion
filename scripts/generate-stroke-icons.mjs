@@ -29,113 +29,108 @@ function ensureDir(dir) {
 }
 
 // ─────────────────── White Stroke SVG Icons ───────────────────
-// All icons designed at 40×40 viewBox with white (#FFFFFF) stroke
-// on transparent background. Stroke width ~2px for clarity at 20×20.
-// RULE: No <text> elements (sharp can't render fonts). Keep shapes simple
-// for legibility at 20×20. Max 4-5 elements per icon.
+// Based on Lucide Icons (https://lucide.dev) — ISC License.
+// Adapted to 40×40 viewBox with white (#FFFFFF) stroke for Elgato compliance.
+// RULE: No <text> elements (sharp can't render fonts).
 
 const STROKE_ICONS = {
-  // Game Status → Monitor with signal waves
-  'game-status': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <rect x="5" y="7" width="30" height="20" rx="2"/>
-    <line x1="20" y1="27" x2="20" y2="32"/>
-    <line x1="13" y1="32" x2="27" y2="32"/>
-    <circle cx="20" cy="17" r="2" fill="#FFFFFF" stroke="none"/>
+  // Game Status → Monitor
+  'game-status': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect width="20" height="14" x="2" y="3" rx="2"/>
+    <line x1="8" x2="16" y1="21" y2="21"/>
+    <line x1="12" x2="12" y1="17" y2="21"/>
   </svg>`,
 
-  // Lobby Scanner → Magnifying glass (clean, no inner detail)
-  'lobby-scanner': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="18" cy="18" r="12"/>
-    <line x1="27" y1="27" x2="36" y2="36" stroke-width="2.5"/>
-    <circle cx="18" cy="18" r="5"/>
+  // Lobby Scanner → Scan-search (magnifying glass with scan frame)
+  'lobby-scanner': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 7V5a2 2 0 0 1 2-2h2"/>
+    <path d="M17 3h2a2 2 0 0 1 2 2v2"/>
+    <path d="M21 17v2a2 2 0 0 1-2 2h-2"/>
+    <path d="M7 21H5a2 2 0 0 1-2-2v-2"/>
+    <circle cx="12" cy="12" r="3"/>
+    <path d="m16 16-1.9-1.9"/>
   </svg>`,
 
-  // Jungle Path → Three connected waypoints (route)
-  'jungle-path': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="8" cy="32" r="4"/>
-    <circle cx="20" cy="14" r="4"/>
-    <circle cx="34" cy="28" r="4"/>
-    <line x1="11" y1="29" x2="17" y2="17"/>
-    <line x1="23" y1="17" x2="31" y2="25"/>
+  // Jungle Path → Route (S-curve path between dots)
+  'jungle-path': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="6" cy="19" r="3"/>
+    <path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/>
+    <circle cx="18" cy="5" r="3"/>
   </svg>`,
 
-  // KDA Tracker → Crosshair / target
-  'kda-tracker': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="20" cy="20" r="12"/>
-    <circle cx="20" cy="20" r="5"/>
-    <line x1="20" y1="4" x2="20" y2="10"/>
-    <line x1="20" y1="30" x2="20" y2="36"/>
-    <line x1="4" y1="20" x2="10" y2="20"/>
-    <line x1="30" y1="20" x2="36" y2="20"/>
+  // KDA Tracker → Crosshair
+  'kda-tracker': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="10"/>
+    <line x1="22" x2="18" y1="12" y2="12"/>
+    <line x1="6" x2="2" y1="12" y2="12"/>
+    <line x1="12" x2="12" y1="6" y2="2"/>
+    <line x1="12" x2="12" y1="22" y2="18"/>
   </svg>`,
 
-  // Auto Accept → Checkmark in circle
-  'auto-accept': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="20" cy="20" r="15"/>
-    <polyline points="12,20 18,26 28,14" stroke-width="2.5"/>
+  // Auto Accept → Check in circle
+  'auto-accept': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="10"/>
+    <path d="m9 12 2 2 4-4"/>
   </svg>`,
 
   // Smart Pick / Counterpick → Crossed swords
-  'counterpick': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <line x1="8" y1="8" x2="32" y2="32" stroke-width="2.5"/>
-    <line x1="32" y1="8" x2="8" y2="32" stroke-width="2.5"/>
-    <polyline points="8,15 8,8 15,8"/>
-    <polyline points="25,8 32,8 32,15"/>
-    <polyline points="8,25 8,32 15,32"/>
-    <polyline points="25,32 32,32 32,25"/>
+  'counterpick': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/>
+    <line x1="13" x2="19" y1="19" y2="13"/>
+    <line x1="16" x2="20" y1="16" y2="20"/>
+    <line x1="19" x2="21" y1="21" y2="19"/>
+    <polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5"/>
+    <line x1="5" x2="9" y1="14" y2="18"/>
+    <line x1="7" x2="4" y1="17" y2="20"/>
+    <line x1="3" x2="5" y1="19" y2="21"/>
   </svg>`,
 
-  // Lobby Level → Single user with level-up arrow
-  'lobby-level': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="16" cy="13" r="6"/>
-    <path d="M4 34 Q4 24 16 24 Q28 24 28 34"/>
-    <line x1="34" y1="24" x2="34" y2="10"/>
-    <polyline points="30,14 34,10 38,14"/>
+  // Lobby Level → User silhouette (+ arrow up for level)
+  'lobby-level': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+    <circle cx="10" cy="7" r="4"/>
+    <line x1="20" y1="14" x2="20" y2="6"/>
+    <polyline points="17,9 20,6 23,9"/>
   </svg>`,
 
-  // Auto Rune → Diamond / rune stone with inner glow
-  'auto-rune': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <polygon points="20,3 36,20 20,37 4,20"/>
-    <polygon points="20,11 29,20 20,29 11,20" stroke-width="1.5"/>
-    <circle cx="20" cy="20" r="3" fill="#FFFFFF" stroke="none"/>
+  // Auto Rune → Hexagon (rune stone shape)
+  'auto-rune': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+    <circle cx="12" cy="12" r="3" fill="#FFFFFF" stroke="none"/>
   </svg>`,
 
-  // Best Item → Gem / diamond shape (precious item)
-  'best-item': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <polygon points="20,4 36,16 20,36 4,16"/>
-    <line x1="4" y1="16" x2="36" y2="16"/>
-    <line x1="13" y1="4" x2="10" y2="16"/>
-    <line x1="27" y1="4" x2="30" y2="16"/>
-    <line x1="10" y1="16" x2="20" y2="36"/>
-    <line x1="30" y1="16" x2="20" y2="36"/>
+  // Best Item → Gem (faceted gemstone)
+  'best-item': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M10.5 3 8 9l4 13 4-13-2.5-6"/>
+    <path d="M17 3a2 2 0 0 1 1.6.8l3 4a2 2 0 0 1 .013 2.382l-7.99 10.986a2 2 0 0 1-3.247 0l-7.99-10.986A2 2 0 0 1 2.4 7.8l2.998-3.997A2 2 0 0 1 7 3z"/>
+    <path d="M2 9h20"/>
   </svg>`,
 
   // Death Timer → Hourglass
-  'death-timer': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <line x1="8" y1="4" x2="32" y2="4"/>
-    <line x1="8" y1="36" x2="32" y2="36"/>
-    <path d="M10 4 L10 12 Q10 20 20 20 Q30 20 30 12 L30 4"/>
-    <path d="M10 36 L10 28 Q10 20 20 20 Q30 20 30 28 L30 36"/>
+  'death-timer': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M5 22h14"/>
+    <path d="M5 2h14"/>
+    <path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"/>
+    <path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"/>
   </svg>`,
 
-  // Auto Pick/Ban → Lightning bolt (instant auto-action)
-  'auto-pick': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <polygon points="24,3 10,22 19,22 16,37 30,18 21,18" stroke-width="2"/>
+  // Auto Pick/Ban → Zap (lightning bolt)
+  'auto-pick': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>
   </svg>`,
 
-  // LP Tracker → Trending chart with arrow up
-  'lp-tracker': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <polyline points="4,32 14,22 22,28 36,10" stroke-width="2.5"/>
-    <polyline points="28,10 36,10 36,18"/>
-    <line x1="4" y1="36" x2="36" y2="36"/>
+  // LP Tracker → Trending up (line chart with arrow)
+  'lp-tracker': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M16 7h6v6"/>
+    <path d="m22 7-8.5 8.5-5-5L2 17"/>
   </svg>`,
 
-  // Skill Order → Three ascending bars (skill levels rising)
-  'skill-order': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <rect x="4" y="26" width="8" height="10" rx="1"/>
-    <rect x="16" y="18" width="8" height="18" rx="1"/>
-    <rect x="28" y="8" width="8" height="28" rx="1"/>
-    <polyline points="6,10 20,4 34,10" stroke-width="1.5" stroke-dasharray="2 2"/>
+  // Skill Order → Column chart (ascending bars)
+  'skill-order': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 3v16a2 2 0 0 0 2 2h16"/>
+    <path d="M18 17V9"/>
+    <path d="M13 17V5"/>
+    <path d="M8 17v-3"/>
   </svg>`,
 };
 
