@@ -62,6 +62,8 @@ import { AutoPick } from "./actions/auto-pick";
 import { LpTracker } from "./actions/lp-tracker";
 import { JunglePath } from "./actions/jungle-path";
 import { SkillOrder } from "./actions/skill-order";
+import { RecallWindow } from "./actions/recall-window";
+import { SessionStats } from "./actions/session-stats";
 import { lcuConnector } from "./services/lcu-connector";
 import { gameMode } from "./services/game-mode";
 import { dataDragon } from "./services/data-dragon";
@@ -122,6 +124,8 @@ streamDeck.actions.registerAction(new AutoPick());
 streamDeck.actions.registerAction(new LpTracker());
 streamDeck.actions.registerAction(new JunglePath());
 streamDeck.actions.registerAction(new SkillOrder());
+streamDeck.actions.registerAction(new RecallWindow());
+streamDeck.actions.registerAction(new SessionStats());
 
 // Connect to Stream Deck and initialize
 streamDeck.connect().then(() => {

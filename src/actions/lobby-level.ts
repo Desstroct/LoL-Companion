@@ -91,19 +91,20 @@ function valueToLabel(value: number): string {
 @action({ UUID: "com.desstroct.lol-api.lobby-level" })
 export class LobbyLevelTracker extends SingletonAction<LobbyLevelSettings> {
 	private pollInterval: ReturnType<typeof setInterval> | null = null;
-	private lastHash = "";
+	private lastHashMap = new Map<string, string>();
 
 	override onWillAppear(ev: WillAppearEvent<LobbyLevelSettings>): void | Promise<void> {
 		this.startPolling();
 		return ev.action.setTitle("Lobby\nLevel");
 	}
 
-	override onWillDisappear(_ev: WillDisappearEvent<LobbyLevelSettings>): void | Promise<void> {
+	override onWillDisappear(ev: WillDisappearEvent<LobbyLevelSettings>): void | Promise<void> {
+		this.lastHashMap.delete(ev.action.id);
 		if (this.actions.length === 0) this.stopPolling();
 	}
 
 	override async onKeyDown(ev: KeyDownEvent<LobbyLevelSettings>): Promise<void> {
-		this.lastHash = "";
+		this.lastHashMap.set(ev.action.id, "");
 		await this.updateLobbyLevel();
 	}
 
@@ -138,7 +139,9 @@ export class LobbyLevelTracker extends SingletonAction<LobbyLevelSettings> {
 
 		const phase = await lcuApi.getGameflowPhase();
 		if (phase !== "ChampSelect") {
-			this.lastHash = "";
+			for (const a of this.actions) {
+				this.lastHashMap.set(a.id, "");
+			}
 			for (const a of this.actions) {
 				await a.setTitle("Lobby\nLevel");
 			}
@@ -164,9 +167,11 @@ export class LobbyLevelTracker extends SingletonAction<LobbyLevelSettings> {
 		}
 
 		const hash = allPuuids.sort().join(",");
-		if (hash === this.lastHash) return;
 
 		for (const a of this.actions) {
+			const lastHash = this.lastHashMap.get(a.id) ?? "";
+			if (hash === lastHash) continue;
+
 			const settings = (await a.getSettings()) as LobbyLevelSettings;
 			const view = settings.view ?? "all";
 
@@ -193,7 +198,7 @@ export class LobbyLevelTracker extends SingletonAction<LobbyLevelSettings> {
 				}
 
 				await a.setTitle(title);
-				this.lastHash = hash;
+				this.lastHashMap.set(a.id, hash);
 			} catch (e) {
 				logger.error(`LobbyLevel error: ${e}`);
 				await a.setTitle("Lobby Lvl\nError");

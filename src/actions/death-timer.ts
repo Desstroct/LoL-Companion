@@ -25,7 +25,7 @@ const logger = streamDeck.logger.createScope("DeathTimer");
 @action({ UUID: "com.desstroct.lol-api.death-timer" })
 export class DeathTimer extends SingletonAction {
 	private pollInterval: ReturnType<typeof setInterval> | null = null;
-	private lastDead = false;
+	private lastDeadMap = new Map<string, boolean>();
 
 	override onWillAppear(ev: WillAppearEvent): void | Promise<void> {
 		this.startPolling();
@@ -40,7 +40,8 @@ export class DeathTimer extends SingletonAction {
 		return ev.action.setTitle("Death\nTimer");
 	}
 
-	override onWillDisappear(_ev: WillDisappearEvent): void | Promise<void> {
+	override onWillDisappear(ev: WillDisappearEvent): void | Promise<void> {
+		this.lastDeadMap.delete(ev.action.id);
 		if (this.actions.length === 0) this.stopPolling();
 	}
 
@@ -74,10 +75,8 @@ export class DeathTimer extends SingletonAction {
 		const allData = await gameClient.getAllData();
 
 		if (!allData) {
-			if (this.lastDead) {
-				this.lastDead = false;
-			}
 			for (const a of this.actions) {
+				this.lastDeadMap.set(a.id, false);
 				if (a.isDial()) {
 					await a.setFeedback({
 						champ_icon: "",
@@ -114,11 +113,11 @@ export class DeathTimer extends SingletonAction {
 			: null;
 
 		if (me.isDead) {
-			this.lastDead = true;
 			const respawnSec = Math.ceil(me.respawnTimer);
 			const barValue = Math.min(100, Math.round((respawnSec / 60) * 100));
 
 			for (const a of this.actions) {
+				this.lastDeadMap.set(a.id, true);
 				if (a.isDial()) {
 					await a.setFeedback({
 						champ_icon: champIcon ?? "",
@@ -132,10 +131,9 @@ export class DeathTimer extends SingletonAction {
 				}
 			}
 		} else {
-			const wasJustDead = this.lastDead;
-			this.lastDead = false;
-
 			for (const a of this.actions) {
+				const wasJustDead = this.lastDeadMap.get(a.id) ?? false;
+				this.lastDeadMap.set(a.id, false);
 				if (a.isDial()) {
 					await a.setFeedback({
 						champ_icon: champIcon ?? "",

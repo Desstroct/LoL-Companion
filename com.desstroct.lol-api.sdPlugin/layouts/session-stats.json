@@ -1,0 +1,50 @@
+{
+	"$schema": "https://schemas.elgato.com/streamdeck/plugins/layout.json",
+	"id": "session-stats",
+	"items": [
+		{
+			"key": "rank_icon",
+			"type": "pixmap",
+			"rect": [4, 10, 72, 72]
+		},
+		{
+			"key": "title",
+			"type": "text",
+			"rect": [82, 0, 118, 20],
+			"font": { "size": 13, "weight": 700 },
+			"alignment": "left"
+		},
+		{
+			"key": "record_text",
+			"type": "text",
+			"rect": [82, 20, 118, 18],
+			"font": { "size": 13, "weight": 600 },
+			"alignment": "left",
+			"color": "#FFFFFF"
+		},
+		{
+			"key": "lp_text",
+			"type": "text",
+			"rect": [82, 38, 70, 18],
+			"font": { "size": 14, "weight": 700 },
+			"alignment": "left",
+			"color": "#FFD700"
+		},
+		{
+			"key": "streak_text",
+			"type": "text",
+			"rect": [152, 38, 48, 18],
+			"font": { "size": 12, "weight": 600 },
+			"alignment": "right"
+		},
+		{
+			"key": "winrate_bar",
+			"type": "bar",
+			"rect": [82, 58, 108, 10],
+			"range": { "min": 0, "max": 100 },
+			"value": 50,
+			"bar_fill_c": "#2ECC71",
+			"bar_bg_c": "#333333"
+		}
+	]
+}

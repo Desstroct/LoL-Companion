@@ -180,6 +180,15 @@ export class LcuApi {
 	}
 
 	/**
+	 * Get the player's region/locale info from the Riot Client.
+	 * Returns the region string (e.g., "EUW", "NA", "KR").
+	 */
+	async getRegion(): Promise<string | null> {
+		const data = await this.get<{ region: string; locale: string }>("/riotclient/region-locale");
+		return data?.region ?? null;
+	}
+
+	/**
 	 * Get a summoner by PUUID.
 	 */
 	async getSummonerByPuuid(puuid: string): Promise<LcuSummoner | null> {

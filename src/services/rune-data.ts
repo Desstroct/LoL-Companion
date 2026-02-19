@@ -80,9 +80,12 @@ export class RuneData {
 	/**
 	 * Get recommended rune pages for a champion + lane.
 	 * Returns up to 2 pages: most common and highest win rate.
+	 * @param vsChampionAlias  Lolalytics alias of the enemy champion for matchup-specific runes.
 	 */
-	async getRecommendedRunes(championAlias: string, lane: string): Promise<RunePageData[]> {
-		const key = `${championAlias}:${lane}`;
+	async getRecommendedRunes(championAlias: string, lane: string, vsChampionAlias?: string): Promise<RunePageData[]> {
+		const key = vsChampionAlias
+			? `${championAlias}:${lane}:vs:${vsChampionAlias}`
+			: `${championAlias}:${lane}`;
 		const cached = this.cache.get(key);
 
 		if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
@@ -93,7 +96,7 @@ export class RuneData {
 
 		// Primary: SSR build page parser (reliable)
 		try {
-			const buildData = await lolaBuild.getBuildData(championAlias, lane);
+			const buildData = await lolaBuild.getBuildData(championAlias, lane, vsChampionAlias);
 			if (buildData && buildData.runes.length > 0) {
 				logger.info(
 					`Parsed ${buildData.runes.length} rune page(s) via SSR for ${championAlias} ${lane}: ` +

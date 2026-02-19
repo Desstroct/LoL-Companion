@@ -147,28 +147,36 @@ export class SkillOrder extends SingletonAction<SkillOrderSettings> {
 
 		const phase = lcuConnector.isConnected() ? await lcuApi.getGameflowPhase() : null;
 
-		// Only active in champ select
+		// Keep skill order visible during loading screen and in-game so players
+		// can reference it. Only reset when back in lobby/menus.
+		const inGamePhases = ["ChampSelect", "GameStart", "InProgress", "WaitingForStats", "Reconnect"];
+		const keepData = phase !== null && inGamePhases.includes(phase);
+
 		if (phase !== "ChampSelect") {
-			for (const a of this.actions) {
-				const state = this.getState(a.id);
-				if (state.lastChampKey) {
-					state.lastChampKey = "";
-					state.priority = [];
-					state.fullOrder = [];
-					state.selectedIndex = 0;
-					if (a.isDial()) {
-						await a.setFeedback({
-							title: "Skill Order",
-							skill_order: "Waiting...",
-							skill_info: "",
-							wr_bar: { value: 0 },
-						});
-					} else {
-						await a.setImage("");
-						await a.setTitle("Skill\nOrder");
+			if (!keepData) {
+				// Back in lobby/menus — clear state
+				for (const a of this.actions) {
+					const state = this.getState(a.id);
+					if (state.lastChampKey) {
+						state.lastChampKey = "";
+						state.priority = [];
+						state.fullOrder = [];
+						state.selectedIndex = 0;
+						if (a.isDial()) {
+							await a.setFeedback({
+								title: "Skill Order",
+								skill_order: "Waiting...",
+								skill_info: "",
+								wr_bar: { value: 0 },
+							});
+						} else {
+							await a.setImage("");
+							await a.setTitle("Skill\nOrder");
+						}
 					}
 				}
 			}
+			// If keepData is true, just leave the current display as-is
 			return;
 		}
 

@@ -22,6 +22,9 @@
     <sdpi-item label="Auto Spells">
         <sdpi-checkbox setting="autoSpells" label="Also set optimal summoner spells" default="true"></sdpi-checkbox>
     </sdpi-item>
+    <sdpi-item label="Matchup Mode">
+        <sdpi-checkbox setting="matchup" label="Adapt runes & spells to enemy laner" default="true"></sdpi-checkbox>
+    </sdpi-item>
     <sdpi-item label="Info">
         <details>
             <summary>How it works</summary>
@@ -30,7 +33,9 @@
                 <b>Key/Touch:</b> Apply runes to the client.<br>
                 <b>Dial rotate:</b> Switch between "Highest WR" and "Most Popular" builds.<br>
                 <b>Auto Apply:</b> When enabled, runes are set automatically when you lock a champion.<br>
-                <b>Auto Spells:</b> When enabled, summoner spells are also set to the highest win-rate combo.
+                <b>Auto Spells:</b> When enabled, summoner spells are also set to the highest win-rate combo.<br>
+                <b>Matchup Mode:</b> When enabled, runes and spells are adapted to the enemy laner once they pick.<br>
+                If the matchup has too few games (&lt;50), generic runes are used instead.
             </p>
         </details>
     </sdpi-item>

@@ -32,6 +32,7 @@ interface SmartPickState {
 }
 
 type SmartPickSettings = {
+	/** "auto" = detect from champ select assigned position */
 	role?: string;
 	defaultMode?: PickMode;
 };
@@ -56,19 +57,20 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 
 	override onWillAppear(ev: WillAppearEvent<SmartPickSettings>): void | Promise<void> {
 		this.startPolling();
-		const role = ev.payload.settings.role ?? "top";
+		const role = ev.payload.settings.role ?? "auto";
+		const roleLabel = role === "auto" ? "AUTO" : role.toUpperCase();
 		const mode = ev.payload.settings.defaultMode ?? "counter";
 		if (ev.action.isDial()) {
 			this.getState(ev.action.id, mode);
 			return ev.action.setFeedback({
 				champ_icon: "",
-				title: `${mode === "counter" ? "Counter" : "Best"} · ${role.toUpperCase()}`,
+				title: `${mode === "counter" ? "Counter" : "Best"} · ${roleLabel}`,
 				pick_name: "Waiting...",
 				pick_info: "",
 				score_bar: { value: 0 },
 			});
 		}
-		return ev.action.setTitle(`${mode === "counter" ? "Counter" : "Best"}\n${role.toUpperCase()}`);
+		return ev.action.setTitle(`${mode === "counter" ? "Counter" : "Best"}\n${roleLabel}`);
 	}
 
 	override onWillDisappear(ev: WillDisappearEvent<SmartPickSettings>): void | Promise<void> {
@@ -191,20 +193,21 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 			}
 			for (const a of this.actions) {
 				const settings = (await a.getSettings()) as SmartPickSettings;
-				const role = settings.role ?? "top";
+				const role = settings.role ?? "auto";
+				const roleLabel = role === "auto" ? "AUTO" : role.toUpperCase();
 				const state = this.getState(a.id, settings.defaultMode);
 				const label = state.mode === "counter" ? "Counter" : "Best";
 				if (a.isDial()) {
 					await a.setFeedback({
 						champ_icon: "",
-						title: `${label} · ${role.toUpperCase()}`,
+						title: `${label} · ${roleLabel}`,
 						pick_name: "Waiting...",
 						pick_info: "Press dial to toggle mode",
 						score_bar: { value: 0 },
 					});
 				} else {
 					await a.setImage("");
-					await a.setTitle(`${label}\n${role.toUpperCase()}`);
+					await a.setTitle(`${label}\n${roleLabel}`);
 				}
 			}
 			return;
@@ -216,9 +219,15 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 			return;
 		}
 
+		const localCell = session.localPlayerCellId;
+		const me = session.myTeam.find((p) => p.cellId === localCell);
+
 		for (const a of this.actions) {
 			const settings = (await a.getSettings()) as SmartPickSettings;
-			const role = settings.role ?? "top";
+			// Auto-detect role from champ select assigned position
+			const role = (settings.role && settings.role !== "auto" ? settings.role : null)
+				?? me?.assignedPosition
+				?? "top";
 			const lane = ChampionStats.toLolalyticsLane(role);
 			const state = this.getState(a.id, settings.defaultMode);
 

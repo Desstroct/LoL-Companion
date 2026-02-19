@@ -21,6 +21,7 @@ import { dataDragon } from "../services/data-dragon";
 import { runeData, RunePageData } from "../services/rune-data";
 import { ChampionStats } from "../services/champion-stats";
 import { lolaBuild, type SummonerSpellCombo } from "../services/lolalytics-build";
+import type { LcuChampSelectSession } from "../types/lol";
 
 const logger = streamDeck.logger.createScope("AutoRune");
 
@@ -176,7 +177,11 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 	private getState(actionId: string): AutoRuneState {
 		let s = this.actionStates.get(actionId);
 		if (!s) {
-			s = { lastChampKey: "", lastRunes: [], selectedIndex: 0, applied: false, spells: [], spellsApplied: false };
+			s = {
+				lastChampKey: "", lastRunes: [], selectedIndex: 0, applied: false,
+				spells: [], spellsApplied: false,
+				lastEnemyKey: "", vsChampName: "",
+			};
 			this.actionStates.set(actionId, s);
 		}
 		return s;
@@ -236,6 +241,8 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 				s.applied = false;
 				s.spells = [];
 				s.spellsApplied = false;
+				s.lastEnemyKey = "";
+				s.vsChampName = "";
 			}
 			if (hadState) {
 				for (const a of this.actions) {
@@ -282,25 +289,53 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 			const s = (await a.getSettings()) as AutoRuneSettings;
 			const state = this.getState(a.id);
 
-			if (champKey === state.lastChampKey) {
-				// Same champion — check if just locked for auto-apply
+			// Determine lane / role
+			const myPosition = (s.role && s.role !== "auto" ? s.role : null) ?? me.assignedPosition ?? "";
+			const lane = gameMode.isARAM()
+				? "aram"
+				: ChampionStats.toLolalyticsLane(myPosition || "top");
+
+			// Detect enemy laner for matchup-specific data
+			const enemyInfo = this.getEnemyLaner(session, myPosition, s);
+			const enemyKey = enemyInfo?.alias ?? "";
+
+			const champChanged = champKey !== state.lastChampKey;
+			const enemyChanged = enemyKey !== state.lastEnemyKey;
+
+			if (!champChanged && !enemyChanged) {
+				// Same champion, same enemy — just check auto-apply
 				if (isLocked && s.autoApply && !state.applied && state.lastRunes.length > 0) {
 					await this.applyRunesForAction(a, state, s);
 				}
 				continue;
 			}
 
-			// New champion detected
-			state.lastChampKey = champKey;
-			state.selectedIndex = 0;
-			state.applied = false;
-			state.spells = [];
-			state.spellsApplied = false;
+			if (champChanged) {
+				// New champion — reset everything
+				state.lastChampKey = champKey;
+				state.selectedIndex = 0;
+				state.applied = false;
+				state.spells = [];
+				state.spellsApplied = false;
+			}
+
+			// Track enemy changes
+			if (enemyChanged) {
+				state.lastEnemyKey = enemyKey;
+				state.vsChampName = enemyInfo?.name ?? "";
+				// If enemy changed but champ didn't, reset applied state so we can re-apply matchup runes
+				if (!champChanged && enemyKey) {
+					state.applied = false;
+					state.spellsApplied = false;
+					state.selectedIndex = 0;
+				}
+			}
 
 			// Show loading state
+			const vsLabel = state.vsChampName ? ` vs ${state.vsChampName}` : "";
 			if (a.isDial()) {
 				await a.setFeedback({
-					title: champ.name,
+					title: `${champ.name}${vsLabel}`,
 					rune_name: "Searching...",
 					rune_info: "",
 					wr_bar: { value: 0 },
@@ -309,31 +344,38 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 				await a.setTitle(`${champ.name}\nSearching...`);
 			}
 
-			const lane = gameMode.isARAM()
-				? "aram"
-				: ChampionStats.toLolalyticsLane(
-						(s.role && s.role !== "auto" ? s.role : null) ?? me.assignedPosition ?? "top",
-				  );
+			// Fetch runes — matchup-specific if enemy is detected
+			const vsAlias = enemyKey || undefined;
 
 			try {
-				const runes = await runeData.getRecommendedRunes(champAlias, lane);
-				state.lastRunes = runes;
+				const runes = await runeData.getRecommendedRunes(champAlias, lane, vsAlias);
 
-				// Also fetch summoner spell data from the build page
+				// If matchup data has too few games (<50), fall back to generic
+				if (vsAlias && runes.length > 0 && runes[0].games < 50) {
+					logger.info(`Matchup data for ${champ.name} vs ${state.vsChampName} has only ${runes[0].games} games, using generic`);
+					const genericRunes = await runeData.getRecommendedRunes(champAlias, lane);
+					state.lastRunes = genericRunes;
+					state.vsChampName = ""; // clear matchup label since we're using generic
+				} else {
+					state.lastRunes = runes;
+				}
+
+				// Also fetch summoner spell data (matchup-specific if available)
 				try {
-					const buildData = await lolaBuild.getBuildData(champAlias, lane);
+					const buildData = await lolaBuild.getBuildData(champAlias, lane, vsAlias);
 					if (buildData && buildData.summonerSpells.length > 0) {
 						state.spells = buildData.summonerSpells;
-						logger.info(`Spells for ${champ.name} ${lane}: ${state.spells[0].ids.join("+")} (${state.spells[0].winRate}%)`);
+						logger.info(`Spells for ${champ.name} ${lane}${vsAlias ? ` vs ${state.vsChampName}` : ""}: ${state.spells[0].ids.join("+")} (${state.spells[0].winRate}%)`);
 					}
 				} catch (e) {
 					logger.warn(`Failed to fetch spells for ${champ.name}: ${e}`);
 				}
 
-				if (runes.length > 0) {
-					logger.info(`Runes for ${champ.name} ${lane}: ${runes[0].keystoneName} (${runes[0].winRate}%)`);
+				if (state.lastRunes.length > 0) {
+					const src = vsAlias && state.vsChampName ? `vs ${state.vsChampName}` : "generic";
+					logger.info(`Runes for ${champ.name} ${lane} (${src}): ${state.lastRunes[0].keystoneName} (${state.lastRunes[0].winRate}%)`);
 
-					// Auto-apply only when champion is locked, not just hovered
+					// Auto-apply only when champion is locked
 					if (isLocked && s.autoApply) {
 						await this.applyRunesForAction(a, state, s);
 					}
@@ -343,6 +385,100 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 			} catch (e) {
 				logger.error(`Failed to get runes: ${e}`);
 			}
+		}
+	}
+
+	// ---- Enemy detection ----
+
+	/** LCU position → Lolalytics default lane mapping for champion inference */
+	private static readonly POSITION_TO_DEFAULT_LANE: Record<string, string[]> = {
+		top: ["top"],
+		jungle: ["jungle"],
+		middle: ["middle", "mid"],
+		bottom: ["bottom", "adc"],
+		utility: ["support"],
+	};
+
+	/**
+	 * Detect the enemy laner.
+	 * Strategy:
+	 *   1. Match by assignedPosition (if LCU exposes it for enemies)
+	 *   2. Fallback: pick the enemy whose champion's primary lane matches our position
+	 * Returns null if matchup mode is disabled, it's ARAM, or no enemy has picked yet.
+	 */
+	private getEnemyLaner(
+		session: LcuChampSelectSession,
+		myPosition: string,
+		settings: AutoRuneSettings,
+	): { alias: string; name: string } | null {
+		if (settings.matchup === false) return null;
+		if (gameMode.isARAM()) return null;
+		if (!myPosition) return null;
+
+		// Strategy 1: Direct assignedPosition match
+		const directMatch = session.theirTeam.find(
+			(p) => p.assignedPosition === myPosition && p.championId > 0,
+		);
+		if (directMatch) {
+			const champ = dataDragon.getChampionByKey(String(directMatch.championId));
+			if (champ) {
+				return { alias: ChampionStats.toLolalytics(champ.id), name: champ.name };
+			}
+		}
+
+		// Strategy 2: Infer from champion's primary role via Data Dragon tags
+		// Map our position to expected champion tags/lanes
+		const myLane = ChampionStats.toLolalyticsLane(myPosition);
+
+		// Check each enemy champion's default lanes
+		for (const enemy of session.theirTeam) {
+			if (enemy.championId <= 0) continue;
+			const champ = dataDragon.getChampionByKey(String(enemy.championId));
+			if (!champ) continue;
+
+			// Use Data Dragon tags to infer lane compatibility
+			const laneMatch = this.championMatchesLane(champ, myLane);
+			if (laneMatch) {
+				return { alias: ChampionStats.toLolalytics(champ.id), name: champ.name };
+			}
+		}
+
+		// Strategy 3: If only one enemy has picked so far, use them (early draft)
+		const pickedEnemies = session.theirTeam.filter((p) => p.championId > 0);
+		if (pickedEnemies.length === 1) {
+			const champ = dataDragon.getChampionByKey(String(pickedEnemies[0].championId));
+			if (champ) {
+				return { alias: ChampionStats.toLolalytics(champ.id), name: champ.name };
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Heuristic: does this champion likely play in the given lane?
+	 * Uses Data Dragon tags as a rough signal.
+	 */
+	private championMatchesLane(champ: { tags: string[]; name: string }, lane: string): boolean {
+		const tags = champ.tags;
+		switch (lane) {
+			case "top":
+				// Tanks, Fighters typically go top
+				return tags.includes("Fighter") || (tags.includes("Tank") && !tags.includes("Support"));
+			case "jungle":
+				// Hard to infer purely from tags — skip (assignedPosition should work for jungle)
+				return false;
+			case "middle":
+				// Mages, Assassins typically go mid
+				return tags.includes("Mage") || tags.includes("Assassin");
+			case "bottom":
+				// Marksmen go bot
+				return tags.includes("Marksman");
+			case "support":
+				// Support tag
+				return tags.includes("Support");
+			default:
+				return false;
 		}
 	}
 
@@ -377,18 +513,22 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 		const appliedMark = state.applied && state.spellsApplied ? " ✅" : state.applied ? " ✓" : "";
 		const gamesStr = rune.games >= 1000 ? `${(rune.games / 1000).toFixed(1)}k` : `${rune.games}`;
 		const barColor = rune.winRate >= 54 ? "#2ECC71" : rune.winRate >= 50 ? "#F1C40F" : "#E74C3C";
+		const vsTag = state.vsChampName ? ` vs ${state.vsChampName}` : "";
 
 		// Get the keystone icon for the detected rune
 		const keystoneId = rune.selectedPerkIds[0];
 		const keystoneImg = getKeystoneImage(keystoneId);
 
 		const shortChamp = champName.length > 10 ? champName.slice(0, 9) + "…" : champName;
+		const shortVs = state.vsChampName
+			? (state.vsChampName.length > 8 ? ` v ${state.vsChampName.slice(0, 7)}…` : ` v ${state.vsChampName}`)
+			: "";
 		if (a.isDial()) {
 			await a.setFeedback({
 				keystone_icon: keystoneImg ?? "",
-				title: `${shortChamp} · ${label}${appliedMark}`,
+				title: `${shortChamp}${shortVs} · ${label}${appliedMark}`,
 				rune_name: rune.keystoneName,
-				rune_info: `${rune.winRate}% WR · ${gamesStr} games`,
+				rune_info: `${rune.winRate}% WR · ${gamesStr} games${vsTag ? " (matchup)" : ""}`,
 				wr_bar: { value: rune.winRate, bar_fill_c: barColor },
 			});
 		} else {
@@ -400,7 +540,7 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 				await a.setImage(keystoneImg);
 			}
 			await a.setTitle(
-				`${champName}${appliedMark}`,
+				`${champName}${appliedMark}${vsTag ? `\nvs ${state.vsChampName}` : ""}`,
 			);
 		}
 	}
@@ -514,6 +654,10 @@ interface AutoRuneState {
 	spells: SummonerSpellCombo[];
 	/** Whether summoner spells have been applied */
 	spellsApplied: boolean;
+	/** Lolalytics alias of the last detected enemy laner (for matchup tracking) */
+	lastEnemyKey: string;
+	/** Display name of the enemy laner */
+	vsChampName: string;
 }
 
 type AutoRuneSettings = {
@@ -522,4 +666,6 @@ type AutoRuneSettings = {
 	autoApply?: boolean;
 	/** When true, summoner spells are also applied automatically (defaults to true) */
 	autoSpells?: boolean;
+	/** When true (default), fetches matchup-specific runes based on enemy laner */
+	matchup?: boolean;
 };

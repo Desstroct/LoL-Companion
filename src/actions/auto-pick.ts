@@ -28,30 +28,46 @@ const logger = streamDeck.logger.createScope("AutoPick");
  *
  * Press key to toggle auto-pick on/off.
  */
+interface AutoPickState {
+	enabled: boolean;
+	hasPicked: boolean;
+	hasBanned: boolean;
+	lastPhaseTimer: string;
+}
+
 @action({ UUID: "com.desstroct.lol-api.auto-pick" })
 export class AutoPick extends SingletonAction<AutoPickSettings> {
 	private pollInterval: ReturnType<typeof setInterval> | null = null;
-	private enabled = true;
-	private hasPicked = false;
-	private hasBanned = false;
-	private lastPhaseTimer = "";
+	private actionStates = new Map<string, AutoPickState>();
+
+	private getState(id: string): AutoPickState {
+		let s = this.actionStates.get(id);
+		if (!s) {
+			s = { enabled: true, hasPicked: false, hasBanned: false, lastPhaseTimer: "" };
+			this.actionStates.set(id, s);
+		}
+		return s;
+	}
 
 	override async onWillAppear(ev: WillAppearEvent<AutoPickSettings>): Promise<void> {
 		const settings = ev.payload.settings;
-		this.enabled = settings.enabled !== false;
+		const state = this.getState(ev.action.id);
+		state.enabled = settings.enabled !== false;
 		this.startPolling();
-		await this.renderAll(settings);
+		await this.renderAction(ev.action, settings, state);
 	}
 
-	override onWillDisappear(_ev: WillDisappearEvent<AutoPickSettings>): void | Promise<void> {
+	override onWillDisappear(ev: WillDisappearEvent<AutoPickSettings>): void | Promise<void> {
+		this.actionStates.delete(ev.action.id);
 		if (this.actions.length === 0) this.stopPolling();
 	}
 
 	override async onKeyDown(ev: KeyDownEvent<AutoPickSettings>): Promise<void> {
-		this.enabled = !this.enabled;
-		await ev.action.setSettings({ ...ev.payload.settings, enabled: this.enabled });
-		logger.info(`Auto-pick ${this.enabled ? "enabled" : "disabled"}`);
-		await this.renderAll(ev.payload.settings);
+		const state = this.getState(ev.action.id);
+		state.enabled = !state.enabled;
+		await ev.action.setSettings({ ...ev.payload.settings, enabled: state.enabled });
+		logger.info(`Auto-pick ${state.enabled ? "enabled" : "disabled"}`);
+		await this.renderAction(ev.action, ev.payload.settings, state);
 	}
 
 	private startPolling(): void {
@@ -66,28 +82,28 @@ export class AutoPick extends SingletonAction<AutoPickSettings> {
 		}
 	}
 
-	private async renderAll(settings: AutoPickSettings): Promise<void> {
+	private async renderAction(a: WillAppearEvent<AutoPickSettings>["action"] | KeyDownEvent<AutoPickSettings>["action"], settings: AutoPickSettings, state: AutoPickState): Promise<void> {
 		const pickName = settings.pickChampion || "???";
 		const banName = settings.banChampion || "—";
 
-		for (const a of this.actions) {
-			if (this.enabled) {
-				// Try to show the pick champion icon
-				const pickChamp = dataDragon.getChampionByName(pickName);
-				if (pickChamp) {
-					const icon = await getChampionIcon(pickChamp.id);
-					if (icon) await a.setImage(icon);
-				}
-				await a.setTitle(`Pick: ${pickName}\nBan: ${banName}\nON`);
-			} else {
-				await a.setImage("");
-				await a.setTitle(`Auto Pick\nOFF`);
+		if (state.enabled) {
+			const pickChamp = dataDragon.getChampionByName(pickName);
+			if (pickChamp) {
+				const icon = await getChampionIcon(pickChamp.id);
+				if (icon) await a.setImage(icon);
 			}
+			await a.setTitle(`Pick: ${pickName}\nBan: ${banName}\nON`);
+		} else {
+			await a.setImage("");
+			await a.setTitle(`Auto Pick\nOFF`);
 		}
 	}
 
 	private async updateState(): Promise<void> {
-		if (!this.enabled) return;
+		// Check if any instance is enabled
+		const anyEnabled = Array.from(this.actionStates.values()).some((s) => s.enabled);
+		if (!anyEnabled) return;
+
 		if (!lcuConnector.isConnected()) {
 			for (const a of this.actions) {
 				await a.setTitle("Auto Pick\nOffline");
@@ -101,13 +117,20 @@ export class AutoPick extends SingletonAction<AutoPickSettings> {
 		const phase = await lcuApi.getGameflowPhase();
 		if (phase !== "ChampSelect") {
 			// Reset for next champ select
-			if (this.hasPicked || this.hasBanned) {
-				this.hasPicked = false;
-				this.hasBanned = false;
-				this.lastPhaseTimer = "";
+			let anyReset = false;
+			for (const s of this.actionStates.values()) {
+				if (s.hasPicked || s.hasBanned) {
+					s.hasPicked = false;
+					s.hasBanned = false;
+					s.lastPhaseTimer = "";
+					anyReset = true;
+				}
+			}
+			if (anyReset) {
 				for (const a of this.actions) {
-					const s = (await a.getSettings()) as AutoPickSettings;
-					await this.renderAll(s);
+					const settings = (await a.getSettings()) as AutoPickSettings;
+					const state = this.getState(a.id);
+					await this.renderAction(a, settings, state);
 				}
 			}
 			return;
@@ -125,7 +148,8 @@ export class AutoPick extends SingletonAction<AutoPickSettings> {
 		if (timerPhase === "PLANNING") {
 			for (const a of this.actions) {
 				const settings = (await a.getSettings()) as AutoPickSettings;
-				if (settings.pickChampion && !this.hasPicked) {
+				const state = this.getState(a.id);
+				if (settings.pickChampion && !state.hasPicked && state.enabled) {
 					const champId = this.resolveChampionId(settings.pickChampion);
 					if (champId) {
 						const pickAction = myActions.find((act) => act.type === "pick" && !act.completed);
@@ -150,9 +174,11 @@ export class AutoPick extends SingletonAction<AutoPickSettings> {
 
 		for (const a of this.actions) {
 			const settings = (await a.getSettings()) as AutoPickSettings;
+			const state = this.getState(a.id);
+			if (!state.enabled) continue;
 
 			// ── Auto-ban ──
-			if (!this.hasBanned && settings.banChampion) {
+			if (!state.hasBanned && settings.banChampion) {
 				// Look for our ban action: either in progress OR not yet started but available
 				const banAction = myActions.find(
 					(act) => act.type === "ban" && !act.completed,
@@ -169,7 +195,7 @@ export class AutoPick extends SingletonAction<AutoPickSettings> {
 							const autoLock = settings.autoLock !== false;
 							const success = await this.performAction(banAction.id, champToBan, autoLock);
 							if (success) {
-								this.hasBanned = true;
+								state.hasBanned = true;
 								await a.setTitle(`Banned!\n${settings.banChampion}`);
 							}
 						} else {
@@ -177,12 +203,12 @@ export class AutoPick extends SingletonAction<AutoPickSettings> {
 						}
 					}
 				}
-			} else if (!this.hasBanned && !settings.banChampion) {
+			} else if (!state.hasBanned && !settings.banChampion) {
 				// No ban champion configured
 			}
 
 			// ── Auto-pick ──
-			if (!this.hasPicked && settings.pickChampion) {
+			if (!state.hasPicked && settings.pickChampion) {
 				// Check if pick champion was banned
 				const champToPick = this.resolveChampionId(settings.pickChampion);
 				if (champToPick) {
@@ -192,7 +218,7 @@ export class AutoPick extends SingletonAction<AutoPickSettings> {
 					if (isBanned) {
 						logger.warn(`${settings.pickChampion} was banned — cannot auto-pick`);
 						await a.setTitle(`BANNED!\n${settings.pickChampion}`);
-						this.hasPicked = true; // prevent retrying
+						state.hasPicked = true; // prevent retrying
 						continue;
 					}
 
@@ -207,7 +233,7 @@ export class AutoPick extends SingletonAction<AutoPickSettings> {
 					if (pickedByTeammate) {
 						logger.warn(`${settings.pickChampion} already picked by a teammate`);
 						await a.setTitle(`TAKEN!\n${settings.pickChampion}`);
-						this.hasPicked = true;
+						state.hasPicked = true;
 						continue;
 					}
 				}
@@ -225,7 +251,7 @@ export class AutoPick extends SingletonAction<AutoPickSettings> {
 						const autoLock = settings.autoLock !== false;
 						const success = await this.performAction(pickAction.id, champToPick, autoLock);
 						if (success) {
-							this.hasPicked = true;
+							state.hasPicked = true;
 
 							const champ = dataDragon.getChampionByKey(String(champToPick));
 							const icon = champ ? await getChampionIcon(champ.id) : null;

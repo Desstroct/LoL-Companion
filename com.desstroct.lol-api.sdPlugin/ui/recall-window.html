@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Recall Window Settings</title>
+    <script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
+</head>
+<body>
+    <sdpi-item label="Gold Target">
+        <sdpi-textfield setting="goldTarget" placeholder="1100" type="number"></sdpi-textfield>
+    </sdpi-item>
+    <sdpi-item label="Info">
+        <details>
+            <summary>How it works</summary>
+            <p style="font-size: 11px; color: #999; padding: 8px;">
+                Shows a recall timer based on your current gold and item breakpoints.<br><br>
+                <strong>RECALL NOW</strong> — You have enough gold for a meaningful purchase (component or full item).<br>
+                <strong>SAVE</strong> — You're close to a breakpoint, keep farming.<br><br>
+                The gold target setting lets you customize the minimum gold needed before suggesting a recall (default: 1100g — typical first component cost).<br><br>
+                Gold breakpoints are dynamically calculated from your recommended build when available.<br><br>
+                Data from the Riot Live Client API (in-game only).
+            </p>
+        </details>
+    </sdpi-item>
+</body>
+</html>

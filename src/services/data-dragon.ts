@@ -226,6 +226,21 @@ export class DataDragon {
 	}
 
 	/**
+	 * Get the component recipe for an item (item IDs it builds from).
+	 */
+	getItemComponents(id: number): number[] {
+		const item = this.items.get(String(id));
+		return item?.from?.map(Number).filter((n) => !isNaN(n)) ?? [];
+	}
+
+	/**
+	 * Get item base (combine) cost — the gold needed on top of all components.
+	 */
+	getItemBaseCost(id: number): number {
+		return this.items.get(String(id))?.gold.base ?? 0;
+	}
+
+	/**
 	 * Get item image URL.
 	 */
 	getItemImageUrl(itemId: number): string {

@@ -132,10 +132,62 @@ export class ItemBuilds {
 
 		if (fullBuild.length === 0) return null;
 
-		// ── Starting items (common defaults — Best Item action handles in-game) ──
-		const startingItems = [1055, 2003]; // Doran's Blade + Health Potion
+		// ── Starting items: infer from startSet or first item in build ──
+		const startingItems = this.extractStartingItems(sets, fullBuild);
 
 		return { startingItems, fullBuild };
+	}
+
+	/**
+	 * Extract starting items from API data.
+	 * Uses startSet if available, otherwise infers from the first build item.
+	 */
+	private extractStartingItems(
+		sets: Record<string, [string, number, number][]>,
+		fullBuild: number[],
+	): number[] {
+		// Try startSet from API (if Lolalytics provides it)
+		if (sets.startSet) {
+			const best = this.getBestSet(sets.startSet, 1);
+			if (best.length > 0) return best;
+		}
+
+		// Infer from first item in build: pick a matching Doran's / support / jungle start
+		const firstItem = fullBuild[0];
+		if (firstItem) {
+			const cost = dataDragon.getItemCost(firstItem);
+			// If first item is cheap enough to be a starting item itself
+			if (cost > 0 && cost <= 500) return [firstItem, 2003]; // item + HP pot
+
+			// Infer by item tags / common starter associations
+			const name = dataDragon.getItemName(firstItem)?.toLowerCase() ?? "";
+			// Jungle items
+			if (this.isJungleItem(firstItem)) return [1103, 2003]; // Jungle pet + HP pot
+			// AP-oriented builds
+			if (name.includes("rod") || name.includes("luden") || name.includes("liandry") ||
+				name.includes("everfrost") || name.includes("malignance") || name.includes("stormsurge")) {
+				return [1056, 2003]; // Doran's Ring + HP pot
+			}
+			// Tank / bruiser
+			if (name.includes("sunfire") || name.includes("heartsteel") || name.includes("hollow") ||
+				name.includes("iceborn") || name.includes("jak'sho") || name.includes("unending")) {
+				return [1054, 2003]; // Doran's Shield + HP pot
+			}
+			// Support
+			if (name.includes("shurelya") || name.includes("moonstone") || name.includes("redemption") ||
+				name.includes("echoes") || name.includes("dream maker") || name.includes("celestial")) {
+				return [3850, 2003]; // Spellthief's + HP pot
+			}
+		}
+
+		// Default: Doran's Blade + HP pot (most common for AD)
+		return [1055, 2003];
+	}
+
+	/** Check if an item is a jungle starter/pet. */
+	private isJungleItem(itemId: number): boolean {
+		// Jungle items: Gustwalker/Scorchclaw/Mosstomper pets and their upgrades
+		return (itemId >= 1101 && itemId <= 1104) || (itemId >= 1035 && itemId <= 1041);
 	}
 
 	/**

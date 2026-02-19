@@ -1,0 +1,51 @@
+{
+	"$schema": "https://schemas.elgato.com/streamdeck/plugins/layout.json",
+	"id": "recall-window",
+	"items": [
+		{
+			"key": "recall_icon",
+			"type": "pixmap",
+			"rect": [4, 10, 72, 72]
+		},
+		{
+			"key": "title",
+			"type": "text",
+			"rect": [82, 0, 118, 20],
+			"font": { "size": 12, "weight": 600 },
+			"alignment": "left",
+			"color": "#FFD700"
+		},
+		{
+			"key": "status_text",
+			"type": "text",
+			"rect": [82, 20, 118, 24],
+			"font": { "size": 16, "weight": 700 },
+			"alignment": "left"
+		},
+		{
+			"key": "gold_text",
+			"type": "text",
+			"rect": [82, 44, 118, 18],
+			"font": { "size": 11, "weight": 600 },
+			"alignment": "left",
+			"color": "#FFD700"
+		},
+		{
+			"key": "gold_bar",
+			"type": "bar",
+			"rect": [82, 64, 108, 12],
+			"range": { "min": 0, "max": 100 },
+			"value": 0,
+			"bar_fill_c": "#3498DB",
+			"bar_bg_c": "#333333"
+		},
+		{
+			"key": "info_text",
+			"type": "text",
+			"rect": [82, 78, 118, 18],
+			"font": { "size": 10, "weight": 600 },
+			"alignment": "left",
+			"color": "#999999"
+		}
+	]
+}

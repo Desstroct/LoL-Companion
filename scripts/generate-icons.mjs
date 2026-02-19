@@ -214,6 +214,9 @@ function getAssetUrls(ddVersion) {
 
     // Dodge Advisor → Zhonya's Hourglass (dodge/stasis metaphor)
     'dodge-advisor': `${DD}/img/item/3157.png`,
+
+    // Recall Window → Warding Totem (game awareness — knowing when to back)
+    'recall-window': `${DD}/img/item/3340.png`,
   };
 }
 

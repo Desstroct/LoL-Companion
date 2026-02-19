@@ -41,6 +41,27 @@ const TFT_PHASE_DISPLAY: Record<string, { label: string }> = {
 	Reconnect: { label: "TFT\nReconnect" },
 };
 
+/** Map LCU region codes to OP.GG region slugs */
+const REGION_TO_OPGG: Record<string, string> = {
+	EUW: "euw",
+	EUNE: "eune",
+	NA: "na",
+	KR: "kr",
+	JP: "jp",
+	BR: "br",
+	LAN: "lan",
+	LAS: "las",
+	OCE: "oce",
+	TR: "tr",
+	RU: "ru",
+	PH: "ph",
+	SG: "sg",
+	TH: "th",
+	TW: "tw",
+	VN: "vn",
+	ME: "me",
+};
+
 /**
  * Game Status action — shows the current LoL client state on a Stream Deck key.
  * Displays: Offline / Lobby / Queue / Champ Select / In Game / etc.
@@ -50,6 +71,7 @@ const TFT_PHASE_DISPLAY: Record<string, { label: string }> = {
 export class GameStatus extends SingletonAction<GameStatusSettings> {
 	private pollInterval: ReturnType<typeof setInterval> | null = null;
 	private currentPhase: GameflowPhase = "None";
+	private detectedRegion: string | null = null;
 
 	override onWillAppear(ev: WillAppearEvent<GameStatusSettings>): void | Promise<void> {
 		this.startPolling();
@@ -68,7 +90,15 @@ export class GameStatus extends SingletonAction<GameStatusSettings> {
 				if (summoner && summoner.gameName) {
 					const name = encodeURIComponent(summoner.gameName);
 					const tag = encodeURIComponent(summoner.tagLine || "EUW");
-					const region = ev.payload.settings.region ?? "euw";
+
+					// Auto-detect region from LCU, fallback to settings, then "euw"
+					if (!this.detectedRegion) {
+						const lcuRegion = await lcuApi.getRegion();
+						if (lcuRegion) {
+							this.detectedRegion = REGION_TO_OPGG[lcuRegion.toUpperCase()] ?? lcuRegion.toLowerCase();
+						}
+					}
+					const region = ev.payload.settings.region ?? this.detectedRegion ?? "euw";
 					const url = `https://www.op.gg/summoners/${region}/${name}-${tag}`;
 						logger.info(`Opening OP.GG: ${url}`);
 					if (process.platform === "darwin") {

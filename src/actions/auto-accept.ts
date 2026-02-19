@@ -34,6 +34,8 @@ export class AutoAccept extends SingletonAction<AutoAcceptSettings> {
 	override async onWillAppear(ev: WillAppearEvent<AutoAcceptSettings>): Promise<void> {
 		const settings = ev.payload.settings;
 		this.enabled = settings.enabled !== false; // default true
+		// Always keep polling alive — auto-accept must work even when
+		// the user navigates to a different Stream Deck page.
 		this.startPolling();
 		await this.renderAll();
 	}
@@ -43,7 +45,8 @@ export class AutoAccept extends SingletonAction<AutoAcceptSettings> {
 			clearTimeout(this.renderTimeout);
 			this.renderTimeout = null;
 		}
-		if (this.actions.length === 0) this.stopPolling();
+		// Do NOT stop polling here — we want auto-accept to keep running
+		// even when the action is not visible (user on another page).
 	}
 
 	override async onKeyDown(ev: KeyDownEvent<AutoAcceptSettings>): Promise<void> {

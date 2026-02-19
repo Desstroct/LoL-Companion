@@ -61,8 +61,8 @@ const TREE_STYLE_IDS: Record<number, number> = {
 	0: 8000, // Precision
 	1: 8100, // Domination
 	2: 8200, // Sorcery
-	3: 8300, // Inspiration
-	4: 8400, // Resolve
+	3: 8400, // Resolve
+	4: 8300, // Inspiration
 };
 
 /** Keystone ID → human-readable name */
@@ -97,15 +97,18 @@ const KEYSTONE_NAMES: Record<number, string> = {
  * block with all champion build data already resolved.
  */
 export class LolaBuildParser {
-	/** Cache: "champion:lane" → { data, timestamp } */
+	/** Cache: "champion:lane" or "champion:lane:vs:enemy" → { data, timestamp } */
 	private cache = new Map<string, { data: BuildPageData; timestamp: number }>();
 	private readonly CACHE_TTL = 30 * 60 * 1000; // 30 min
 
 	/**
-	 * Get build page data for a champion + lane.
+	 * Get build page data for a champion + lane, optionally against a specific enemy.
+	 * @param vsChampionAlias  Lolalytics alias of the enemy champion (e.g. "darius") for matchup-specific data.
 	 */
-	async getBuildData(championAlias: string, lane: string): Promise<BuildPageData | null> {
-		const key = `${championAlias}:${lane}`;
+	async getBuildData(championAlias: string, lane: string, vsChampionAlias?: string): Promise<BuildPageData | null> {
+		const key = vsChampionAlias
+			? `${championAlias}:${lane}:vs:${vsChampionAlias}`
+			: `${championAlias}:${lane}`;
 		const cached = this.cache.get(key);
 
 		if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
@@ -115,9 +118,14 @@ export class LolaBuildParser {
 		}
 
 		const lolalyticsLane = lane === "aram" ? "" : lane;
-		const pageUrl = lane === "aram"
-			? `https://lolalytics.com/lol/${championAlias}/aram/build/`
-			: `https://lolalytics.com/lol/${championAlias}/build/?lane=${lolalyticsLane}`;
+		let pageUrl: string;
+		if (lane === "aram") {
+			pageUrl = `https://lolalytics.com/lol/${championAlias}/aram/build/`;
+		} else if (vsChampionAlias) {
+			pageUrl = `https://lolalytics.com/lol/${championAlias}/vs/${vsChampionAlias}/build/?lane=${lolalyticsLane}`;
+		} else {
+			pageUrl = `https://lolalytics.com/lol/${championAlias}/build/?lane=${lolalyticsLane}`;
+		}
 
 		try {
 			logger.debug(`Fetching build page: ${pageUrl}`);

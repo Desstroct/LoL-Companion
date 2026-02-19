@@ -239,19 +239,16 @@ export class ChampionStats {
 		// Extract major.minor patch from Data Dragon version (e.g. "16.3.1" → "16.3")
 		const ddVersion = dataDragon.getVersion();
 		const patchParts = ddVersion.split(".");
-		const patch = `${patchParts[0]}.${patchParts[1]}`;
+		const currentPatch = `${patchParts[0]}.${patchParts[1]}`;
 
-		const url = `${LOLALYTICS_API}/mega/?ep=counter&p=d&v=1&patch=${patch}&c=${championAlias}&lane=${lane}&tier=emerald_plus&queue=ranked&region=all`;
-		const maxRetries = 2;
+		// Try current patch first, then "30" (last 30 days) as fallback
+		// Early in a new patch, Lolalytics may not have enough data
+		const patchesToTry = [currentPatch, "30"];
 
-		for (let attempt = 0; attempt <= maxRetries; attempt++) {
+		for (const patch of patchesToTry) {
+			const url = `${LOLALYTICS_API}/mega/?ep=counter&p=d&v=1&patch=${patch}&c=${championAlias}&lane=${lane}&tier=emerald_plus&queue=ranked&region=all`;
+
 			try {
-				if (attempt > 0) {
-					const delay = 1000 * Math.pow(2, attempt - 1);
-					logger.debug(`Retry ${attempt}/${maxRetries} for ${championAlias} ${lane} in ${delay}ms`);
-					await new Promise((r) => setTimeout(r, delay));
-				}
-
 				logger.debug(`Fetching matchups: ${url}`);
 
 				const response = await throttledFetch(url, {
@@ -259,14 +256,14 @@ export class ChampionStats {
 				});
 
 				if (!response.ok) {
-					logger.warn(`Lolalytics API returned ${response.status} for ${championAlias} ${lane}`);
+					logger.warn(`Lolalytics API returned ${response.status} for ${championAlias} ${lane} (patch=${patch})`);
 					continue;
 				}
 
 				const json = await response.json() as LolalyticCounterResponse;
 
 				if (!json?.counters || !Array.isArray(json.counters)) {
-					logger.warn(`Invalid API response structure for ${championAlias} ${lane}`);
+					logger.warn(`Invalid API response structure for ${championAlias} ${lane} (patch=${patch})`);
 					continue;
 				}
 
@@ -290,19 +287,22 @@ export class ChampionStats {
 				}
 
 				if (matchups.length === 0) {
-					logger.warn(`0 matchups from API for ${championAlias} ${lane} (attempt ${attempt + 1})`);
+					logger.warn(`0 matchups from API for ${championAlias} ${lane} (patch=${patch})`);
 					continue;
 				}
 
+				if (patch !== currentPatch) {
+					logger.info(`Using patch=${patch} fallback for ${championAlias} ${lane} (current patch has no data)`);
+				}
 				logger.info(`Parsed ${matchups.length} matchups for ${championAlias} ${lane} via API`);
 				this.cache.set(key, { data: matchups, timestamp: Date.now() });
 				return matchups;
 			} catch (e) {
-				logger.error(`Failed to fetch matchups for ${championAlias} ${lane} (attempt ${attempt + 1}): ${e}`);
+				logger.error(`Failed to fetch matchups for ${championAlias} ${lane} (patch=${patch}): ${e}`);
 			}
 		}
 
-		logger.error(`All ${maxRetries + 1} attempts failed for ${championAlias} ${lane}`);
+		logger.error(`All patch attempts failed for ${championAlias} ${lane}`);
 		return cached?.data ?? [];
 	}
 
