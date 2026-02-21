@@ -108,6 +108,7 @@ export type GameflowPhase =
 	| "GameStart"
 	| "InProgress"
 	| "WaitingForStats"
+	| "PreEndOfGame"
 	| "EndOfGame"
 	| "Reconnect";
 

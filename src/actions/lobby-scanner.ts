@@ -27,6 +27,39 @@ const POSITIONS: Record<string, string> = {
 	"": "?",
 };
 
+/** Canonical lane order for sorting teams by role instead of pick order */
+const ROLE_ORDER: string[] = ["top", "jungle", "middle", "bottom", "utility"];
+
+/** Lane labels matching ROLE_ORDER indices */
+const ROLE_LABELS: string[] = ["TOP", "JGL", "MID", "BOT", "SUP"];
+
+/**
+ * Friendly label for a slot number (1-5 ally, 6-10 enemy).
+ * Uses lane names: slot 1/6 = TOP, 2/7 = JGL, 3/8 = MID, 4/9 = BOT, 5/10 = SUP.
+ */
+function slotLabel(slot: number): string {
+	const index = (slot <= 5 ? slot : slot - 5) - 1;
+	return ROLE_LABELS[index] ?? `#${index + 1}`;
+}
+
+/**
+ * Sort a team array by assigned position (lane order) when positions are available.
+ * Falls back to original (pick) order when assignedPosition is empty.
+ * Returns true if sorting was applied (positions were available).
+ */
+function sortTeamByRole<T extends { assignedPosition: string }>(team: T[]): { sorted: T[]; hasRoles: boolean } {
+	const hasRoles = team.some((p) => p.assignedPosition && p.assignedPosition !== "");
+	if (!hasRoles) return { sorted: [...team], hasRoles: false };
+
+	const sorted = [...team].sort((a, b) => {
+		const ia = ROLE_ORDER.indexOf(a.assignedPosition);
+		const ib = ROLE_ORDER.indexOf(b.assignedPosition);
+		// Unknown positions go to end
+		return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+	});
+	return { sorted, hasRoles: true };
+}
+
 /**
  * Lobby Scanner action — displays player information during champion select.
  * Each instance is configured to show a specific slot (1-5 for ally, 6-10 for enemy).
@@ -41,19 +74,19 @@ export class LobbyScannerAction extends SingletonAction<LobbyScannerSettings> {
 	override onWillAppear(ev: WillAppearEvent<LobbyScannerSettings>): void | Promise<void> {
 		const slot = ev.payload.settings.slot ?? 1;
 		const team = slot <= 5 ? "Ally" : "Enemy";
-		const index = slot <= 5 ? slot : slot - 5;
+		const label = slotLabel(slot);
 		this.startPolling();
 		if (ev.action.isDial()) {
 			this.getDialSlot(ev.action.id, slot);
 			return ev.action.setFeedback({
-				title: `${team} #${index}`,
+				title: `${team} ${label}`,
 				champion: "Waiting...",
 				rank: "",
 				wr_text: "",
 				wr_bar: { value: 0 },
 			});
 		}
-		return ev.action.setTitle(`${team}\n#${index}`);
+		return ev.action.setTitle(`${team}\n${label}`);
 	}
 
 	override onWillDisappear(ev: WillDisappearEvent<LobbyScannerSettings>): void | Promise<void> {
@@ -137,10 +170,10 @@ export class LobbyScannerAction extends SingletonAction<LobbyScannerSettings> {
 					const ds = this.getDialSlot(a.id);
 					const slot = ds.currentSlot;
 					const team = slot <= 5 ? "Ally" : "Enemy";
-					const index = slot <= 5 ? slot : slot - 5;
+					const label = slotLabel(slot);
 					await a.setFeedback({
 						champ_icon: "",
-						title: `${team} #${index}`,
+						title: `${team} ${label}`,
 						champion: "Waiting...",
 						rank: "",
 						wr_text: "",
@@ -150,9 +183,9 @@ export class LobbyScannerAction extends SingletonAction<LobbyScannerSettings> {
 					const settings = (await a.getSettings()) as LobbyScannerSettings;
 					const slot = settings.slot ?? 1;
 					const team = slot <= 5 ? "Ally" : "Enemy";
-					const index = slot <= 5 ? slot : slot - 5;
+					const label = slotLabel(slot);
 					await a.setImage("");
-					await a.setTitle(`${team}\n#${index}`);
+					await a.setTitle(`${team}\n${label}`);
 				}
 			}
 			return;
@@ -160,6 +193,11 @@ export class LobbyScannerAction extends SingletonAction<LobbyScannerSettings> {
 
 		const session = await lcuApi.getChampSelectSession();
 		if (!session) return;
+
+		// Sort teams by assigned lane (TOP→JGL→MID→BOT→SUP) when positions are available,
+		// otherwise fall back to pick order.
+		const allyResult = sortTeamByRole(session.myTeam);
+		const enemyResult = sortTeamByRole(session.theirTeam);
 
 		for (const a of this.actions) {
 			let slot: number;
@@ -175,14 +213,21 @@ export class LobbyScannerAction extends SingletonAction<LobbyScannerSettings> {
 			const isAlly = slot <= 5;
 			const index = (isAlly ? slot : slot - 5) - 1; // 0-based
 
-			const team = isAlly ? session.myTeam : session.theirTeam;
+			const teamResult = isAlly ? allyResult : enemyResult;
+			const team = teamResult.sorted;
 			const player = team[index];
+
+			// Build a friendly slot label: "TOP" / "JGL" etc. when roles are known, else "#1" / "#2"
+			const slotLabel = teamResult.hasRoles
+				? (POSITIONS[player?.assignedPosition ?? ""] ?? `#${index + 1}`)
+				: `#${index + 1}`;
+			const teamLabel = isAlly ? "Ally" : "Enemy";
 
 			if (!player) {
 				if (isDial) {
 					await a.setFeedback({
 						champ_icon: "",
-						title: isAlly ? `Ally #${index + 1}` : `Enemy #${index + 1}`,
+						title: `${teamLabel} ${slotLabel}`,
 						champion: "No data",
 						rank: "",
 						wr_text: "",
@@ -190,7 +235,7 @@ export class LobbyScannerAction extends SingletonAction<LobbyScannerSettings> {
 					});
 				} else {
 					await a.setImage("");
-					await a.setTitle(isAlly ? "Ally\nNo data" : "Enemy\nNo data");
+					await a.setTitle(`${teamLabel}\n${slotLabel}`);
 				}
 				continue;
 			}
@@ -232,11 +277,10 @@ export class LobbyScannerAction extends SingletonAction<LobbyScannerSettings> {
 			}
 
 			if (isDial) {
-				const teamLabel = isAlly ? "Ally" : "Enemy";
 				const barColor = wrPct >= 55 ? "#2ECC71" : wrPct >= 50 ? "#F1C40F" : wrPct > 0 ? "#E74C3C" : "#666666";
 				await a.setFeedback({
 					champ_icon: champIcon ?? "",
-					title: `${pos} · ${teamLabel} #${index + 1}`,
+					title: `${pos} · ${teamLabel} ${slotLabel}`,
 					champion: champName,
 					rank: rankStr || "Unranked",
 					wr_text: wrPct > 0 ? `${wrPct}% WR` : "",

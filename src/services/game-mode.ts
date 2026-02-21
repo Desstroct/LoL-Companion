@@ -126,11 +126,12 @@ class GameModeService {
 		}
 
 		const session = await lcuApi.get<GameflowSession>("/lol-gameflow/v1/session");
-		const rawMode = session?.gameData?.queue?.gameMode ?? "";
+		const rawMode = (session?.gameData?.queue?.gameMode ?? "").toUpperCase();
 
 		let mode: GameMode;
 		switch (rawMode) {
 			case "CLASSIC":
+			case "PRACTICETOOL":
 				mode = "CLASSIC";
 				break;
 			case "ARAM":
@@ -143,12 +144,22 @@ class GameModeService {
 				mode = "CHERRY";
 				break;
 			case "":
-				// No queue info yet (e.g. just opened lobby) — assume NONE
-				mode = "NONE";
+				// No queue info yet — preserve last known mode during active phases
+				if (this.currentMode !== "NONE" && this.currentMode !== "UNKNOWN") {
+					mode = this.currentMode;
+				} else {
+					mode = "NONE";
+				}
 				break;
 			default:
-				mode = "UNKNOWN";
-				logger.debug(`Unknown game mode: "${rawMode}"`);
+				// Unrecognized mode — preserve last valid mode to avoid disrupting actions
+				if (this.currentMode !== "NONE" && this.currentMode !== "UNKNOWN") {
+					mode = this.currentMode;
+					logger.debug(`Unhandled game mode "${rawMode}", retaining ${mode}`);
+				} else {
+					mode = "UNKNOWN";
+					logger.debug(`Unknown game mode: "${rawMode}"`);
+				}
 				break;
 		}
 

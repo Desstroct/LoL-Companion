@@ -91,6 +91,8 @@ interface RecallState {
 	/** Track last dragon/baron kill times for objective respawn */
 	lastDragonKill: number;
 	lastBaronKill: number;
+	/** Guard flag to prevent concurrent build item loads */
+	buildItemsLoading: boolean;
 }
 
 type RecallWindowSettings = {
@@ -184,6 +186,7 @@ export class RecallWindow extends SingletonAction<RecallWindowSettings> {
 				componentBreakpoints: [],
 				lastDragonKill: 0,
 				lastBaronKill: 0,
+				buildItemsLoading: false,
 			};
 			this.actionStates.set(actionId, s);
 		}
@@ -224,6 +227,7 @@ export class RecallWindow extends SingletonAction<RecallWindowSettings> {
 			for (const s of this.actionStates.values()) {
 				s.goldHistory = [];
 				s.buildItems = [];
+				s.buildItemsLoading = false;
 				s.champName = "";
 				s.enemyLanerName = "";
 				s.componentBreakpoints = [];
@@ -287,8 +291,9 @@ export class RecallWindow extends SingletonAction<RecallWindowSettings> {
 			// Track objective kills from events
 			this.trackObjectiveEvents(state, events);
 
-			// Fetch build items if we don't have them yet
-			if (state.buildItems.length === 0 && champName) {
+			// Fetch build items if we don't have them yet (guard prevents concurrent loads)
+			if (state.buildItems.length === 0 && champName && !state.buildItemsLoading) {
+				state.buildItemsLoading = true;
 				try {
 					const lane = gameMode.isARAM() ? "aram" : ItemBuilds.toLolalyticsLane(myPosition);
 					const alias = ItemBuilds.toAlias(champName);
@@ -301,6 +306,8 @@ export class RecallWindow extends SingletonAction<RecallWindowSettings> {
 					}
 				} catch (e) {
 					logger.warn(`Failed to load build for recall: ${e}`);
+				} finally {
+					state.buildItemsLoading = false;
 				}
 			}
 

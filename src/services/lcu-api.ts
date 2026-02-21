@@ -217,7 +217,7 @@ export class LcuApi {
 	 * Generic PUT request to the LCU API.
 	 */
 	async put<T = unknown>(endpoint: string, body?: unknown): Promise<T | null> {
-		return this.request<T>("PUT", endpoint, body);
+		return (await this.request<T>("PUT", endpoint, body)) ?? null;
 	}
 
 	/**
@@ -268,7 +268,7 @@ export class LcuApi {
 	/**
 	 * Generic request returning parsed JSON (used by PUT).
 	 */
-	private async request<T>(method: string, endpoint: string, body?: unknown): Promise<T | null> {
+	private async request<T>(method: string, endpoint: string, body?: unknown): Promise<T | null | undefined> {
 		const creds = lcuConnector.getCredentials();
 		if (!creds) return null;
 
@@ -298,8 +298,9 @@ export class LcuApi {
 							if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300 && data.length > 0) {
 								resolve(JSON.parse(data) as T);
 							} else if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-								// Success but no body (e.g. PATCH returns empty on success)
-								resolve(null);
+								// Success but no body (e.g. PATCH 204) — resolve undefined
+								// so callers can distinguish from null (error)
+								resolve(undefined);
 							} else {
 								logger.warn(`LCU ${method} ${endpoint} returned ${res.statusCode}: ${data.slice(0, 200)}`);
 								resolve(null);
@@ -343,7 +344,7 @@ export class LcuApi {
 	async createRunePage(page: Omit<LcuRunePage, "id" | "isActive" | "isDeletable" | "isEditable" | "isValid" | "lastModified" | "order">): Promise<LcuRunePage | null> {
 		const creds = lcuConnector.getCredentials();
 		if (!creds) return null;
-		return this.request<LcuRunePage>("POST", "/lol-perks/v1/pages", page);
+		return (await this.request<LcuRunePage>("POST", "/lol-perks/v1/pages", page)) ?? null;
 	}
 
 	/**

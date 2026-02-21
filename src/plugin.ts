@@ -64,6 +64,8 @@ import { JunglePath } from "./actions/jungle-path";
 import { SkillOrder } from "./actions/skill-order";
 import { RecallWindow } from "./actions/recall-window";
 import { SessionStats } from "./actions/session-stats";
+import { PostGame } from "./actions/post-game";
+import { TftCompAdvisor } from "./actions/tft-comp";
 import { lcuConnector } from "./services/lcu-connector";
 import { gameMode } from "./services/game-mode";
 import { dataDragon } from "./services/data-dragon";
@@ -126,6 +128,8 @@ streamDeck.actions.registerAction(new JunglePath());
 streamDeck.actions.registerAction(new SkillOrder());
 streamDeck.actions.registerAction(new RecallWindow());
 streamDeck.actions.registerAction(new SessionStats());
+streamDeck.actions.registerAction(new PostGame());
+streamDeck.actions.registerAction(new TftCompAdvisor());
 
 // Connect to Stream Deck and initialize
 streamDeck.connect().then(() => {

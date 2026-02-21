@@ -212,7 +212,8 @@ export class LolaBuildParser {
 			};
 
 			// Find the main data object: has keys like "summary", "runes", "spells", "skillOrder"
-			const mainDataIdx = objs.findIndex(
+			// Normal build pages have all three; matchup (vs/) pages may omit some
+			let mainDataIdx = objs.findIndex(
 				(o) =>
 					typeof o === "object" &&
 					o !== null &&
@@ -222,8 +223,23 @@ export class LolaBuildParser {
 					"skillOrder" in o,
 			);
 
+			// Fallback: matchup pages may only have "summary" + one of the others
 			if (mainDataIdx === -1) {
-				logger.warn("Could not find main data object in Qwik data");
+				mainDataIdx = objs.findIndex(
+					(o) =>
+						typeof o === "object" &&
+						o !== null &&
+						!Array.isArray(o) &&
+						"summary" in o &&
+						("spells" in o || "skillOrder" in o),
+				);
+				if (mainDataIdx !== -1) {
+					logger.debug("Using lenient Qwik data match (matchup page?)");
+				}
+			}
+
+			if (mainDataIdx === -1) {
+				logger.debug("Could not find main data object in Qwik data (expected on matchup pages)");
 				return null;
 			}
 

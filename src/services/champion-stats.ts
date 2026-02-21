@@ -302,7 +302,40 @@ export class ChampionStats {
 			}
 		}
 
-		logger.error(`All patch attempts failed for ${championAlias} ${lane}`);
+		logger.warn(`All patch attempts failed for ${championAlias} ${lane}`);
+
+		// Lane fallback: if no data for the requested lane, try "default" (champion's primary lane)
+		if (lane !== "default") {
+			for (const patch of patchesToTry) {
+				const fallbackUrl = `${LOLALYTICS_API}/mega/?ep=counter&p=d&v=1&patch=${patch}&c=${championAlias}&lane=default&tier=emerald_plus&queue=ranked&region=all`;
+				try {
+					logger.debug(`Trying default lane fallback for ${championAlias} (patch=${patch})`);
+					const response = await throttledFetch(fallbackUrl, { signal: AbortSignal.timeout(10_000) });
+					if (!response.ok) continue;
+					const json = await response.json() as LolalyticCounterResponse;
+					if (!json?.counters || !Array.isArray(json.counters)) continue;
+					const matchups: MatchupData[] = [];
+					for (const c of json.counters) {
+						if (!c.cid || c.n < 50) continue;
+						const champ = dataDragon.getChampionByKey(String(c.cid));
+						const alias = champ ? ChampionStats.toLolalytics(champ.id) : String(c.cid);
+						const name = champ?.name ?? `Champion ${c.cid}`;
+						matchups.push({ alias, name, winRateVs: c.vsWr, games: c.n, defaultLane: c.defaultLane });
+					}
+					if (matchups.length > 0) {
+						logger.info(`Lane fallback: ${matchups.length} matchups for ${championAlias} via default lane (requested: ${lane})`);
+						this.cache.set(key, { data: matchups, timestamp: Date.now() });
+						return matchups;
+					}
+				} catch (e) {
+					logger.debug(`Default lane fallback failed for ${championAlias}: ${e}`);
+				}
+			}
+		}
+
+		logger.error(`All lane+patch attempts failed for ${championAlias} ${lane}`);
+		// Cache empty result with short TTL to prevent repeated API spam
+		this.cache.set(key, { data: [], timestamp: Date.now() - this.CACHE_TTL + 5 * 60 * 1000 });
 		return cached?.data ?? [];
 	}
 

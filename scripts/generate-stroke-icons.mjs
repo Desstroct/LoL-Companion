@@ -151,6 +151,25 @@ const STROKE_ICONS = {
     <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/>
     <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>
   </svg>`,
+
+  // Post-Game Stats → Clipboard with check (results sheet)
+  'post-game': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect width="8" height="4" x="8" y="2" rx="1" ry="1"/>
+    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+    <path d="m9 14 2 2 4-4"/>
+  </svg>`,
+
+  // TFT Comp Advisor → Grid/puzzle (team composition)
+  'tft-comp': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="3" width="7" height="7" rx="1"/>
+    <rect x="14" y="3" width="7" height="7" rx="1"/>
+    <rect x="3" y="14" width="7" height="7" rx="1"/>
+    <rect x="14" y="14" width="7" height="7" rx="1"/>
+    <path d="M10 7h4" opacity="0.6"/>
+    <path d="M10 17h4" opacity="0.6"/>
+    <path d="M7 10v4" opacity="0.6"/>
+    <path d="M17 10v4" opacity="0.6"/>
+  </svg>`,
 };
 
 // Category icon → LoL diamond/hexagon emblem (white stroke)

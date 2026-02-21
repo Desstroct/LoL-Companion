@@ -340,12 +340,62 @@
 					"TitleAlignment": "middle"
 				}
 			]
+		},
+		{
+			"Name": "Post-Game Stats",
+			"UUID": "com.desstroct.lol-api.post-game",
+			"Icon": "imgs/actions/post-game/icon",
+			"Tooltip": "Displays detailed post-game stats after each match: Win/Loss, KDA, CS, gold, damage, and vision score. Updates automatically when a game ends.",
+			"PropertyInspectorPath": "ui/post-game.html",
+			"Controllers": [
+				"Keypad",
+				"Encoder"
+			],
+			"Encoder": {
+				"layout": "layouts/post-game.json",
+				"TriggerDescription": {
+					"Rotate": "Switch stats page",
+					"Push": "Refresh",
+					"Touch": "Refresh"
+				}
+			},
+			"States": [
+				{
+					"Image": "imgs/actions/post-game/key",
+					"TitleAlignment": "middle"
+				}
+			]
+		},
+		{
+			"Name": "TFT Comp Advisor",
+			"UUID": "com.desstroct.lol-api.tft-comp",
+			"Icon": "imgs/actions/tft-comp/icon",
+			"Tooltip": "Browse the current TFT meta team compositions tier list. Shows comp name, tier, playstyle, champions, and carry items. Data sourced from tftactics.gg.",
+			"PropertyInspectorPath": "ui/tft-comp.html",
+			"Controllers": [
+				"Keypad",
+				"Encoder"
+			],
+			"Encoder": {
+				"layout": "layouts/tft-comp.json",
+				"TriggerDescription": {
+					"Rotate": "Browse comps",
+					"Push": "Filter tier",
+					"Touch": "Refresh"
+				}
+			},
+			"States": [
+				{
+					"Image": "imgs/actions/tft-comp/key",
+					"TitleAlignment": "middle"
+				}
+			]
 		}
 	],
 	"Category": "LoL Companion",
 	"CategoryIcon": "imgs/plugin/category-icon",
 	"CodePath": "bin/plugin.js",
-	"Description": "League of Legends companion for Stream Deck. Monitor your game status, track your rank and LP gains, and get real-time stats on your keys and dials.\n\nFeatures:\n• Game Status — See your current client state (Lobby, Queue, Champion Select, In Game)\n• LP Tracker — Track your rank, LP, win rate, and session gains across Solo/Duo and Flex\n• Auto Accept — Automatically accept the match ready check\n• Lobby Scanner — View player ranks and win rates during Champion Select\n• Lobby Level — Average summoner level and rank of your lobby\n• Smart Pick — Get data-driven champion recommendations and counter picks (auto-detect role)\n• Auto Rune — Automatically import optimal rune pages and summoner spells when you lock in a champion\n• Skill Order — Shows the recommended skill max order during Champion Select\n• Auto Pick/Ban — Pre-configure picks and bans for instant selection\n• KDA Tracker — Live K/D/A, CS/min, and gold display during games\n• Best Item — See your recommended next item purchase based on champion and gold\n• Death Timer — Respawn countdown on your Stream Deck\n• Jungle Path — Recommended jungle clear paths for your champion\n• Recall Window — Shows when to recall based on gold and item breakpoints\n• Session Stats — Track wins, losses, LP delta, and streaks across your gaming session\n\nSupports Stream Deck keys and dials (SD+). Requires the League of Legends client to be running. Data sourced from the official Riot Live Client API and public champion statistics.",
+	"Description": "League of Legends companion for Stream Deck. Monitor your game status, track your rank and LP gains, and get real-time stats on your keys and dials.\n\nFeatures:\n• Game Status — See your current client state (Lobby, Queue, Champion Select, In Game)\n• LP Tracker — Track your rank, LP, win rate, and session gains across Solo/Duo and Flex\n• Auto Accept — Automatically accept the match ready check\n• Lobby Scanner — View player ranks and win rates during Champion Select\n• Lobby Level — Average summoner level and rank of your lobby\n• Smart Pick — Get data-driven champion recommendations and counter picks (auto-detect role)\n• Auto Rune — Automatically import optimal rune pages and summoner spells when you lock in a champion\n• Skill Order — Shows the recommended skill max order during Champion Select\n• Auto Pick/Ban — Pre-configure picks and bans for instant selection\n• KDA Tracker — Live K/D/A, CS/min, and gold display during games\n• Best Item — See your recommended next item purchase based on champion and gold\n• Death Timer — Respawn countdown on your Stream Deck\n• Jungle Path — Recommended jungle clear paths for your champion\n• Recall Window — Shows when to recall based on gold and item breakpoints\n• Session Stats — Track wins, losses, LP delta, and streaks across your gaming session\n• Post-Game Stats — Detailed match results after each game (KDA, damage, CS, gold, vision)\n• TFT Comp Advisor — Browse meta team compositions with tier, playstyle, champions, and items\n\nSupports Stream Deck keys and dials (SD+). Requires the League of Legends client to be running. Data sourced from the official Riot Live Client API and public champion statistics.",
 	"URL": "https://github.com/Desstroct/LoL-Companion",
 	"Icon": "imgs/plugin/marketplace",
 	"SDKVersion": 3,

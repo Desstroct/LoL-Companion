@@ -303,8 +303,8 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 			const enemyChanged = enemyKey !== state.lastEnemyKey;
 
 			if (!champChanged && !enemyChanged) {
-				// Same champion, same enemy — just check auto-apply
-				if (isLocked && s.autoApply && !state.applied && state.lastRunes.length > 0) {
+				// Same champion, same enemy — check auto-apply for runes AND spells
+				if (isLocked && s.autoApply && (!state.applied || !state.spellsApplied) && state.lastRunes.length > 0) {
 					await this.applyRunesForAction(a, state, s);
 				}
 				continue;

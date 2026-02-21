@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>TFT Comp Advisor</title>
+    <script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
+</head>
+<body>
+    <sdpi-item label="Tier Filter">
+        <sdpi-select setting="tierFilter">
+            <option value="ALL">All Tiers</option>
+            <option value="S">S Tier Only</option>
+            <option value="A">A Tier Only</option>
+            <option value="B">B Tier Only</option>
+        </sdpi-select>
+    </sdpi-item>
+    <sdpi-item label="Info">
+        <details>
+            <summary>How it works</summary>
+            <p style="font-size: 11px; color: #999; padding: 8px;">
+                Shows the current TFT meta team compositions, sourced from tftactics.gg.<br><br>
+                <b>Key press:</b> Cycle to the next comp.<br>
+                <b>Dial rotate:</b> Scroll through comps.<br>
+                <b>Dial press:</b> Cycle tier filter (All → S → A → B).<br>
+                <b>Touch:</b> Force refresh data (re-fetches from web).<br><br>
+                Each comp shows: tier, comp name, playstyle (Fast 8, Slow Roll, etc.),
+                champions, and key carry items.<br><br>
+                Data is cached for 2 hours to avoid excessive requests.
+                Works in both TFT and LoL modes — you can browse comps anytime.
+            </p>
+        </details>
+    </sdpi-item>
+</body>
+</html>
