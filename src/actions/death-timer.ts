@@ -92,10 +92,7 @@ export class DeathTimer extends SingletonAction {
 			return;
 		}
 
-		const activeName = allData.activePlayer.summonerName;
-		const me = allData.allPlayers.find(
-			(p) => p.riotIdGameName === activeName || p.summonerName === activeName,
-		);
+		const me = gameClient.findMe(allData);
 
 		if (!me) {
 			for (const a of this.actions) {

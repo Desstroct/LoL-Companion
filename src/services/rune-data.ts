@@ -3,6 +3,7 @@ import { dataDragon } from "./data-dragon";
 import { throttledFetch } from "./lolalytics-throttle";
 import { lolaBuild } from "./lolalytics-build";
 import { ChampionStats } from "./champion-stats";
+import { DiskCache } from "./disk-cache";
 
 const logger = streamDeck.logger.createScope("RuneData");
 
@@ -74,8 +75,8 @@ export interface RunePageData {
  * Fallback: try the JSON API endpoint (may be deprecated).
  */
 export class RuneData {
-	private cache: Map<string, { data: RunePageData[]; timestamp: number }> = new Map();
 	private readonly CACHE_TTL = 30 * 60 * 1000; // 30 min
+	private cache = new DiskCache<RunePageData[]>("rune-data.json", this.CACHE_TTL);
 
 	/**
 	 * Get recommended rune pages for a champion + lane.
@@ -86,12 +87,10 @@ export class RuneData {
 		const key = vsChampionAlias
 			? `${championAlias}:${lane}:vs:${vsChampionAlias}`
 			: `${championAlias}:${lane}`;
-		const cached = this.cache.get(key);
+		const cached = await this.cache.get(key);
 
-		if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
+		if (cached) {
 			return cached.data;
-		} else if (cached) {
-			this.cache.delete(key);
 		}
 
 		// Primary: SSR build page parser (reliable)
@@ -102,7 +101,7 @@ export class RuneData {
 					`Parsed ${buildData.runes.length} rune page(s) via SSR for ${championAlias} ${lane}: ` +
 						buildData.runes.map((d) => `${d.source} ${d.keystoneName} ${d.winRate}%`).join(", "),
 				);
-				this.cache.set(key, { data: buildData.runes, timestamp: Date.now() });
+				await this.cache.set(key, buildData.runes);
 				return buildData.runes;
 			}
 		} catch (e) {
@@ -110,7 +109,13 @@ export class RuneData {
 		}
 
 		// Fallback: JSON API (may be deprecated)
-		return this.fetchFromApi(championAlias, lane, cached?.data ?? []);
+		const fallbackEntry = await this.cache.getRaw(key);
+		return this.fetchFromApi(championAlias, lane, fallbackEntry?.data ?? []);
+	}
+
+	/** Flush cache to disk (call on shutdown). */
+	async flushCache(): Promise<void> {
+		await this.cache.flush();
 	}
 
 	/**

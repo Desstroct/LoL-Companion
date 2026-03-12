@@ -3,6 +3,7 @@ import { dataDragon } from "./data-dragon";
 import { throttledFetch } from "./lolalytics-throttle";
 import { ChampionStats } from "./champion-stats";
 import type { RunePageData } from "./rune-data";
+import { DiskCache } from "./disk-cache";
 
 const logger = streamDeck.logger.createScope("LolaBuild");
 
@@ -98,8 +99,8 @@ const KEYSTONE_NAMES: Record<number, string> = {
  */
 export class LolaBuildParser {
 	/** Cache: "champion:lane" or "champion:lane:vs:enemy" → { data, timestamp } */
-	private cache = new Map<string, { data: BuildPageData; timestamp: number }>();
 	private readonly CACHE_TTL = 30 * 60 * 1000; // 30 min
+	private cache = new DiskCache<BuildPageData>("lolalytics-build.json", this.CACHE_TTL);
 
 	/**
 	 * Get build page data for a champion + lane, optionally against a specific enemy.
@@ -109,12 +110,10 @@ export class LolaBuildParser {
 		const key = vsChampionAlias
 			? `${championAlias}:${lane}:vs:${vsChampionAlias}`
 			: `${championAlias}:${lane}`;
-		const cached = this.cache.get(key);
+		const cached = await this.cache.get(key);
 
-		if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
+		if (cached) {
 			return cached.data;
-		} else if (cached) {
-			this.cache.delete(key);
 		}
 
 		const lolalyticsLane = lane === "aram" ? "" : lane;
@@ -139,14 +138,15 @@ export class LolaBuildParser {
 
 			if (!response.ok) {
 				logger.warn(`Lolalytics build page returned ${response.status}`);
-				return cached?.data ?? null;
+				const fallback = await this.cache.getRaw(key);
+				return fallback?.data ?? null;
 			}
 
 			const html = await response.text();
 			const data = this.parseQwikData(html, championAlias, lane);
 
 			if (data) {
-				this.cache.set(key, { data, timestamp: Date.now() });
+				await this.cache.set(key, data);
 				logger.info(
 					`Parsed build page for ${championAlias} ${lane}: ` +
 						`${data.runes.length} rune pages, ` +
@@ -158,8 +158,14 @@ export class LolaBuildParser {
 			return data;
 		} catch (e) {
 			logger.error(`Failed to fetch build page for ${championAlias} ${lane}: ${e}`);
-			return cached?.data ?? null;
+			const fallback = await this.cache.getRaw(key);
+			return fallback?.data ?? null;
 		}
+	}
+
+	/** Flush cache to disk (call on shutdown). */
+	async flushCache(): Promise<void> {
+		await this.cache.flush();
 	}
 
 	/**

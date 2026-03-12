@@ -209,19 +209,15 @@ export class LpTracker extends SingletonAction<LpTrackerSettings> {
 				state.trackingStarted = true;
 			}
 
-			// Calculate session LP delta (simplified: same tier/div = lp diff)
+			// Calculate session LP delta using absolute LP for accurate cross-tier tracking
 			let deltaStr = "";
-			if (state.trackingStarted && state.sessionStartTier === tier && state.sessionStartDiv === div) {
-				const diff = lp - state.sessionStartLp;
+			if (state.trackingStarted) {
+				const currentAbsLp = tierToAbsoluteLp(tier, div, lp);
+				const startAbsLp = tierToAbsoluteLp(state.sessionStartTier, state.sessionStartDiv, state.sessionStartLp);
+				const diff = currentAbsLp - startAbsLp;
 				if (diff > 0) deltaStr = `+${diff} LP`;
 				else if (diff < 0) deltaStr = `${diff} LP`;
 				else deltaStr = "±0 LP";
-			} else if (state.trackingStarted) {
-				// Tier/div changed — promoted or demoted
-				const tierVal = tierToValue(tier, div);
-				const startVal = tierToValue(state.sessionStartTier, state.sessionStartDiv);
-				if (tierVal > startVal) deltaStr = "▲ Promoted!";
-				else if (tierVal < startVal) deltaStr = "▼ Demoted";
 			}
 
 			// Dedup: avoid flickering by skipping if nothing changed
@@ -253,17 +249,17 @@ export class LpTracker extends SingletonAction<LpTrackerSettings> {
 	}
 }
 
-/** Simple tier+div to numeric value for promotion/demotion detection */
-function tierToValue(tier: string, div: string): number {
+/** Convert tier + division + LP to an absolute LP value for accurate delta tracking */
+function tierToAbsoluteLp(tier: string, div: string, lp: number): number {
 	const tierVals: Record<string, number> = {
-		IRON: 0, BRONZE: 4, SILVER: 8, GOLD: 12,
-		PLATINUM: 16, EMERALD: 20, DIAMOND: 24,
-		MASTER: 28, GRANDMASTER: 29, CHALLENGER: 30,
+		IRON: 0, BRONZE: 400, SILVER: 800, GOLD: 1200,
+		PLATINUM: 1600, EMERALD: 2000, DIAMOND: 2400,
+		MASTER: 2800, GRANDMASTER: 2900, CHALLENGER: 3000,
 	};
-	const divVals: Record<string, number> = { IV: 0, III: 1, II: 2, I: 3 };
+	const divVals: Record<string, number> = { IV: 0, III: 100, II: 200, I: 300 };
 	const base = tierVals[tier] ?? 0;
-	if (base >= 28) return base;
-	return base + (divVals[div] ?? 0);
+	if (base >= 2800) return base + lp; // Master+ LP adds directly
+	return base + (divVals[div] ?? 0) + lp;
 }
 
 type LpTrackerSettings = {

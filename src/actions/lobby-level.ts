@@ -151,12 +151,15 @@ export class LobbyLevelTracker extends SingletonAction<LobbyLevelSettings> {
 		const session = await lcuApi.getChampSelectSession();
 		if (!session) return;
 
+		const isValidPuuid = (p: string | undefined): p is string =>
+			!!p && p !== "" && !p.startsWith("00000000-0000-0000-0000");
+
 		const allyPuuids = session.myTeam
 			.map((p) => p.puuid)
-			.filter((p) => p && p !== "");
+			.filter(isValidPuuid);
 		const enemyPuuids = session.theirTeam
 			.map((p) => p.puuid)
-			.filter((p) => p && p !== "");
+			.filter(isValidPuuid);
 
 		const allPuuids = [...allyPuuids, ...enemyPuuids];
 		if (allPuuids.length === 0) {
@@ -207,26 +210,33 @@ export class LobbyLevelTracker extends SingletonAction<LobbyLevelSettings> {
 	}
 
 	private async fetchPlayerData(puuids: string[]): Promise<PlayerData[]> {
-		// Fetch all players in parallel instead of sequentially
-		const promises = puuids.map(async (puuid): Promise<PlayerData> => {
-			const summoner = await lcuApi.getSummonerByPuuid(puuid);
-			const level = summoner?.summonerLevel ?? 0;
-
-			let rankValue = -1;
+		// Fetch all players in parallel — each guarded so one failure
+		// doesn't reject the whole batch
+		const promises = puuids.map(async (puuid): Promise<PlayerData | null> => {
 			try {
-				const ranked = await lcuApi.getRankedStats(puuid);
-				if (ranked?.queueMap?.RANKED_SOLO_5x5) {
-					const solo = ranked.queueMap.RANKED_SOLO_5x5;
-					rankValue = rankToValue(solo.tier, solo.division);
-				}
-			} catch {
-				// Ranked data unavailable — skip
-			}
+				const summoner = await lcuApi.getSummonerByPuuid(puuid);
+				const level = summoner?.summonerLevel ?? 0;
 
-			return { level, rankValue };
+				let rankValue = -1;
+				try {
+					const ranked = await lcuApi.getRankedStats(puuid);
+					if (ranked?.queueMap?.RANKED_SOLO_5x5) {
+						const solo = ranked.queueMap.RANKED_SOLO_5x5;
+						rankValue = rankToValue(solo.tier, solo.division);
+					}
+				} catch {
+					// Ranked data unavailable — skip
+				}
+
+				return { level, rankValue };
+			} catch (e) {
+				logger.warn(`Failed to fetch player data for ${puuid}: ${e}`);
+				return null;
+			}
 		});
 
-		return Promise.all(promises);
+		const results = await Promise.all(promises);
+		return results.filter((r): r is PlayerData => r !== null);
 	}
 
 	/**

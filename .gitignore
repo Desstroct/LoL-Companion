@@ -1,6 +1,9 @@
 # Node.js
 node_modules/
 
+# Runtime disk cache
+cache/
+
 # Stream Deck files
 *.sdPlugin/bin
 *.sdPlugin/logs

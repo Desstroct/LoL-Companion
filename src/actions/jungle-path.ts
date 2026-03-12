@@ -18,7 +18,7 @@ import { getChampionIconByKey, getChampionIconByName, getCampIcon } from "../ser
 
 const logger = streamDeck.logger.createScope("JunglePath");
 
-// ──────────── Camp names & short labels ────────────
+// ──────────── Camp names, short labels & timing ────────────
 type Camp = "blue" | "gromp" | "wolves" | "raptors" | "red" | "krugs" | "scuttle" | "gank";
 const CAMP_LABEL: Record<Camp, string> = {
 	blue: "Blue",
@@ -29,6 +29,25 @@ const CAMP_LABEL: Record<Camp, string> = {
 	krugs: "Krugs",
 	scuttle: "Scuttle",
 	gank: "Gank",
+};
+
+/** Estimated time (seconds since game start) that each camp is typically CLEARED
+ *  in a standard full-clear. Used for in-game auto-advance. */
+const CAMP_CLEAR_TIMESTAMPS: Record<Camp, number> = {
+	blue: 105,    // ~1:45
+	gromp: 125,   // ~2:05
+	wolves: 145,  // ~2:25
+	raptors: 145, // ~2:25 (if started red side)
+	red: 165,     // ~2:45
+	krugs: 175,   // ~2:55
+	scuttle: 195, // ~3:15
+	gank: 210,    // ~3:30
+};
+
+/** Compact emoji labels for camp reference in tight spaces */
+const CAMP_EMOJI: Record<Camp, string> = {
+	blue: "🔵", gromp: "🐸", wolves: "🐺", raptors: "🐔",
+	red: "🔴", krugs: "🪨", scuttle: "🦀", gank: "⚔️",
 };
 // ──────────── Path definitions ────────────
 interface JunglePathRoute {
@@ -90,8 +109,45 @@ const PATHS: Record<string, JunglePathRoute> = {
 	reverseFullBlue: {
 		name: "Reverse Full (Blue→Top)",
 		shortName: "Rev Blue",
-		description: "Blue→Wolves→Raptors→Red→Krugs→Gromp (reverse path for flex gank)",
+		description: "Blue→Wolves→Raptors→Red→Krugs→Scuttle (reverse for flex gank)",
 		camps: ["blue", "wolves", "raptors", "red", "krugs", "scuttle"],
+	},
+	// ── New routes ──
+	level2Gank: {
+		name: "Level 2 Cheese Gank",
+		shortName: "Lv2 Gank",
+		description: "Red→Gank at level 2 for early kill pressure",
+		camps: ["red", "gank"],
+	},
+	level2GankBlue: {
+		name: "Level 2 Cheese (Blue)",
+		shortName: "Lv2 Blue",
+		description: "Blue→Gank at level 2 (mid/top pressure)",
+		camps: ["blue", "gank"],
+	},
+	fourCampBlue: {
+		name: "4-Camp Blue → Crab",
+		shortName: "4C Blue",
+		description: "Blue→Gromp→Wolves→Red→Scuttle (contest scuttle early)",
+		camps: ["blue", "gromp", "wolves", "red", "scuttle"],
+	},
+	fourCampRed: {
+		name: "4-Camp Red → Crab",
+		shortName: "4C Red",
+		description: "Red→Raptors→Wolves→Blue→Scuttle (bot-side then crab)",
+		camps: ["red", "raptors", "wolves", "blue", "scuttle"],
+	},
+	invadeBlue: {
+		name: "Invade (Enemy Blue)",
+		shortName: "Inv Blue",
+		description: "Red→Enemy Blue→Enemy Gromp→Gank (steal their blue side)",
+		camps: ["red", "blue", "gromp", "gank"],
+	},
+	invadeRed: {
+		name: "Invade (Enemy Red)",
+		shortName: "Inv Red",
+		description: "Blue→Enemy Red→Enemy Raptors→Gank (steal their red side)",
+		camps: ["blue", "red", "raptors", "gank"],
 	},
 };
 
@@ -105,6 +161,10 @@ interface ChampionPathInfo {
 	paths: string[];
 	/** Optional short tip */
 	tip?: string;
+	/** Skill order for first 3 levels (e.g. "Q→W→E") */
+	skillOrder?: string;
+	/** Starting ability (for display, e.g. "W" for Fiddlesticks) */
+	startSkill?: string;
 }
 
 const STYLE_DEFAULTS: Record<PathStyle, string[]> = {
@@ -120,70 +180,84 @@ const STYLE_DEFAULTS: Record<PathStyle, string[]> = {
  */
 const CHAMPION_PATHS: Record<string, ChampionPathInfo> = {
 	// ── Power farmers ──
-	masteryi: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed"], tip: "Full clear always, scale hard" },
-	karthus: { style: "powerFarmer", paths: ["fullClearRed", "fullClearBlue"], tip: "Red start preferred, AoE clear" },
-	shyvana: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed"], tip: "Farm to 6, prioritize drakes" },
-	diana: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed", "fiveCampBlue"], tip: "Fast AoE clear, look for dives at 6" },
-	lillia: { style: "powerFarmer", paths: ["fullClearBlue", "fiveCampBlue", "fullClearRed"], tip: "Fastest full clear, invade enemy camps" },
-	udyr: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed"], tip: "Very fast clear, contest scuttles" },
-	nocturne: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed"], tip: "Farm to 6, then R-gank" },
-	kindred: { style: "powerFarmer", paths: ["fullClearRed", "fullClearBlue", "threeCampRed"], tip: "Track marks, invade for them" },
-	belveth: { style: "powerFarmer", paths: ["fullClearRed", "fullClearBlue"], tip: "Farm heavy, scale with resets" },
-	kayn: { style: "powerFarmer", paths: ["fullClearBlue", "fiveCampBlue", "fullClearRed"], tip: "Raptor start optional for AoE form stacking" },
-	viego: { style: "flexible", paths: ["fullClearBlue", "fiveCampBlue", "threeCampBlue"], tip: "Flexible clear, strong skirmisher" },
-	graves: { style: "powerFarmer", paths: ["fullClearRed", "fullClearBlue"], tip: "Kite camps, healthy full clears" },
-	hecarim: { style: "powerFarmer", paths: ["fullClearBlue", "fiveCampBlue", "fullClearRed"], tip: "Fast clear with Q AoE, strong post-6 ganks" },
-	amumu: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed"], tip: "AoE clear, strong post-6 ganks" },
-	fiddlesticks: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed"], tip: "W-drain AoE clears, avoid early fights" },
-	mordekaiser: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed"], tip: "Passive AoE clears, strong 1v1 at 6" },
-	gwen: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed"], tip: "Scale-heavy, look for dives at 6" },
-	briar: { style: "powerFarmer", paths: ["fullClearRed", "fullClearBlue", "fiveCampRed"], tip: "Very healthy clear with W sustain" },
-	zyra: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed"], tip: "Plant-based AoE clear" },
-	brand: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed"], tip: "Passive burn clears camps fast" },
-	taliyah: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed", "fiveCampBlue"], tip: "Hard AoE clear, roam with R" },
+	masteryi: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed"], tip: "Full clear always, scale hard", skillOrder: "Q→E→W", startSkill: "Q" },
+	karthus: { style: "powerFarmer", paths: ["fullClearRed", "fullClearBlue"], tip: "Red start preferred, AoE clear", skillOrder: "Q→E→W", startSkill: "Q" },
+	shyvana: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed"], tip: "Farm to 6, prioritize drakes", skillOrder: "W→E→Q", startSkill: "W" },
+	diana: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed", "fiveCampBlue"], tip: "Fast AoE clear, look for dives at 6", skillOrder: "W→Q→E", startSkill: "W" },
+	lillia: { style: "powerFarmer", paths: ["fullClearBlue", "fiveCampBlue", "fullClearRed"], tip: "Fastest full clear, invade enemy camps", skillOrder: "Q→W→E", startSkill: "Q" },
+	udyr: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed"], tip: "Very fast clear, contest scuttles", skillOrder: "Q→W→E", startSkill: "Q" },
+	nocturne: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed"], tip: "Farm to 6, then R-gank", skillOrder: "Q→W→E", startSkill: "Q" },
+	kindred: { style: "powerFarmer", paths: ["fullClearRed", "fullClearBlue", "threeCampRed"], tip: "Track marks, invade for them", skillOrder: "Q→W→E", startSkill: "Q" },
+	belveth: { style: "powerFarmer", paths: ["fullClearRed", "fullClearBlue"], tip: "Farm heavy, scale with resets", skillOrder: "E→Q→W", startSkill: "E" },
+	kayn: { style: "powerFarmer", paths: ["fullClearBlue", "fiveCampBlue", "fullClearRed"], tip: "Raptor start optional for AoE form stacking", skillOrder: "Q→W→E", startSkill: "Q" },
+	viego: { style: "flexible", paths: ["fullClearBlue", "fiveCampBlue", "threeCampBlue"], tip: "Flexible clear, strong skirmisher", skillOrder: "Q→W→E", startSkill: "Q" },
+	graves: { style: "powerFarmer", paths: ["fullClearRed", "fullClearBlue"], tip: "Kite camps, healthy full clears", skillOrder: "Q→E→W", startSkill: "Q" },
+	hecarim: { style: "powerFarmer", paths: ["fullClearBlue", "fiveCampBlue", "fullClearRed"], tip: "Fast clear with Q AoE, strong post-6 ganks", skillOrder: "Q→W→E", startSkill: "Q" },
+	amumu: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed"], tip: "AoE clear, strong post-6 ganks", skillOrder: "E→W→Q", startSkill: "E" },
+	fiddlesticks: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed"], tip: "W-drain AoE clears, avoid early fights", skillOrder: "W→E→Q", startSkill: "W" },
+	mordekaiser: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed"], tip: "Passive AoE clears, strong 1v1 at 6", skillOrder: "Q→W→E", startSkill: "Q" },
+	gwen: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed"], tip: "Scale-heavy, look for dives at 6", skillOrder: "E→Q→W", startSkill: "E" },
+	briar: { style: "powerFarmer", paths: ["fullClearRed", "fullClearBlue", "fiveCampRed"], tip: "Very healthy clear with W sustain", skillOrder: "Q→W→E", startSkill: "Q" },
+	zyra: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed"], tip: "Plant-based AoE clear", skillOrder: "Q→W→E", startSkill: "Q" },
+	brand: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed"], tip: "Passive burn clears camps fast", skillOrder: "W→E→Q", startSkill: "W" },
+	taliyah: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed", "fiveCampBlue"], tip: "Hard AoE clear, roam with R", skillOrder: "Q→W→E", startSkill: "Q" },
 
 	// ── Gankers ──
-	leesin: { style: "ganker", paths: ["threeCampRed", "threeCampBlue", "fullClearRed"], tip: "Early gank power, ward-hop plays" },
-	elise: { style: "ganker", paths: ["threeCampRed", "threeCampBlue", "threeCampRedKrugs"], tip: "Level 3 power spike, tower dive queen" },
-	jarvaniv: { style: "ganker", paths: ["threeCampRed", "threeCampBlue", "fullClearRed"], tip: "Strong level 2-3 ganks with E-Q" },
-	xinzhao: { style: "ganker", paths: ["threeCampRed", "threeCampRedKrugs", "fullClearRed"], tip: "Early duelist, gank at 3" },
-	reksai: { style: "ganker", paths: ["threeCampRed", "threeCampBlue", "fullClearRed"], tip: "Tunnel ganks, strong early pressure" },
-	nidalee: { style: "ganker", paths: ["threeCampBlue", "threeCampRed"], tip: "Must gank/invade early, falls off" },
-	nunu: { style: "ganker", paths: ["threeCampBlue", "threeCampRed", "fullClearBlue"], tip: "Snowball ganks from level 2-3" },
-	zac: { style: "ganker", paths: ["fullClearBlue", "threeCampBlue", "fiveCampBlue"], tip: "Long-range E ganks at level 4-5" },
-	sejuani: { style: "ganker", paths: ["fullClearBlue", "threeCampBlue", "threeCampRed"], tip: "Strong CC ganks, play for lanes" },
-	rammus: { style: "ganker", paths: ["fullClearBlue", "threeCampRed", "threeCampBlue"], tip: "Q-roll ganks, look for overextended lanes" },
-	volibear: { style: "ganker", paths: ["threeCampRed", "fullClearRed", "threeCampBlue"], tip: "Strong early duel, tower dive at 6" },
-	warwick: { style: "ganker", paths: ["threeCampRed", "fullClearRed", "threeCampBlue"], tip: "Blood trail ganks, invade when enemies are low" },
-	pantheon: { style: "ganker", paths: ["threeCampRed", "threeCampBlue", "threeCampRedKrugs"], tip: "Early lane dominant, roam with R at 6" },
-	twistedfate: { style: "ganker", paths: ["fullClearBlue", "threeCampBlue"], tip: "Farm to 6, global R ganks" },
-	talon: { style: "ganker", paths: ["threeCampRed", "fullClearRed", "threeCampBlue"], tip: "Wall-hop ganks, invade weak junglers" },
-	qiyana: { style: "ganker", paths: ["threeCampRed", "threeCampBlue"], tip: "Strong level 3 burst, terrain-based plays" },
-	vi: { style: "ganker", paths: ["threeCampRed", "fullClearRed", "threeCampBlue"], tip: "Q ganks, point-and-click R at 6" },
-	wukong: { style: "ganker", paths: ["threeCampRed", "fullClearRed", "threeCampBlue"], tip: "Strong level 2-3, team fight at 6" },
-	ivern: { style: "ganker", paths: ["threeCampBlue", "threeCampRed"], tip: "Mark & leave camps, perma-gank with Daisy" },
-	poppy: { style: "ganker", paths: ["fullClearBlue", "threeCampBlue", "threeCampRed"], tip: "Wall-stun ganks, anti-dash" },
-	maokai: { style: "ganker", paths: ["fullClearBlue", "threeCampBlue"], tip: "Sapling vision, root ganks" },
-	rell: { style: "ganker", paths: ["threeCampRed", "threeCampBlue", "fullClearRed"], tip: "Strong CC ganks, engage heavy" },
-	sylas: { style: "ganker", paths: ["threeCampBlue", "fullClearBlue", "threeCampRed"], tip: "Steal ults, flexible duelist" },
-	gragas: { style: "ganker", paths: ["threeCampBlue", "fullClearBlue", "threeCampRed"], tip: "E-flash ganks, body slam CC" },
+	leesin: { style: "ganker", paths: ["threeCampRed", "threeCampBlue", "fullClearRed"], tip: "Early gank power, ward-hop plays", skillOrder: "Q→E→W", startSkill: "Q" },
+	elise: { style: "ganker", paths: ["threeCampRed", "threeCampBlue", "threeCampRedKrugs"], tip: "Level 3 power spike, tower dive queen", skillOrder: "W→Q→E", startSkill: "W" },
+	jarvaniv: { style: "ganker", paths: ["threeCampRed", "threeCampBlue", "fullClearRed"], tip: "Strong level 2-3 ganks with E-Q", skillOrder: "E→Q→W", startSkill: "E" },
+	xinzhao: { style: "ganker", paths: ["threeCampRed", "threeCampRedKrugs", "fullClearRed"], tip: "Early duelist, gank at 3", skillOrder: "Q→W→E", startSkill: "Q" },
+	reksai: { style: "ganker", paths: ["threeCampRed", "threeCampBlue", "fullClearRed"], tip: "Tunnel ganks, strong early pressure", skillOrder: "Q→W→E", startSkill: "Q" },
+	nidalee: { style: "ganker", paths: ["threeCampBlue", "threeCampRed", "level2Gank"], tip: "Must gank/invade early, falls off", skillOrder: "Q→W→E", startSkill: "Q" },
+	nunu: { style: "ganker", paths: ["threeCampBlue", "threeCampRed", "level2GankBlue", "fullClearBlue"], tip: "Snowball ganks from level 2-3", skillOrder: "Q→W→E", startSkill: "Q" },
+	zac: { style: "ganker", paths: ["fullClearBlue", "threeCampBlue", "fiveCampBlue"], tip: "Long-range E ganks at level 4-5", skillOrder: "Q→W→E", startSkill: "Q" },
+	sejuani: { style: "ganker", paths: ["fullClearBlue", "threeCampBlue", "threeCampRed"], tip: "Strong CC ganks, play for lanes", skillOrder: "W→E→Q", startSkill: "W" },
+	rammus: { style: "ganker", paths: ["fullClearBlue", "threeCampRed", "threeCampBlue"], tip: "Q-roll ganks, look for overextended lanes", skillOrder: "W→Q→E", startSkill: "W" },
+	volibear: { style: "ganker", paths: ["threeCampRed", "fullClearRed", "threeCampBlue"], tip: "Strong early duel, tower dive at 6", skillOrder: "Q→W→E", startSkill: "Q" },
+	warwick: { style: "ganker", paths: ["threeCampRed", "fullClearRed", "threeCampBlue"], tip: "Blood trail ganks, invade when enemies are low", skillOrder: "Q→W→E", startSkill: "Q" },
+	pantheon: { style: "ganker", paths: ["threeCampRed", "threeCampBlue", "threeCampRedKrugs", "level2Gank"], tip: "Early lane dominant, roam with R at 6", skillOrder: "Q→E→W", startSkill: "Q" },
+	twistedfate: { style: "ganker", paths: ["fullClearBlue", "threeCampBlue"], tip: "Farm to 6, global R ganks", skillOrder: "Q→W→E", startSkill: "Q" },
+	talon: { style: "ganker", paths: ["threeCampRed", "fullClearRed", "threeCampBlue"], tip: "Wall-hop ganks, invade weak junglers", skillOrder: "Q→W→E", startSkill: "Q" },
+	qiyana: { style: "ganker", paths: ["threeCampRed", "threeCampBlue", "level2Gank"], tip: "Strong level 3 burst, terrain-based plays", skillOrder: "Q→W→E", startSkill: "Q" },
+	vi: { style: "ganker", paths: ["threeCampRed", "fullClearRed", "threeCampBlue"], tip: "Q ganks, point-and-click R at 6", skillOrder: "Q→E→W", startSkill: "Q" },
+	wukong: { style: "ganker", paths: ["threeCampRed", "fullClearRed", "threeCampBlue"], tip: "Strong level 2-3, team fight at 6", skillOrder: "Q→E→W", startSkill: "Q" },
+	ivern: { style: "ganker", paths: ["threeCampBlue", "threeCampRed"], tip: "Mark & leave camps, perma-gank with Daisy", skillOrder: "Q→W→E", startSkill: "Q" },
+	poppy: { style: "ganker", paths: ["fullClearBlue", "threeCampBlue", "threeCampRed"], tip: "Wall-stun ganks, anti-dash", skillOrder: "Q→W→E", startSkill: "Q" },
+	maokai: { style: "ganker", paths: ["fullClearBlue", "threeCampBlue"], tip: "Sapling vision, root ganks", skillOrder: "E→Q→W", startSkill: "E" },
+	rell: { style: "ganker", paths: ["threeCampRed", "threeCampBlue", "fullClearRed"], tip: "Strong CC ganks, engage heavy", skillOrder: "Q→W→E", startSkill: "Q" },
+	sylas: { style: "ganker", paths: ["threeCampBlue", "fullClearBlue", "threeCampRed"], tip: "Steal ults, flexible duelist", skillOrder: "Q→W→E", startSkill: "Q" },
+	gragas: { style: "ganker", paths: ["threeCampBlue", "fullClearBlue", "threeCampRed"], tip: "E-flash ganks, body slam CC", skillOrder: "W→Q→E", startSkill: "W" },
 
 	// ── Invaders ──
-	khazix: { style: "invader", paths: ["threeCampRed", "fullClearRed", "threeCampBlue"], tip: "Isolate & delete, invade weak junglers" },
-	rengar: { style: "invader", paths: ["threeCampRed", "fullClearRed", "threeCampBlue"], tip: "Bush-leap ganks, invade at 3" },
-	shaco: { style: "invader", paths: ["threeCampRedKrugs", "threeCampRed"], tip: "Box-trap start, invade & cheese" },
-	evelynn: { style: "flexible", paths: ["fullClearBlue", "fullClearRed", "fiveCampBlue"], tip: "Farm to 6, perma-stealth ganks" },
+	khazix: { style: "invader", paths: ["threeCampRed", "fullClearRed", "threeCampBlue", "invadeRed"], tip: "Isolate & delete, invade weak junglers", skillOrder: "Q→W→E", startSkill: "Q" },
+	rengar: { style: "invader", paths: ["threeCampRed", "fullClearRed", "threeCampBlue", "invadeBlue"], tip: "Bush-leap ganks, invade at 3", skillOrder: "Q→W→E", startSkill: "Q" },
+	shaco: { style: "invader", paths: ["threeCampRedKrugs", "threeCampRed", "invadeRed", "level2Gank"], tip: "Box-trap start, invade & cheese", skillOrder: "W→Q→E", startSkill: "W" },
+	evelynn: { style: "flexible", paths: ["fullClearBlue", "fullClearRed", "fiveCampBlue"], tip: "Farm to 6, perma-stealth ganks", skillOrder: "Q→E→W", startSkill: "Q" },
 
 	// ── Flexible ──
-	ekko: { style: "flexible", paths: ["fullClearBlue", "fiveCampBlue", "threeCampBlue"], tip: "Flex between farm and ganks, strong at 6" },
-	yone: { style: "flexible", paths: ["fullClearBlue", "fullClearRed", "fiveCampBlue"], tip: "Scale 6, E-engage ganks" },
-	aurora: { style: "flexible", paths: ["fullClearBlue", "fiveCampBlue", "threeCampBlue"], tip: "R-zoning, flexible clear" },
-	ambessa: { style: "ganker", paths: ["threeCampRed", "fullClearRed", "threeCampBlue"], tip: "Strong early pressure, dash-heavy ganks" },
-	naafiri: { style: "ganker", paths: ["threeCampRed", "fullClearRed"], tip: "Pack hunter, walls for gank angles" },
-	skarner: { style: "flexible", paths: ["fullClearBlue", "threeCampBlue", "fullClearRed"], tip: "Strong CC, E-stun ganks" },
-	trundle: { style: "invader", paths: ["fullClearRed", "threeCampRed", "fullClearBlue"], tip: "Pillar ganks, steal stats with R" },
-	olaf: { style: "invader", paths: ["fullClearRed", "threeCampRed", "fullClearBlue"], tip: "Healthy clear, run-down ganks" },
-	jax: { style: "flexible", paths: ["fullClearBlue", "fullClearRed", "threeCampRed"], tip: "Scale hard, strong at 2 items" },
+	ekko: { style: "flexible", paths: ["fullClearBlue", "fiveCampBlue", "threeCampBlue"], tip: "Flex between farm and ganks, strong at 6", skillOrder: "Q→W→E", startSkill: "Q" },
+	yone: { style: "flexible", paths: ["fullClearBlue", "fullClearRed", "fiveCampBlue"], tip: "Scale 6, E-engage ganks", skillOrder: "Q→W→E", startSkill: "Q" },
+	aurora: { style: "flexible", paths: ["fullClearBlue", "fiveCampBlue", "threeCampBlue"], tip: "R-zoning, flexible clear", skillOrder: "Q→W→E", startSkill: "Q" },
+	ambessa: { style: "ganker", paths: ["threeCampRed", "fullClearRed", "threeCampBlue"], tip: "Strong early pressure, dash-heavy ganks", skillOrder: "Q→E→W", startSkill: "Q" },
+	naafiri: { style: "ganker", paths: ["threeCampRed", "fullClearRed"], tip: "Pack hunter, walls for gank angles", skillOrder: "Q→W→E", startSkill: "Q" },
+	skarner: { style: "flexible", paths: ["fullClearBlue", "threeCampBlue", "fullClearRed"], tip: "Strong CC, E-stun ganks", skillOrder: "Q→W→E", startSkill: "Q" },
+	trundle: { style: "invader", paths: ["fullClearRed", "threeCampRed", "fullClearBlue", "invadeBlue"], tip: "Pillar ganks, steal stats with R", skillOrder: "Q→W→E", startSkill: "Q" },
+	olaf: { style: "invader", paths: ["fullClearRed", "threeCampRed", "fullClearBlue"], tip: "Healthy clear, run-down ganks", skillOrder: "Q→W→E", startSkill: "Q" },
+	jax: { style: "flexible", paths: ["fullClearBlue", "fullClearRed", "threeCampRed"], tip: "Scale hard, strong at 2 items", skillOrder: "E→Q→W", startSkill: "E" },
+	// ── Additional champions ──
+	zed: { style: "ganker", paths: ["threeCampRed", "fullClearRed", "threeCampBlue", "level2Gank"], tip: "Shadow combos, invade weak junglers", skillOrder: "Q→W→E", startSkill: "Q" },
+	talonjg: { style: "ganker", paths: ["threeCampRed", "threeCampBlue", "level2Gank"], tip: "Wall-hop cheese, early kill pressure", skillOrder: "Q→W→E", startSkill: "Q" },
+	nunuwillump: { style: "ganker", paths: ["threeCampBlue", "threeCampRed", "level2GankBlue", "fullClearBlue"], tip: "Snowball ganks from level 2-3", skillOrder: "Q→W→E", startSkill: "Q" },
+	drmundo: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed"], tip: "Tanky clears, scale with HP", skillOrder: "Q→W→E", startSkill: "Q" },
+	fiddlesticksjg: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed"], tip: "Multi-camp drain, fear R at 6", skillOrder: "W→E→Q", startSkill: "W" },
+	xinzhao2: { style: "ganker", paths: ["threeCampRed", "threeCampBlue", "level2Gank"], tip: "Strong level 2-3 all-in", skillOrder: "Q→W→E", startSkill: "Q" },
+	riven: { style: "ganker", paths: ["threeCampRed", "fullClearRed", "threeCampBlue"], tip: "Animation cancel clears, early aggression", skillOrder: "Q→W→E", startSkill: "Q" },
+	aatrox: { style: "ganker", paths: ["threeCampBlue", "fullClearBlue", "threeCampRed"], tip: "Q sweetspot clears, sustain heavy", skillOrder: "Q→E→W", startSkill: "Q" },
+	camille: { style: "ganker", paths: ["threeCampRed", "threeCampBlue", "fullClearRed"], tip: "E-hookshot ganks, strong skirmisher", skillOrder: "Q→W→E", startSkill: "Q" },
+	tham: { style: "ganker", paths: ["fullClearBlue", "threeCampBlue", "threeCampRed"], tip: "W-devour ganks, R for picks", skillOrder: "Q→W→E", startSkill: "Q" },
+	monkeyking: { style: "ganker", paths: ["threeCampRed", "fullClearRed", "threeCampBlue"], tip: "Clone+E engage, strong level 2-3", skillOrder: "Q→E→W", startSkill: "Q" },
+	neeko: { style: "flexible", paths: ["fullClearBlue", "threeCampBlue", "fiveCampBlue"], tip: "Shapeshifter ganks, AoE R at 6", skillOrder: "Q→E→W", startSkill: "Q" },
+	ksante: { style: "flexible", paths: ["fullClearBlue", "fullClearRed", "threeCampRed"], tip: "Tank with all-in R, scale late", skillOrder: "Q→W→E", startSkill: "Q" },
 };
 
 // ── Jungle camp position context based on map side ──
@@ -210,7 +284,7 @@ type JunglePathSettings = {
 @action({ UUID: "com.desstroct.lol-api.jungle-path" })
 export class JunglePath extends SingletonAction<JunglePathSettings> {
 	private pollInterval: ReturnType<typeof setInterval> | null = null;
-	private dialStates = new Map<string, { pathIndex: number; stepIndex: number }>();
+	private dialStates = new Map<string, { pathIndex: number; stepIndex: number; autoAdvance: boolean }>();
 
 	// Cached state
 	private currentChampAlias = "";
@@ -218,9 +292,15 @@ export class JunglePath extends SingletonAction<JunglePathSettings> {
 	private currentSide: "blue" | "red" = "blue";
 	private currentPaths: JunglePathRoute[] = [];
 	private currentTip = "";
+	private currentSkillOrder = "";
+	private currentStartSkill = "";
 	private enemyJunglerName = "";
 	private enemyJunglerAlias = "";
 	private enemyJunglerStyle: PathStyle | "" = "";
+	/** Whether we're currently in a live game (not just champ select) */
+	private inGame = false;
+	/** Last known game time for auto-advance tracking */
+	private lastGameTime = 0;
 
 	// ─────────── Lifecycle ───────────
 
@@ -266,7 +346,8 @@ export class JunglePath extends SingletonAction<JunglePathSettings> {
 		if (this.currentPaths.length === 0) return;
 		const path = this.currentPaths[ds.pathIndex];
 		if (!path) return;
-		// Rotate = scroll through camps in the path
+		// Manual scroll disables auto-advance for this action
+		ds.autoAdvance = false;
 		ds.stepIndex = ((ds.stepIndex + ev.payload.ticks) + path.camps.length * 100) % path.camps.length;
 		await this.updateAll();
 	}
@@ -305,10 +386,10 @@ export class JunglePath extends SingletonAction<JunglePathSettings> {
 		this.dialStates.clear();
 	}
 
-	private getDialState(actionId: string): { pathIndex: number; stepIndex: number } {
+	private getDialState(actionId: string): { pathIndex: number; stepIndex: number; autoAdvance: boolean } {
 		let ds = this.dialStates.get(actionId);
 		if (!ds) {
-			ds = { pathIndex: 0, stepIndex: 0 };
+			ds = { pathIndex: 0, stepIndex: 0, autoAdvance: true };
 			this.dialStates.set(actionId, ds);
 		}
 		return ds;
@@ -323,7 +404,12 @@ export class JunglePath extends SingletonAction<JunglePathSettings> {
 		// 2. Resolve paths for this champion (considering enemy)
 		this.resolvePaths();
 
-		// 3. Render
+		// 3. In-game: auto-advance step based on game time
+		if (this.inGame && this.lastGameTime > 0) {
+			this.autoAdvanceSteps();
+		}
+
+		// 4. Render
 		for (const a of this.actions) {
 			const settings = (await a.getSettings()) as JunglePathSettings;
 			const ds = this.getDialState(a.id);
@@ -363,7 +449,7 @@ export class JunglePath extends SingletonAction<JunglePathSettings> {
 	/** Render the dial/encoder touchscreen */
 	private async renderDial(
 		a: any,
-		ds: { pathIndex: number; stepIndex: number },
+		ds: { pathIndex: number; stepIndex: number; autoAdvance: boolean },
 		path: JunglePathRoute,
 		side: "blue" | "red",
 	): Promise<void> {
@@ -379,25 +465,39 @@ export class JunglePath extends SingletonAction<JunglePathSettings> {
 		const champIcon = await this.getChampIcon();
 		const displayIcon = campIcon ?? champIcon;
 
-		// Line 1 (title): "Hecarim · Blue Side" or "Hecarim vs Lee Sin"
-		const sideLabel = side === "blue" ? "Blue" : "Red";
-		const enemyPart = this.enemyJunglerName ? ` vs ${this.enemyJunglerName}` : "";
-		const titleLine = `${this.currentChampName}${enemyPart} · ${sideLabel}`;
+		// Title line: compact but informative
+		const sideLabel = side === "blue" ? "🔵" : "🔴";
+		const pathIndicator = this.currentPaths.length > 1
+			? ` [${ds.pathIndex + 1}/${this.currentPaths.length}]`
+			: "";
+		const enemyTag = this.enemyJunglerName ? ` vs ${this.enemyJunglerName}` : "";
+		const titleLine = `${this.currentChampName}${enemyTag} ${sideLabel}${pathIndicator}`;
 
-		// Line 2 (path_name): "▸ 3/7  Red Buff" — clear current step
+		// Path name line: step counter + camp name + skill order
 		const campName = campContext(camp, side);
+		const skillTag = this.currentSkillOrder ? ` · ${this.currentSkillOrder}` : "";
 		const pathNameLine = `▸ ${stepNum}/${totalSteps}  ${campName}`;
 
-		// Line 3 (camp_route): compact route with current step highlighted
-		// e.g. "Full Blue:  Blue → Gromp → [Wolves] → Raptors → Red → Krugs → Scuttle"
-		const routeParts = path.camps.map((c, i) => {
-			const label = CAMP_LABEL[c];
-			return i === ds.stepIndex ? `[${label}]` : label;
-		});
-		const routeLine = `${path.shortName}: ${routeParts.join(" → ")}`;
+		// Camp route line: show upcoming camps (next 3) or tip/skill info
+		let routeLine: string;
+		if (ds.stepIndex < totalSteps - 1) {
+			// Show next camps as preview
+			const upcoming = path.camps
+				.slice(ds.stepIndex + 1, ds.stepIndex + 4)
+				.map((c) => CAMP_EMOJI[c] + CAMP_LABEL[c])
+				.join(" → ");
+			routeLine = `Next: ${upcoming}`;
+		} else {
+			// Last step — show tip or skill order
+			routeLine = this.currentTip || path.description;
+		}
 
-		// Tip override if we have one from enemy analysis
-		const detailLine = this.currentTip || routeLine;
+		// If at step 1, show skill order instead of "next"
+		if (ds.stepIndex === 0 && this.currentSkillOrder) {
+			routeLine = `Skills: ${this.currentSkillOrder}${skillTag ? "" : ""}  •  ${routeLine}`;
+			// Truncate if too long for the layout
+			if (routeLine.length > 55) routeLine = `Start ${this.currentStartSkill || "Q"} · ${this.currentSkillOrder}`;
+		}
 
 		const barColor = this.getBarColor(camp);
 
@@ -405,7 +505,7 @@ export class JunglePath extends SingletonAction<JunglePathSettings> {
 			champ_icon: displayIcon ?? "",
 			title: titleLine,
 			path_name: pathNameLine,
-			camp_route: detailLine,
+			camp_route: routeLine,
 			step_bar: { value: progress, bar_fill_c: barColor },
 		});
 	}
@@ -413,7 +513,7 @@ export class JunglePath extends SingletonAction<JunglePathSettings> {
 	/** Render the key (button) display */
 	private async renderKey(
 		a: any,
-		ds: { pathIndex: number; stepIndex: number },
+		ds: { pathIndex: number; stepIndex: number; autoAdvance: boolean },
 		path: JunglePathRoute,
 		side: "blue" | "red",
 	): Promise<void> {
@@ -428,14 +528,15 @@ export class JunglePath extends SingletonAction<JunglePathSettings> {
 			await a.setImage(champIcon);
 		}
 
-		// Simple and readable title:
-		// Line 1: "Full Blue 3/7"
-		// Line 2: "→ Wolves"
+		// Key title: path name, step, camp, and skill order on first camp
 		const stepNum = ds.stepIndex + 1;
 		const totalSteps = path.camps.length;
 		const campName = campContext(camp, side);
+		const skillLine = ds.stepIndex === 0 && this.currentStartSkill
+			? `\nStart ${this.currentStartSkill}`
+			: "";
 
-		await a.setTitle(`${path.shortName} ${stepNum}/${totalSteps}\n→ ${campName}`);
+		await a.setTitle(`${path.shortName} ${stepNum}/${totalSteps}\n→ ${campName}${skillLine}`);
 	}
 
 	/** Return a contextual bar color based on the camp type */
@@ -460,9 +561,14 @@ export class JunglePath extends SingletonAction<JunglePathSettings> {
 		// This is critical when SD starts mid-game or LCU hasn't connected yet.
 		const gameData = await gameClient.getAllData();
 		if (gameData?.activePlayer) {
+			this.inGame = true;
+			this.lastGameTime = gameData.gameData?.gameTime ?? 0;
 			await this.detectFromGame();
 			return;
 		}
+
+		this.inGame = false;
+		this.lastGameTime = 0;
 
 		// ── Fallback to LCU for champ-select detection ──
 		if (!lcuConnector.isConnected()) {
@@ -608,9 +714,13 @@ export class JunglePath extends SingletonAction<JunglePathSettings> {
 		this.currentChampName = "";
 		this.currentPaths = [];
 		this.currentTip = "";
+		this.currentSkillOrder = "";
+		this.currentStartSkill = "";
 		this.enemyJunglerName = "";
 		this.enemyJunglerAlias = "";
 		this.enemyJunglerStyle = "";
+		this.inGame = false;
+		this.lastGameTime = 0;
 	}
 
 	// ─────────── Path resolution ───────────
@@ -619,6 +729,8 @@ export class JunglePath extends SingletonAction<JunglePathSettings> {
 		if (!this.currentChampAlias) {
 			this.currentPaths = [];
 			this.currentTip = "";
+			this.currentSkillOrder = "";
+			this.currentStartSkill = "";
 			return;
 		}
 
@@ -629,9 +741,13 @@ export class JunglePath extends SingletonAction<JunglePathSettings> {
 		if (info) {
 			paths = [...info.paths];
 			tip = info.tip ?? "";
+			this.currentSkillOrder = info.skillOrder ?? "";
+			this.currentStartSkill = info.startSkill ?? "";
 		} else {
 			paths = [...STYLE_DEFAULTS.flexible];
 			tip = "Default paths (champion not in DB)";
+			this.currentSkillOrder = "";
+			this.currentStartSkill = "";
 		}
 
 		// ── Enemy-aware path adjustment ──
@@ -658,6 +774,9 @@ export class JunglePath extends SingletonAction<JunglePathSettings> {
 			} else if (this.enemyJunglerStyle === "powerFarmer" && myStyle === "invader") {
 				// They farm, we invade — highlight invade paths
 				tip = `${this.enemyJunglerName} farms → invade their jungle!`;
+				// Add invade routes if not present
+				if (!paths.includes("invadeBlue")) paths.push("invadeBlue");
+				if (!paths.includes("invadeRed")) paths.push("invadeRed");
 			}
 		}
 
@@ -665,6 +784,44 @@ export class JunglePath extends SingletonAction<JunglePathSettings> {
 			.map((key) => PATHS[key])
 			.filter((p): p is JunglePathRoute => !!p);
 		this.currentTip = tip;
+	}
+
+	// ─────────── In-game auto-advance ───────────
+
+	/**
+	 * Automatically advance the step index based on estimated camp clear times
+	 * and current game time. Only advances for actions with autoAdvance enabled
+	 * (i.e. the user hasn't manually scrolled).
+	 * 
+	 * Uses cumulative timestamps: if game time exceeds the estimated clear time
+	 * for a camp, we advance past it. This gives the user a "follow along" experience.
+	 */
+	private autoAdvanceSteps(): void {
+		if (this.lastGameTime <= 0) return;
+		// Only auto-advance during the first ~4 minutes (early clear phase)
+		if (this.lastGameTime > 240) return;
+
+		for (const [, ds] of this.dialStates) {
+			if (!ds.autoAdvance) continue;
+			const path = this.currentPaths[ds.pathIndex];
+			if (!path) continue;
+
+			// Find which camp we should be on based on game time
+			let newStep = 0;
+			for (let i = 0; i < path.camps.length; i++) {
+				const campTime = CAMP_CLEAR_TIMESTAMPS[path.camps[i]];
+				if (this.lastGameTime >= campTime) {
+					newStep = Math.min(i + 1, path.camps.length - 1);
+				} else {
+					break;
+				}
+			}
+
+			// Only advance forward, never backwards
+			if (newStep > ds.stepIndex) {
+				ds.stepIndex = newStep;
+			}
+		}
 	}
 
 	// ─────────── Icon helper ───────────

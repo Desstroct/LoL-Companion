@@ -384,6 +384,9 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 				await this.renderAction(a, state, s);
 			} catch (e) {
 				logger.error(`Failed to get runes: ${e}`);
+				// Reset state so next poll retries the fetch
+				if (champChanged) state.lastChampKey = "";
+				if (enemyChanged) state.lastEnemyKey = "";
 			}
 		}
 	}
@@ -592,23 +595,32 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 					logger.info(`Updated rune page ${targetPage.id} → ${rune.keystoneName}`);
 					state.applied = true;
 				} else {
-					// If update fails, try delete + create
+					// If update fails, try delete + create — but save old data for recovery
 					logger.debug("Update failed, trying delete + create");
+					const backupPayload = {
+						name: targetPage.name,
+						primaryStyleId: targetPage.primaryStyleId,
+						subStyleId: targetPage.subStyleId,
+						selectedPerkIds: targetPage.selectedPerkIds,
+						current: targetPage.isActive,
+					};
 					await lcuApi.deleteRunePage(targetPage.id);
 					const created = await lcuApi.createRunePage(pagePayload);
 					if (created) {
 						logger.info(`Recreated rune page → ${rune.keystoneName}`);
 						state.applied = true;
 					} else {
-						logger.error("Failed to create rune page");
+						logger.error("Failed to create rune page, restoring backup");
+						await lcuApi.createRunePage(backupPayload);
 					}
 				}
 			} else {
-				// No editable pages — try to make room by deleting the oldest editable one
+				// No editable pages — try to make room by deleting one
 				const editable = pages.filter((p) => p.isDeletable);
 				if (editable.length > 0) {
-					// Delete last one to make room
-					const toDelete = editable[editable.length - 1];
+					// Prefer to delete our own managed page over a user's custom page
+					const toDelete = editable.find((p) => p.name === RUNE_PAGE_NAME)
+						?? editable[editable.length - 1];
 					await lcuApi.deleteRunePage(toDelete.id);
 				}
 

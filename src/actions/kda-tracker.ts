@@ -86,10 +86,7 @@ export class KdaTracker extends SingletonAction {
 			return;
 		}
 
-		const activeName = allData.activePlayer.summonerName;
-		const me = allData.allPlayers.find(
-			(p) => p.riotIdGameName === activeName || p.summonerName === activeName,
-		);
+		const me = gameClient.findMe(allData);
 
 		if (!me) {
 			for (const a of this.actions) {
@@ -114,9 +111,9 @@ export class KdaTracker extends SingletonAction {
 			? (kills + assists)
 			: parseFloat(((kills + assists) / deaths).toFixed(1));
 
-		const csPerMin = gameTimeMinutes > 0.5
+		const csPerMin = gameTimeMinutes > 1.0
 			? (creepScore / gameTimeMinutes).toFixed(1)
-			: creepScore.toString();
+			: "—";
 
 		const gold = allData.activePlayer.currentGold;
 		const goldStr = gold >= 1000 ? `${(gold / 1000).toFixed(1)}k` : `${gold}`;

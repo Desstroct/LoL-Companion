@@ -1,6 +1,7 @@
 {
     "scripts": {
         "build": "rollup -c",
+        "deploy": "rollup -c && node -e \"const fs=require('fs');const p=process.env.APPDATA+'/Elgato/StreamDeck/Plugins/com.desstroct.lol-api.sdPlugin';fs.cpSync('./com.desstroct.lol-api.sdPlugin',p,{recursive:true,force:true});console.log('Deployed to',p)\"",
         "watch": "rollup -c -w --watch.onEnd=\"streamdeck restart com.desstroct.lol-api\""
     },
     "type": "module",

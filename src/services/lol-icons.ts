@@ -86,11 +86,11 @@ export async function getChampionIconByKey(key: string): Promise<string | null> 
  */
 export async function getChampionIconByName(name: string): Promise<string | null> {
 	if (!name) return null;
-	// Game Client API uses display names; DDragon uses IDs
-	const lower = name.toLowerCase().replace(/['\s.]/g, "");
+	// Game Client API uses display names (may include accents); DDragon uses IDs
+	const lower = name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/['\s.]/g, "");
 	for (const champ of dataDragon.getAllChampions()) {
 		const ddLower = champ.id.toLowerCase().replace(/['\s.]/g, "");
-		const nameLower = champ.name.toLowerCase().replace(/['\s.]/g, "");
+		const nameLower = champ.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/['\s.]/g, "");
 		if (ddLower === lower || nameLower === lower) {
 			return fetchIcon(`champ:${ddLower}`, dataDragon.getChampionImageUrl(champ.id));
 		}
@@ -244,7 +244,7 @@ export async function getRankedEmblemIcon(tier: string): Promise<string | null> 
 
 function resolveDataDragonId(alias: string): string | null {
 	if (!alias) return null;
-	const lowerAlias = alias.toLowerCase().replace(/['\s.]/g, "");
+	const lowerAlias = alias.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/['\s.]/g, "");
 	for (const champ of dataDragon.getAllChampions()) {
 		const ddLower = champ.id.toLowerCase().replace(/['\s.]/g, "");
 		if (ddLower === lowerAlias) {

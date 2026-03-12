@@ -42,6 +42,10 @@ const WAVE_INTERVAL = 30; // seconds between waves
 const DRAGON_FIRST_SPAWN = 5 * 60; // 5:00
 const DRAGON_RESPAWN = 5 * 60; // 5 min respawn
 const HERALD_FIRST_SPAWN = 14 * 60; // 14:00
+const HERALD_RESPAWN = 4 * 60; // ~4 min between 1st and 2nd herald
+const VOIDGRUB_FIRST_SPAWN = 5 * 60; // 5:00 (same as dragon side)
+const VOIDGRUB_RESPAWN = 4 * 60; // ~4 min respawn
+const ATAKHAN_SPAWN = 20 * 60; // 20:00 (spawns when enough blood is spilled)
 const BARON_SPAWN = 20 * 60; // 20:00
 const BARON_RESPAWN = 6 * 60; // 6 min respawn
 
@@ -88,9 +92,14 @@ interface RecallState {
 	enemyDead: boolean;
 	/** Upcoming component breakpoints */
 	componentBreakpoints: { gold: number; label: string }[];
-	/** Track last dragon/baron kill times for objective respawn */
+	/** Track last objective kill times for respawn calculations */
 	lastDragonKill: number;
 	lastBaronKill: number;
+	lastHeraldKill: number;
+	lastVoidgrubKill: number;
+	voidgrubKillCount: number;
+	/** Champion name the current build was loaded for */
+	buildChamp: string;
 	/** Guard flag to prevent concurrent build item loads */
 	buildItemsLoading: boolean;
 }
@@ -186,6 +195,10 @@ export class RecallWindow extends SingletonAction<RecallWindowSettings> {
 				componentBreakpoints: [],
 				lastDragonKill: 0,
 				lastBaronKill: 0,
+				lastHeraldKill: 0,
+				lastVoidgrubKill: 0,
+				voidgrubKillCount: 0,
+				buildChamp: "",
 				buildItemsLoading: false,
 			};
 			this.actionStates.set(actionId, s);
@@ -233,6 +246,10 @@ export class RecallWindow extends SingletonAction<RecallWindowSettings> {
 				s.componentBreakpoints = [];
 				s.lastDragonKill = 0;
 				s.lastBaronKill = 0;
+				s.lastHeraldKill = 0;
+				s.lastVoidgrubKill = 0;
+				s.voidgrubKillCount = 0;
+				s.buildChamp = "";
 			}
 			for (const a of this.actions) {
 				if (a.isDial()) {
@@ -255,7 +272,11 @@ export class RecallWindow extends SingletonAction<RecallWindowSettings> {
 		const activePlayer = allData.activePlayer;
 		const activeName = activePlayer.summonerName;
 		const me = allData.allPlayers.find(
-			(p) => p.riotIdGameName === activeName || p.summonerName === activeName,
+			(p) =>
+				p.riotIdGameName === activeName ||
+				p.summonerName === activeName ||
+				p.riotId === activeName ||
+				p.riotIdGameName === activeName.split("#")[0],
 		);
 		if (!me) return;
 
@@ -291,8 +312,9 @@ export class RecallWindow extends SingletonAction<RecallWindowSettings> {
 			// Track objective kills from events
 			this.trackObjectiveEvents(state, events);
 
-			// Fetch build items if we don't have them yet (guard prevents concurrent loads)
-			if (state.buildItems.length === 0 && champName && !state.buildItemsLoading) {
+			// Fetch build items if we don't have them yet OR champion changed (ARAM reroll)
+			const needBuildReload = (state.buildItems.length === 0 || state.buildChamp !== champName) && champName && !state.buildItemsLoading;
+			if (needBuildReload) {
 				state.buildItemsLoading = true;
 				try {
 					const lane = gameMode.isARAM() ? "aram" : ItemBuilds.toLolalyticsLane(myPosition);
@@ -300,6 +322,7 @@ export class RecallWindow extends SingletonAction<RecallWindowSettings> {
 					const build = await itemBuilds.getBuild(alias, lane);
 					if (build && build.fullBuild.length > 0) {
 						state.buildItems = build.fullBuild;
+						state.buildChamp = champName;
 						// Build component breakpoints from the build path
 						state.componentBreakpoints = this.buildComponentBreakpoints(build.fullBuild, build.startingItems);
 						logger.info(`Recall: loaded ${state.componentBreakpoints.length} breakpoints for ${champName}`);
@@ -367,6 +390,14 @@ export class RecallWindow extends SingletonAction<RecallWindowSettings> {
 				state.lastDragonKill = ev.EventTime;
 			} else if (ev.EventName === "BaronKill") {
 				state.lastBaronKill = ev.EventTime;
+			} else if (ev.EventName === "HeraldKill") {
+				state.lastHeraldKill = ev.EventTime;
+			} else if (ev.EventName === "HordeKill") {
+				// Voidgrubs ("Horde" in the API)
+				if (ev.EventTime > state.lastVoidgrubKill) {
+					state.lastVoidgrubKill = ev.EventTime;
+					state.voidgrubKillCount++;
+				}
 			}
 		}
 	}
@@ -459,15 +490,55 @@ export class RecallWindow extends SingletonAction<RecallWindowSettings> {
 			}
 		}
 
-		// Herald
+		// Herald (spawns at 14:00, can respawn once ~4min later; replaced by Baron at 20:00)
 		if (gameTime < BARON_SPAWN) {
-			const heraldDelta = HERALD_FIRST_SPAWN - gameTime;
-			if (heraldDelta > 0 && heraldDelta < 40) {
+			let nextHerald: number;
+			if (state.lastHeraldKill > 0) {
+				nextHerald = state.lastHeraldKill + HERALD_RESPAWN;
+			} else {
+				nextHerald = HERALD_FIRST_SPAWN;
+			}
+			if (nextHerald < BARON_SPAWN) {
+				const heraldDelta = nextHerald - gameTime;
+				if (heraldDelta > 0 && heraldDelta < 40) {
+					return {
+						quality: "bad",
+						reason: `Herald in ${Math.round(heraldDelta)}s`,
+						shortReason: `Herald ${Math.round(heraldDelta)}s`,
+						priority: 7,
+					};
+				}
+			}
+		}
+
+		// Voidgrubs (spawn at 5:00 on top side, up to 6 can be taken; respawn ~4min)
+		if (gameTime < BARON_SPAWN && state.voidgrubKillCount < 6) {
+			let nextVoidgrub: number;
+			if (state.lastVoidgrubKill > 0) {
+				nextVoidgrub = state.lastVoidgrubKill + VOIDGRUB_RESPAWN;
+			} else {
+				nextVoidgrub = VOIDGRUB_FIRST_SPAWN;
+			}
+			const voidDelta = nextVoidgrub - gameTime;
+			if (voidDelta > 0 && voidDelta < 40) {
 				return {
 					quality: "bad",
-					reason: `Herald in ${Math.round(heraldDelta)}s`,
-					shortReason: `Herald ${Math.round(heraldDelta)}s`,
-					priority: 7,
+					reason: `Voidgrubs in ${Math.round(voidDelta)}s`,
+					shortReason: `Grubs ${Math.round(voidDelta)}s`,
+					priority: 6,
+				};
+			}
+		}
+
+		// Atakhan (spawns at ~20:00 based on blood spilled; similar timing to Baron)
+		if (gameTime >= ATAKHAN_SPAWN - 60 && gameTime < ATAKHAN_SPAWN + 30) {
+			const atakhanDelta = ATAKHAN_SPAWN - gameTime;
+			if (atakhanDelta > 0 && atakhanDelta < 45) {
+				return {
+					quality: "bad",
+					reason: `Atakhan in ~${Math.round(atakhanDelta)}s`,
+					shortReason: `Atakhan ~${Math.round(atakhanDelta)}s`,
+					priority: 8,
 				};
 			}
 		}

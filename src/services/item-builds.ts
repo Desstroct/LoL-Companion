@@ -1,6 +1,7 @@
 import streamDeck from "@elgato/streamdeck";
 import { dataDragon } from "./data-dragon";
 import { throttledFetch } from "./lolalytics-throttle";
+import { DiskCache } from "./disk-cache";
 
 const logger = streamDeck.logger.createScope("ItemBuilds");
 
@@ -31,8 +32,8 @@ export interface ItemBuild {
  */
 export class ItemBuilds {
 	/** Cache: "championAlias:lane" → { data, timestamp } */
-	private cache: Map<string, { data: ItemBuild; timestamp: number }> = new Map();
 	private readonly CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+	private cache = new DiskCache<ItemBuild>("item-builds.json", this.CACHE_TTL);
 
 	/**
 	 * Get the recommended item build for a champion on a lane.
@@ -42,12 +43,10 @@ export class ItemBuilds {
 	 */
 	async getBuild(championAlias: string, lane: string): Promise<ItemBuild | null> {
 		const key = `${championAlias}:${lane}`;
-		const cached = this.cache.get(key);
+		const cached = await this.cache.get(key);
 
-		if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
+		if (cached) {
 			return cached.data;
-		} else if (cached) {
-			this.cache.delete(key);
 		}
 
 		const ddVersion = dataDragon.getVersion();
@@ -100,7 +99,7 @@ export class ItemBuilds {
 						`build=[${build.fullBuild.join(",")}]`,
 				);
 
-				this.cache.set(key, { data: build, timestamp: Date.now() });
+				await this.cache.set(key, build);
 				return build;
 			} catch (e) {
 				logger.error(`Failed to fetch build for ${championAlias} ${lane} (attempt ${attempt + 1}): ${e}`);
@@ -108,7 +107,8 @@ export class ItemBuilds {
 		}
 
 		logger.error(`All ${maxRetries + 1} attempts failed for ${championAlias} ${lane} build`);
-		return cached?.data ?? null;
+		const fallback = await this.cache.getRaw(key);
+		return fallback?.data ?? null;
 	}
 
 	// ─────────── Build extraction ───────────
@@ -283,21 +283,37 @@ export class ItemBuilds {
 	 */
 	static toAlias(championName: string): string {
 		if (!championName) return "unknown";
+		// Normalize: strip accents/diacritics, lowercase, remove punctuation
+		const normalized = championName
+			.normalize("NFD")
+			.replace(/[\u0300-\u036f]/g, "")
+			.toLowerCase()
+			.replace(/['\s.]/g, "");
 		// Try DDragon lookup first (display name → DDragon ID → lowercase)
 		for (const champ of dataDragon.getAllChampions()) {
-			if (champ.name.toLowerCase() === championName.toLowerCase()) {
+			const ddName = champ.name
+				.normalize("NFD")
+				.replace(/[\u0300-\u036f]/g, "")
+				.toLowerCase()
+				.replace(/['\s.]/g, "");
+			if (ddName === normalized) {
 				return champ.id.toLowerCase().replace(/['\s.]/g, "");
 			}
 		}
 		// Fallback: strip special chars and lowercase
-		return championName.toLowerCase().replace(/['\s.]/g, "");
+		return normalized;
 	}
 
 	/**
 	 * Clear the cache (useful when starting a new game).
 	 */
 	clearCache(): void {
-		this.cache.clear();
+		this.cache.clear().catch(() => {});
+	}
+
+	/** Flush cache to disk (call on shutdown). */
+	async flushCache(): Promise<void> {
+		await this.cache.flush();
 	}
 }
 

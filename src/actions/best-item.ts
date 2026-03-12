@@ -46,7 +46,9 @@ export class BestItem extends SingletonAction {
 	private pollInterval: ReturnType<typeof setInterval> | null = null;
 	/** Per-action instance state for dial browsing and build data */
 	private actionStates = new Map<string, BestItemState>();
-	private fetchingBuild = false;
+	private buildPromise: Promise<ItemBuild | null> | null = null;
+	/** Cooldown after a failed build fetch (stop infinite retry spam) */
+	private buildFailedUntil = 0;
 
 	override onWillAppear(ev: WillAppearEvent): void | Promise<void> {
 		this.startPolling();
@@ -127,6 +129,7 @@ export class BestItem extends SingletonAction {
 		// ── No game running ──
 		if (!allData) {
 			// Reset state for next game
+			this.buildFailedUntil = 0;
 			for (const s of this.actionStates.values()) {
 				if (s.currentChampion) {
 					s.currentChampion = null;
@@ -155,10 +158,7 @@ export class BestItem extends SingletonAction {
 		}
 
 		// ── Find active player ──
-		const activeName = allData.activePlayer.summonerName;
-		const me = allData.allPlayers.find(
-			(p) => p.riotIdGameName === activeName || p.summonerName === activeName,
-		);
+		const me = gameClient.findMe(allData);
 
 		if (!me) {
 			for (const a of this.actions) {
@@ -184,15 +184,16 @@ export class BestItem extends SingletonAction {
 		for (const a of this.actions) {
 			const state = this.getState(a.id);
 
-			if (champName !== state.currentChampion || lane !== state.currentLane) {
+			if (champName !== state.currentChampion || lane !== state.currentLane || (!state.currentBuild && !this.buildPromise)) {
 				state.currentChampion = champName;
 				state.currentLane = lane;
 				state.currentBuild = null;
 				state.browseIndex = -1;
 
-				if (!this.fetchingBuild) {
-					this.fetchingBuild = true;
+				// Cooldown: skip refetch if we recently failed (60s)
+				if (Date.now() < this.buildFailedUntil) continue;
 
+				if (!this.buildPromise) {
 					if (a.isDial()) {
 						await a.setFeedback({ item_name: "Loading build...", cost_text: "", status_text: "" });
 					} else {
@@ -200,7 +201,14 @@ export class BestItem extends SingletonAction {
 					}
 
 					const alias = ItemBuilds.toAlias(champName);
-					const build = await itemBuilds.getBuild(alias, lane);
+					this.buildPromise = itemBuilds.getBuild(alias, lane).catch((e) => {
+						logger.error(`Failed to fetch build: ${e}`);
+						return null;
+					});
+				}
+
+				try {
+					const build = await this.buildPromise;
 
 					// Distribute build to all action states
 					for (const s of this.actionStates.values()) {
@@ -209,16 +217,16 @@ export class BestItem extends SingletonAction {
 						}
 					}
 
-					this.fetchingBuild = false;
-
 					if (!build) {
+						this.buildFailedUntil = Date.now() + 60_000; // retry in 60s
 						if (a.isDial()) {
 							await a.setFeedback({ item_name: "No data", cost_text: "", status_text: "" });
 						} else {
 							await a.setTitle("Best Item\nNo data");
 						}
-						continue;
 					}
+				} finally {
+					this.buildPromise = null;
 				}
 			}
 

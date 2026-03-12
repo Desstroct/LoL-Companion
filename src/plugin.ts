@@ -66,9 +66,15 @@ import { RecallWindow } from "./actions/recall-window";
 import { SessionStats } from "./actions/session-stats";
 import { PostGame } from "./actions/post-game";
 import { TftCompAdvisor } from "./actions/tft-comp";
+import { DuoSynergyAction } from "./actions/duo-synergy";
 import { lcuConnector } from "./services/lcu-connector";
 import { gameMode } from "./services/game-mode";
 import { dataDragon } from "./services/data-dragon";
+import { championStats } from "./services/champion-stats";
+import { itemBuilds } from "./services/item-builds";
+import { lolaBuild } from "./services/lolalytics-build";
+import { runeData } from "./services/rune-data";
+import { duoSynergy } from "./services/duo-synergy";
 
 streamDeck.logger.setLevel("info");
 
@@ -83,6 +89,23 @@ process.on("uncaughtException", (err: NodeJS.ErrnoException) => {
 process.on("unhandledRejection", (reason) => {
 	try { logger.error(`Unhandled rejection: ${reason}`); } catch { /* swallow */ }
 });
+
+// ── Graceful shutdown — flush disk caches ──
+async function flushCaches() {
+	try {
+		await Promise.allSettled([
+			championStats.flushCache(),
+			itemBuilds.flushCache(),
+			lolaBuild.flushCache(),
+			runeData.flushCache(),
+			duoSynergy.flushCache(),
+		]);
+	} catch { /* swallow */ }
+}
+for (const sig of ["SIGTERM", "SIGINT", "SIGHUP"] as const) {
+	process.on(sig, () => { flushCaches().finally(() => process.exit(0)); });
+}
+process.on("beforeExit", () => { flushCaches(); });
 
 async function init() {
 	logger.info("LoL Companion plugin starting...");
@@ -130,6 +153,7 @@ streamDeck.actions.registerAction(new RecallWindow());
 streamDeck.actions.registerAction(new SessionStats());
 streamDeck.actions.registerAction(new PostGame());
 streamDeck.actions.registerAction(new TftCompAdvisor());
+streamDeck.actions.registerAction(new DuoSynergyAction());
 
 // Connect to Stream Deck and initialize
 streamDeck.connect().then(() => {

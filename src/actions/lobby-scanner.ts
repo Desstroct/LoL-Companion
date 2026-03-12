@@ -7,6 +7,8 @@ import {
 	TouchTapEvent,
 	WillAppearEvent,
 	WillDisappearEvent,
+	type DialAction,
+	type KeyAction,
 } from "@elgato/streamdeck";
 import streamDeck from "@elgato/streamdeck";
 import { lcuConnector } from "../services/lcu-connector";
@@ -199,23 +201,56 @@ export class LobbyScannerAction extends SingletonAction<LobbyScannerSettings> {
 		const allyResult = sortTeamByRole(session.myTeam);
 		const enemyResult = sortTeamByRole(session.theirTeam);
 
+		// ---- Pre-compute slots for all actions ----
+		type ActionRef = DialAction<LobbyScannerSettings> | KeyAction<LobbyScannerSettings>;
+		const actionSlots: { action: ActionRef; slot: number; isDial: boolean }[] = [];
 		for (const a of this.actions) {
-			let slot: number;
 			const isDial = a.isDial();
+			const slot = isDial
+				? this.getDialSlot(a.id).currentSlot
+				: ((await a.getSettings()) as LobbyScannerSettings).slot ?? 1;
+			actionSlots.push({ action: a, slot, isDial });
+		}
 
-			if (isDial) {
-				slot = this.getDialSlot(a.id).currentSlot;
-			} else {
-				const settings = (await a.getSettings()) as LobbyScannerSettings;
-				slot = settings.slot ?? 1;
-			}
+		// ---- Collect unique champion keys & puuids to fetch in parallel ----
+		const champKeysNeeded = new Set<string>();
+		const puuidsNeeded = new Set<string>();
+		const slotPlayers: Map<number, (typeof session.myTeam)[0] | undefined> = new Map();
 
+		for (const { slot } of actionSlots) {
+			if (slotPlayers.has(slot)) continue;
 			const isAlly = slot <= 5;
-			const index = (isAlly ? slot : slot - 5) - 1; // 0-based
+			const index = (isAlly ? slot : slot - 5) - 1;
+			const teamResult = isAlly ? allyResult : enemyResult;
+			const player = teamResult.sorted[index];
+			slotPlayers.set(slot, player);
+			if (!player) continue;
+			const champKey = player.championId > 0
+				? String(player.championId)
+				: player.championPickIntent > 0 ? String(player.championPickIntent) : null;
+			if (champKey) champKeysNeeded.add(champKey);
+			if (player.puuid && player.puuid !== "") puuidsNeeded.add(player.puuid);
+		}
+
+		// Parallel fetch: champion icons + ranked stats
+		const [iconResults, rankedResults] = await Promise.all([
+			Promise.all(
+				[...champKeysNeeded].map(async (key) => [key, await getChampionIconByKey(key)] as const),
+			),
+			Promise.all(
+				[...puuidsNeeded].map(async (puuid) => [puuid, await lcuApi.getRankedStats(puuid)] as const),
+			),
+		]);
+		const iconMap = new Map(iconResults);
+		const rankedMap = new Map(rankedResults);
+
+		// ---- Render all actions from pre-fetched data ----
+		for (const { action: a, slot, isDial } of actionSlots) {
+			const isAlly = slot <= 5;
+			const index = (isAlly ? slot : slot - 5) - 1;
 
 			const teamResult = isAlly ? allyResult : enemyResult;
-			const team = teamResult.sorted;
-			const player = team[index];
+			const player = slotPlayers.get(slot);
 
 			// Build a friendly slot label: "TOP" / "JGL" etc. when roles are known, else "#1" / "#2"
 			const slotLabel = teamResult.hasRoles
@@ -224,7 +259,7 @@ export class LobbyScannerAction extends SingletonAction<LobbyScannerSettings> {
 			const teamLabel = isAlly ? "Ally" : "Enemy";
 
 			if (!player) {
-				if (isDial) {
+				if (a.isDial()) {
 					await a.setFeedback({
 						champ_icon: "",
 						title: `${teamLabel} ${slotLabel}`,
@@ -254,17 +289,17 @@ export class LobbyScannerAction extends SingletonAction<LobbyScannerSettings> {
 				} else {
 					champName = champ ? `(${champ.name})` : "...";
 				}
-				champIcon = await getChampionIconByKey(champKey);
+				champIcon = iconMap.get(champKey) ?? null;
 			}
 
 			// Get position
 			const pos = POSITIONS[player.assignedPosition] ?? "?";
 
-			// Try to get ranked info
+			// Ranked info from pre-fetched results
 			let rankStr = "";
 			let wrPct = 0;
 			if (player.puuid && player.puuid !== "") {
-				const ranked = await lcuApi.getRankedStats(player.puuid);
+				const ranked = rankedMap.get(player.puuid) ?? null;
 				if (ranked?.queueMap?.RANKED_SOLO_5x5) {
 					const solo = ranked.queueMap.RANKED_SOLO_5x5;
 					const tier = solo.tier ? solo.tier.charAt(0) + solo.tier.slice(1).toLowerCase() : "?";
@@ -276,7 +311,7 @@ export class LobbyScannerAction extends SingletonAction<LobbyScannerSettings> {
 				}
 			}
 
-			if (isDial) {
+			if (a.isDial()) {
 				const barColor = wrPct >= 55 ? "#2ECC71" : wrPct >= 50 ? "#F1C40F" : wrPct > 0 ? "#E74C3C" : "#666666";
 				await a.setFeedback({
 					champ_icon: champIcon ?? "",

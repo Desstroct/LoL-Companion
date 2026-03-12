@@ -58,8 +58,6 @@ interface SessionState {
 	lastDisplay: string;
 	/** Baseline captured at session start (per queue) */
 	baselines: Map<string, { tier: string; div: string; lp: number; totalLp: number; wins: number; losses: number }>;
-	/** Known completed game IDs to prevent double-counting */
-	knownGameIds: Set<number>;
 	/** Session W/L per queue */
 	sessionRecord: Map<string, { wins: number; losses: number }>;
 	/** Current streak per queue: positive = wins, negative = losses */
@@ -88,6 +86,9 @@ type SessionStatsSettings = {
 export class SessionStats extends SingletonAction<SessionStatsSettings> {
 	private pollInterval: ReturnType<typeof setInterval> | null = null;
 	private actionStates = new Map<string, SessionState>();
+	/** Cached match history to avoid refetching every 15s */
+	private matchCache: { data: MatchEntry[]; fetchedAt: number } | null = null;
+	private static readonly MATCH_CACHE_TTL = 2 * 60 * 1000; // 2 minutes
 
 	private getState(id: string): SessionState {
 		let s = this.actionStates.get(id);
@@ -96,7 +97,7 @@ export class SessionStats extends SingletonAction<SessionStatsSettings> {
 				queueIndex: 0,
 				lastDisplay: "",
 				baselines: new Map(),
-				knownGameIds: new Set(),
+
 				sessionRecord: new Map(),
 				streak: new Map(),
 				sessionStart: Date.now(),
@@ -155,7 +156,6 @@ export class SessionStats extends SingletonAction<SessionStatsSettings> {
 	private resetSession(actionId: string): void {
 		const state = this.getState(actionId);
 		state.baselines.clear();
-		state.knownGameIds.clear();
 		state.sessionRecord.clear();
 		state.streak.clear();
 		state.lastDisplay = "";
@@ -198,7 +198,12 @@ export class SessionStats extends SingletonAction<SessionStatsSettings> {
 			return;
 		}
 
-		const ranked = await lcuApi.getCurrentRankedStats();
+		let ranked: Awaited<ReturnType<typeof lcuApi.getCurrentRankedStats>> | null = null;
+		try {
+			ranked = await lcuApi.getCurrentRankedStats();
+		} catch (e) {
+			logger.warn(`Failed to fetch ranked stats: ${e}`);
+		}
 		if (!ranked) {
 			for (const a of this.actions) {
 				if (a.isDial()) {
@@ -260,9 +265,9 @@ export class SessionStats extends SingletonAction<SessionStatsSettings> {
 			else if (lpDelta < 0) lpStr = `${lpDelta} LP`;
 			else lpStr = "±0 LP";
 
-			// Calculate streak from match history
+			// Calculate streak from match history (scoped to session)
 			const queueId = queueKey === "RANKED_SOLO_5x5" ? 420 : 440;
-			const streak = this.calculateStreak(matches, queueId);
+			const streak = this.calculateStreak(matches, queueId, state.sessionStart);
 			let streakStr = "";
 			if (streak > 0) streakStr = `🔥 ${streak}W`;
 			else if (streak < 0) streakStr = `💀 ${Math.abs(streak)}L`;
@@ -308,17 +313,24 @@ export class SessionStats extends SingletonAction<SessionStatsSettings> {
 
 	/**
 	 * Fetch recent match history from LCU API.
-	 * Only fetches last 20 matches to find streak.
+	 * Cached for 2 minutes to avoid excessive LCU load — match history
+	 * only changes after a game ends (25+ min).
 	 */
 	private async fetchRecentMatches(): Promise<MatchEntry[]> {
+		const now = Date.now();
+		if (this.matchCache && (now - this.matchCache.fetchedAt) < SessionStats.MATCH_CACHE_TTL) {
+			return this.matchCache.data;
+		}
 		try {
 			const data = await lcuApi.get<{ games: { games: MatchEntry[] } }>(
 				"/lol-match-history/v1/products/lol/current-summoner/matches?begIndex=0&endIndex=20",
 			);
-			return data?.games?.games ?? [];
+			const matches = data?.games?.games ?? [];
+			this.matchCache = { data: matches, fetchedAt: now };
+			return matches;
 		} catch (e) {
 			logger.warn(`Failed to fetch match history: ${e}`);
-			return [];
+			return this.matchCache?.data ?? [];
 		}
 	}
 
@@ -326,9 +338,9 @@ export class SessionStats extends SingletonAction<SessionStatsSettings> {
 	 * Calculate current streak from match history for a specific queue.
 	 * Returns positive for win streak, negative for loss streak.
 	 */
-	private calculateStreak(matches: MatchEntry[], queueId: number): number {
+	private calculateStreak(matches: MatchEntry[], queueId: number, sessionStart: number): number {
 		const queueMatches = matches
-			.filter((m) => m.queueId === queueId)
+			.filter((m) => m.queueId === queueId && m.gameCreation >= sessionStart)
 			.sort((a, b) => b.gameCreation - a.gameCreation);
 
 		if (queueMatches.length === 0) return 0;

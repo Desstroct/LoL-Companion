@@ -1,6 +1,7 @@
 import streamDeck from "@elgato/streamdeck";
 import { dataDragon } from "./data-dragon";
 import { throttledFetch } from "./lolalytics-throttle";
+import { DiskCache } from "./disk-cache";
 
 const logger = streamDeck.logger.createScope("ChampionStats");
 
@@ -34,8 +35,8 @@ export interface MatchupData {
  */
 export class ChampionStats {
 	/** Cache: "championKey:lane" → { data, timestamp } */
-	private cache: Map<string, { data: MatchupData[]; timestamp: number }> = new Map();
 	private readonly CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+	private cache = new DiskCache<MatchupData[]>("champion-stats.json", this.CACHE_TTL);
 
 	/**
 	 * Get counters (opponents that beat this champion) for a given lane.
@@ -228,12 +229,10 @@ export class ChampionStats {
 	 */
 	private async getMatchups(championAlias: string, lane: string): Promise<MatchupData[]> {
 		const key = `${championAlias}:${lane}`;
-		const cached = this.cache.get(key);
+		const cached = await this.cache.get(key);
 
-		if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
+		if (cached) {
 			return cached.data;
-		} else if (cached) {
-			this.cache.delete(key);
 		}
 
 		// Extract major.minor patch from Data Dragon version (e.g. "16.3.1" → "16.3")
@@ -295,7 +294,7 @@ export class ChampionStats {
 					logger.info(`Using patch=${patch} fallback for ${championAlias} ${lane} (current patch has no data)`);
 				}
 				logger.info(`Parsed ${matchups.length} matchups for ${championAlias} ${lane} via API`);
-				this.cache.set(key, { data: matchups, timestamp: Date.now() });
+				await this.cache.set(key, matchups);
 				return matchups;
 			} catch (e) {
 				logger.error(`Failed to fetch matchups for ${championAlias} ${lane} (patch=${patch}): ${e}`);
@@ -307,6 +306,8 @@ export class ChampionStats {
 		// Lane fallback: if no data for the requested lane, try "default" (champion's primary lane)
 		if (lane !== "default") {
 			for (const patch of patchesToTry) {
+				// Brief delay between fallback attempts to avoid hammering a failing API
+				await new Promise((r) => setTimeout(r, 1000));
 				const fallbackUrl = `${LOLALYTICS_API}/mega/?ep=counter&p=d&v=1&patch=${patch}&c=${championAlias}&lane=default&tier=emerald_plus&queue=ranked&region=all`;
 				try {
 					logger.debug(`Trying default lane fallback for ${championAlias} (patch=${patch})`);
@@ -324,7 +325,7 @@ export class ChampionStats {
 					}
 					if (matchups.length > 0) {
 						logger.info(`Lane fallback: ${matchups.length} matchups for ${championAlias} via default lane (requested: ${lane})`);
-						this.cache.set(key, { data: matchups, timestamp: Date.now() });
+						await this.cache.set(key, matchups);
 						return matchups;
 					}
 				} catch (e) {
@@ -335,8 +336,9 @@ export class ChampionStats {
 
 		logger.error(`All lane+patch attempts failed for ${championAlias} ${lane}`);
 		// Cache empty result with short TTL to prevent repeated API spam
-		this.cache.set(key, { data: [], timestamp: Date.now() - this.CACHE_TTL + 5 * 60 * 1000 });
-		return cached?.data ?? [];
+		await this.cache.set(key, [], Date.now() - this.CACHE_TTL + 5 * 60 * 1000);
+		const fallback = await this.cache.getRaw(key);
+		return fallback?.data ?? [];
 	}
 
 	/**
@@ -400,6 +402,11 @@ export class ChampionStats {
 			utility: "support",
 		};
 		return map[lcuPosition] ?? "top";
+	}
+
+	/** Flush cache to disk (call on shutdown). */
+	async flushCache(): Promise<void> {
+		await this.cache.flush();
 	}
 }
 

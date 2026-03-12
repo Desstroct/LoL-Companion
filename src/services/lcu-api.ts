@@ -27,6 +27,18 @@ export class LcuApi {
 	/** Short-lived GET cache: endpoint → { data, timestamp } */
 	private getCache = new Map<string, { data: unknown; timestamp: number }>();
 	private readonly GET_CACHE_TTL = 500; // 500ms dedup window
+	private sweepTimer: ReturnType<typeof setInterval> | null = null;
+
+	constructor() {
+		// Periodic sweep to prevent unbounded getCache growth
+		this.sweepTimer = setInterval(() => {
+			const now = Date.now();
+			for (const [key, val] of this.getCache) {
+				if (now - val.timestamp > 5000) this.getCache.delete(key);
+			}
+		}, 30_000);
+		if (this.sweepTimer.unref) this.sweepTimer.unref();
+	}
 	/**
 	 * Generic GET request to the LCU API.
 	 * Results are cached for 500ms to deduplicate concurrent polling calls.

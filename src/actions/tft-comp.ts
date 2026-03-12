@@ -60,6 +60,9 @@ export class TftCompAdvisor extends SingletonAction<TftCompSettings> {
 	private actionStates = new Map<string, TftCompState>();
 	private lastComps: TftComp[] = [];
 	private dataLoaded = false;
+	private fetchFailed = false;
+	private retryCount = 0;
+	private retryTimer: ReturnType<typeof setTimeout> | null = null;
 
 	override onWillAppear(ev: WillAppearEvent<TftCompSettings>): void | Promise<void> {
 		const filter = ev.payload.settings.tierFilter ?? "ALL";
@@ -116,6 +119,9 @@ export class TftCompAdvisor extends SingletonAction<TftCompSettings> {
 	override async onTouchTap(_ev: TouchTapEvent<TftCompSettings>): Promise<void> {
 		clearTftCache();
 		this.dataLoaded = false;
+		this.fetchFailed = false;
+		this.retryCount = 0;
+		if (this.retryTimer) { clearTimeout(this.retryTimer); this.retryTimer = null; }
 		await this.fetchComps();
 		await this.renderAll();
 	}
@@ -158,14 +164,46 @@ export class TftCompAdvisor extends SingletonAction<TftCompSettings> {
 			clearInterval(this.pollInterval);
 			this.pollInterval = null;
 		}
+		if (this.retryTimer) {
+			clearTimeout(this.retryTimer);
+			this.retryTimer = null;
+		}
 	}
 
 	private async fetchComps(): Promise<void> {
-		const comps = await getTftComps();
-		if (comps.length > 0) {
-			this.lastComps = comps;
-			this.dataLoaded = true;
+		try {
+			const comps = await getTftComps();
+			if (comps.length > 0) {
+				this.lastComps = comps;
+				this.dataLoaded = true;
+				this.fetchFailed = false;
+				this.retryCount = 0;
+			} else if (!this.dataLoaded) {
+				// Empty result and no prior data — mark as failed, schedule retry
+				this.fetchFailed = true;
+				this.scheduleRetry();
+			}
+		} catch (e) {
+			logger.error(`TFT fetchComps error: ${e}`);
+			if (!this.dataLoaded) {
+				this.fetchFailed = true;
+				this.scheduleRetry();
+			}
 		}
+	}
+
+	/** Retry with exponential backoff: 30s, 60s, 120s, max 5min */
+	private scheduleRetry(): void {
+		if (this.retryTimer) return;
+		this.retryCount++;
+		const delayMs = Math.min(30_000 * Math.pow(2, this.retryCount - 1), 5 * 60 * 1000);
+		logger.info(`TFT data unavailable — retrying in ${Math.round(delayMs / 1000)}s (attempt ${this.retryCount})`);
+		this.retryTimer = setTimeout(() => {
+			this.retryTimer = null;
+			this.fetchComps()
+				.then(() => this.renderAll())
+				.catch((e) => logger.error(`TFT retry error: ${e}`));
+		}, delayMs);
 	}
 
 	private async renderAll(): Promise<void> {
@@ -181,17 +219,18 @@ export class TftCompAdvisor extends SingletonAction<TftCompSettings> {
 		const filtered = this.getFilteredComps(state.tierFilter);
 
 		if (!this.dataLoaded || filtered.length === 0) {
+			const statusMsg = this.fetchFailed ? "Error — retrying…" : this.dataLoaded ? "No comps found" : "Loading...";
 			if (a.isDial()) {
 				await a.setFeedback({
 					title: `TFT Comps · ${state.tierFilter}`,
-					comp_name: this.dataLoaded ? "No comps found" : "Loading...",
-					comp_info: "",
+					comp_name: statusMsg,
+					comp_info: this.fetchFailed ? "Tap to retry" : "",
 					champ_list: "",
 					tier_bar: { value: 0 },
 				});
 			} else {
 				await a.setImage("");
-				await a.setTitle(this.dataLoaded ? "TFT\nNo comps" : "TFT\nLoading...");
+				await a.setTitle(this.fetchFailed ? "TFT\nError" : this.dataLoaded ? "TFT\nNo comps" : "TFT\nLoading...");
 			}
 			return;
 		}

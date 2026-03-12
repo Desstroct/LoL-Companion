@@ -107,17 +107,28 @@ export class GameClient {
 	}
 
 	/**
+	 * Find the local player in the allPlayers array.
+	 * Handles Riot ID formats: activePlayer.summonerName may include "#TAG".
+	 */
+	findMe(allData: GameClientAllData): GamePlayer | undefined {
+		const name = allData.activePlayer.summonerName;
+		return allData.allPlayers.find(
+			(p) =>
+				p.riotIdGameName === name ||
+				p.summonerName === name ||
+				p.riotId === name ||
+				p.riotIdGameName === name.split("#")[0],
+		);
+	}
+
+	/**
 	 * Get enemy players.
 	 */
 	async getEnemyPlayers(): Promise<GamePlayer[]> {
 		const data = await this.getAllData();
 		if (!data) return [];
 
-		// Determine our team
-		const activePlayerName = data.activePlayer.summonerName;
-		const me = data.allPlayers.find(
-			(p) => p.riotIdGameName === activePlayerName || p.summonerName === activePlayerName,
-		);
+		const me = this.findMe(data);
 		if (!me) return [];
 
 		return data.allPlayers.filter((p) => p.team !== me.team);

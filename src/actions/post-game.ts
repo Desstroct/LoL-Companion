@@ -66,7 +66,7 @@ type PostGameSettings = Record<string, never>;
 export class PostGame extends SingletonAction<PostGameSettings> {
 	private lastMatchStats: MatchStats | null = null;
 	private lastGameId: number = 0;
-	private displayPage: DisplayPage = "overview";
+	private displayPages = new Map<string, DisplayPage>();
 	private unsubscribeMode: (() => void) | null = null;
 	private pollInterval: ReturnType<typeof setInterval> | null = null;
 	private wasInGame = false;
@@ -99,12 +99,14 @@ export class PostGame extends SingletonAction<PostGameSettings> {
 		await this.renderAll();
 	}
 
-	/** Dial rotate: cycle display page */
+	/** Dial rotate: cycle display page (per-action) */
 	override async onDialRotate(ev: DialRotateEvent<PostGameSettings>): Promise<void> {
-		const idx = PAGES.indexOf(this.displayPage);
+		const id = ev.action.id;
+		const current = this.displayPages.get(id) ?? "overview";
+		const idx = PAGES.indexOf(current);
 		const next = (idx + (ev.payload.ticks > 0 ? 1 : -1) + PAGES.length) % PAGES.length;
-		this.displayPage = PAGES[next];
-		await this.renderAll();
+		this.displayPages.set(id, PAGES[next]);
+		await this.renderAction(ev.action);
 	}
 
 	/** Touch: force refresh */
@@ -205,7 +207,7 @@ export class PostGame extends SingletonAction<PostGameSettings> {
 				gameId: game.gameId,
 			};
 			this.lastGameId = game.gameId;
-			this.displayPage = "overview"; // Reset to overview on new game
+			this.displayPages.clear(); // Reset to overview on new game
 
 			logger.info(
 				`Post-game: ${this.lastMatchStats.win ? "WIN" : "LOSS"} as ${this.lastMatchStats.championName} ` +
@@ -260,8 +262,9 @@ export class PostGame extends SingletonAction<PostGameSettings> {
 		const resultText = stats.win ? "VICTORY" : "DEFEAT";
 
 		if (a.isDial()) {
-			// Dial display depends on current page
-			switch (this.displayPage) {
+			// Dial display depends on per-action page
+			const page = this.displayPages.get(a.id) ?? "overview";
+			switch (page) {
 				case "overview":
 					await a.setFeedback({
 						title: `${stats.championName} · ${durationMin}min`,

@@ -239,6 +239,29 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 		}
 	}
 
+	/**
+	 * Collect all champion aliases that are unavailable (banned or already picked).
+	 */
+	private getUnavailableAliases(session: NonNullable<Awaited<ReturnType<typeof lcuApi.getChampSelectSession>>>): Set<string> {
+		const unavailable = new Set<string>();
+		const allActions = session.actions.flat();
+
+		for (const act of allActions) {
+			if (act.championId <= 0) continue;
+			// Banned champions (completed bans)
+			if (act.type === "ban" && act.completed) {
+				const champ = dataDragon.getChampionByKey(String(act.championId));
+				if (champ) unavailable.add(ChampionStats.toLolalytics(champ.id));
+			}
+			// Already-picked champions (completed picks)
+			if (act.type === "pick" && act.completed) {
+				const champ = dataDragon.getChampionByKey(String(act.championId));
+				if (champ) unavailable.add(ChampionStats.toLolalytics(champ.id));
+			}
+		}
+		return unavailable;
+	}
+
 	private async updateCounterMode(
 		a: DialAction<SmartPickSettings> | KeyAction<SmartPickSettings>,
 		session: Awaited<ReturnType<typeof lcuApi.getChampSelectSession>>,
@@ -248,18 +271,9 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 	): Promise<void> {
 		if (!session) return;
 
-		// Find enemy for this role
-		let enemy = session.theirTeam.find(
-			(p) => p.assignedPosition === role && p.championId > 0,
-		);
-		if (!enemy) {
-			enemy = session.theirTeam.find(
-				(p) => p.championId > 0 && (!p.assignedPosition || p.assignedPosition === ""),
-			);
-		}
-		if (!enemy) {
-			enemy = session.theirTeam.find((p) => p.championId > 0);
-		}
+		// Find enemy laner using smart heuristics
+		const enemyResult = this.findEnemyLaner(session, role);
+		const enemy = enemyResult?.player ?? null;
 
 		if (!enemy) {
 			if (a.isDial()) {
@@ -288,7 +302,11 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 		}
 
 		try {
-			const picks = await championStats.getBestCounterpicks(enemyAlias, lane);
+			const allPicks = await championStats.getBestCounterpicks(enemyAlias, lane);
+
+			// Filter out banned and already-picked champions
+			const unavailable = this.getUnavailableAliases(session);
+			const picks = allPicks.filter((p) => !unavailable.has(p.alias));
 
 			state.lastPicks = picks.map((p) => ({
 				alias: p.alias,
@@ -339,18 +357,21 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 
 		const directEnemyAliases: string[] = [];
 		const allEnemyAliases: string[] = [];
+		const myLane = ChampionStats.toLolalyticsLane(role);
 		for (const enemy of session.theirTeam) {
 			if (enemy.championId > 0) {
 				const champ = dataDragon.getChampionByKey(String(enemy.championId));
 				if (champ) {
 					const alias = ChampionStats.toLolalytics(champ.id);
 					allEnemyAliases.push(alias);
-					if (
-						enemy.assignedPosition === role ||
-						enemy.assignedPosition === "" ||
-						!enemy.assignedPosition
-					) {
+					// Direct match: same assigned position
+					if (enemy.assignedPosition === role) {
 						directEnemyAliases.push(alias);
+					} else if (!enemy.assignedPosition || enemy.assignedPosition === "") {
+						// No position assigned yet — use tag-based lane inference
+						if (this.championMatchesLane(champ, myLane)) {
+							directEnemyAliases.push(alias);
+						}
 					}
 				}
 			}
@@ -389,11 +410,15 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 		}
 
 		try {
-			const picks = await championStats.getBestOverallPick(
+			const allPicks = await championStats.getBestOverallPick(
 				enemyAliasesForMatchup,
 				lane,
 				allyChampionKeys.length > 0 ? allyChampionKeys : undefined,
 			);
+
+			// Filter out banned and already-picked champions
+			const unavailable = this.getUnavailableAliases(session);
+			const picks = allPicks.filter((p) => !unavailable.has(p.alias));
 
 			state.lastPicks = picks;
 			state.lastInfo = allyChampionKeys.length > 0
@@ -425,6 +450,76 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 			} else {
 				await a.setTitle(`Best\nError`);
 			}
+		}
+	}
+
+	// ---- Enemy Laner Detection ----
+
+	/**
+	 * Find the enemy laner for a given role using smart heuristics:
+	 *   1. Match by assignedPosition (when LCU exposes it)
+	 *   2. Infer from champion tags / default lane
+	 *   3. If only one enemy has picked, use them (early draft)
+	 */
+	private findEnemyLaner(
+		session: NonNullable<Awaited<ReturnType<typeof lcuApi.getChampSelectSession>>>,
+		myPosition: string,
+	): { player: (typeof session.theirTeam)[0]; alias: string; name: string } | null {
+		if (!myPosition) return null;
+
+		// Strategy 1: Direct assignedPosition match
+		const directMatch = session.theirTeam.find(
+			(p) => p.assignedPosition === myPosition && p.championId > 0,
+		);
+		if (directMatch) {
+			const champ = dataDragon.getChampionByKey(String(directMatch.championId));
+			if (champ) {
+				return { player: directMatch, alias: ChampionStats.toLolalytics(champ.id), name: champ.name };
+			}
+		}
+
+		// Strategy 2: Infer from champion's primary role via Data Dragon tags
+		const myLane = ChampionStats.toLolalyticsLane(myPosition);
+		for (const enemy of session.theirTeam) {
+			if (enemy.championId <= 0) continue;
+			const champ = dataDragon.getChampionByKey(String(enemy.championId));
+			if (!champ) continue;
+			if (this.championMatchesLane(champ, myLane)) {
+				return { player: enemy, alias: ChampionStats.toLolalytics(champ.id), name: champ.name };
+			}
+		}
+
+		// Strategy 3: If only one enemy has picked so far, use them (early draft)
+		const pickedEnemies = session.theirTeam.filter((p) => p.championId > 0);
+		if (pickedEnemies.length === 1) {
+			const champ = dataDragon.getChampionByKey(String(pickedEnemies[0].championId));
+			if (champ) {
+				return { player: pickedEnemies[0], alias: ChampionStats.toLolalytics(champ.id), name: champ.name };
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Heuristic: does this champion likely play in the given lane?
+	 * Uses Data Dragon tags as a rough signal.
+	 */
+	private championMatchesLane(champ: { tags: string[]; name: string }, lane: string): boolean {
+		const tags = champ.tags;
+		switch (lane) {
+			case "top":
+				return tags.includes("Fighter") || (tags.includes("Tank") && !tags.includes("Support"));
+			case "jungle":
+				return false; // Hard to infer from tags; assignedPosition should handle jungle
+			case "middle":
+				return tags.includes("Mage") || tags.includes("Assassin");
+			case "bottom":
+				return tags.includes("Marksman");
+			case "support":
+				return tags.includes("Support");
+			default:
+				return false;
 		}
 	}
 }
