@@ -11,17 +11,14 @@ import {
 import streamDeck from "@elgato/streamdeck";
 import { lcuConnector } from "../services/lcu-connector";
 import { lcuApi } from "../services/lcu-api";
-import { gameMode } from "../services/game-mode";
 import { dataDragon } from "../services/data-dragon";
 import { getRankedEmblemIcon } from "../services/lol-icons";
 
 const logger = streamDeck.logger.createScope("SessionStats");
 
 // LoL color palette
-const GOLD = "#C89B3C";
 const GREEN = "#2ECC71";
 const RED = "#E74C3C";
-const BLUE = "#3498DB";
 
 const QUEUE_KEYS = ["RANKED_SOLO_5x5", "RANKED_FLEX_SR"] as const;
 const QUEUE_LABELS: Record<string, string> = {
@@ -33,12 +30,6 @@ const TIER_SHORT: Record<string, string> = {
 	IRON: "Iron", BRONZE: "Bronze", SILVER: "Silver", GOLD: "Gold",
 	PLATINUM: "Plat", EMERALD: "Emerald", DIAMOND: "Dia",
 	MASTER: "Master", GRANDMASTER: "GM", CHALLENGER: "Chall",
-};
-
-const TIER_COLORS: Record<string, string> = {
-	IRON: "#7C7C7C", BRONZE: "#CD7F32", SILVER: "#C0C0C0", GOLD: "#FFD700",
-	PLATINUM: "#4ECDC4", EMERALD: "#50C878", DIAMOND: "#B9F2FF",
-	MASTER: "#9B59B6", GRANDMASTER: "#E74C3C", CHALLENGER: "#F1C40F",
 };
 
 /** Numeric rank value for LP delta calculations across tiers */
@@ -272,15 +263,12 @@ export class SessionStats extends SingletonAction<SessionStatsSettings> {
 
 			// Current rank info
 			const tierLabel = TIER_SHORT[entry.tier] ?? entry.tier;
-			const tierColor = TIER_COLORS[entry.tier] ?? "#FFFFFF";
-
 			// Dedup
 			const displayKey = `${queueKey}|${entry.tier}|${entry.division}|${entry.leaguePoints}|${entry.wins}|${entry.losses}|${streak}|${champStats?.name}`;
 			if (displayKey === state.lastDisplay) continue;
 			state.lastDisplay = displayKey;
 
 			const rankIcon = await getRankedEmblemIcon(entry.tier);
-			const lpColor = lpDelta >= 0 ? GREEN : RED;
 
 			if (a.isDial()) {
 				await a.setFeedback({

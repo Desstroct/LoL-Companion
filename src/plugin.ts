@@ -68,7 +68,7 @@ import { PostGame } from "./actions/post-game";
 import { TftCompAdvisor } from "./actions/tft-comp";
 import { DuoSynergyAction } from "./actions/duo-synergy";
 import { ObjectiveTimer } from "./actions/objective-timer";
-import { OTP, otp } from "./actions/otp";
+import { otp } from "./actions/otp";
 import { lcuConnector } from "./services/lcu-connector";
 import { gameMode } from "./services/game-mode";
 import { dataDragon } from "./services/data-dragon";

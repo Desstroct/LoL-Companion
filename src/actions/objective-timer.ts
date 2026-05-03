@@ -69,14 +69,6 @@ interface ObjectiveState {
 
 const OBJECTIVE_VIEWS: ObjectiveType[] = ["dragon", "baron", "herald"];
 
-/** Fallback emoji when CDragon icon not yet loaded */
-const OBJ_EMOJI: Record<ObjectiveType, string> = {
-	dragon: "🐉",
-	baron: "👾",
-	herald: "🦀",
-	atakhan: "⚔️",
-};
-
 const DRAKE_EMOJI: Record<string, string> = {
 	Fire: "🔥",
 	Earth: "🌍",
@@ -162,7 +154,7 @@ export class ObjectiveTimer extends SingletonAction<ObjectiveTimerSettings> {
 
 	override async onKeyDown(_ev: KeyDownEvent<ObjectiveTimerSettings>): Promise<void> {
 		// Cycle view on key press
-		for (const [id, state] of this.actionStates) {
+		for (const state of this.actionStates.values()) {
 			state.viewIndex = (state.viewIndex + 1) % OBJECTIVE_VIEWS.length;
 		}
 		await this.updateAll();

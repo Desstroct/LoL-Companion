@@ -124,7 +124,7 @@ export class PostGame extends SingletonAction<PostGameSettings> {
 	private startListening(): void {
 		// Listen for game phase changes
 		if (!this.unsubscribeMode) {
-			this.unsubscribeMode = gameMode.onChange((mode: GameMode, phase: GameflowPhase) => {
+			this.unsubscribeMode = gameMode.onChange((_mode: GameMode, phase: GameflowPhase) => {
 				// Track when we're in a game
 				if (phase === "InProgress") {
 					this.wasInGame = true;

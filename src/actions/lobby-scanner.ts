@@ -16,7 +16,6 @@ import { lcuApi } from "../services/lcu-api";
 import { gameMode } from "../services/game-mode";
 import { dataDragon } from "../services/data-dragon";
 import { getChampionIconByKey } from "../services/lol-icons";
-import type { LcuChampSelectSession } from "../types/lol";
 
 const logger = streamDeck.logger.createScope("LobbyScan");
 
@@ -96,7 +95,7 @@ export class LobbyScannerAction extends SingletonAction<LobbyScannerSettings> {
 		if (this.actions.length === 0) this.stopPolling();
 	}
 
-	override async onKeyDown(ev: KeyDownEvent<LobbyScannerSettings>): Promise<void> {
+	override async onKeyDown(_ev: KeyDownEvent<LobbyScannerSettings>): Promise<void> {
 		await this.updateLobby();
 	}
 
@@ -245,7 +244,7 @@ export class LobbyScannerAction extends SingletonAction<LobbyScannerSettings> {
 		const rankedMap = new Map(rankedResults);
 
 		// ---- Render all actions from pre-fetched data ----
-		for (const { action: a, slot, isDial } of actionSlots) {
+		for (const { action: a, slot } of actionSlots) {
 			const isAlly = slot <= 5;
 			const index = (isAlly ? slot : slot - 5) - 1;
 

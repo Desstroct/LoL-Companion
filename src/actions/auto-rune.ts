@@ -22,7 +22,6 @@ import { runeData, RunePageData } from "../services/rune-data";
 import { ChampionStats } from "../services/champion-stats";
 import { lolaBuild, type SummonerSpellCombo } from "../services/lolalytics-build";
 import { findEnemyLaner } from "../services/champ-select-utils";
-import type { LcuChampSelectSession } from "../types/lol";
 import { otp } from "../actions/otp";
 
 const logger = streamDeck.logger.createScope("AutoRune");

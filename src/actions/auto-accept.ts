@@ -62,13 +62,6 @@ export class AutoAccept extends SingletonAction<AutoAcceptSettings> {
 		this.pollInterval = setInterval(() => this.checkReadyCheck().catch((e) => logger.error(`checkReadyCheck error: ${e}`)), 1000);
 	}
 
-	private stopPolling(): void {
-		if (this.pollInterval) {
-			clearInterval(this.pollInterval);
-			this.pollInterval = null;
-		}
-	}
-
 	private async checkReadyCheck(): Promise<void> {
 		if (!lcuConnector.isConnected()) {
 			if (this.lastPhase !== "None") {

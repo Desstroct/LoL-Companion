@@ -16,7 +16,7 @@ import { lcuApi } from "../services/lcu-api";
 import { gameMode } from "../services/game-mode";
 import { dataDragon } from "../services/data-dragon";
 import { ChampionStats } from "../services/champion-stats";
-import { lolaBuild, type SkillPriorityData, type SkillOrderData, type BuildPageData } from "../services/lolalytics-build";
+import { lolaBuild, type SkillPriorityData, type SkillOrderData } from "../services/lolalytics-build";
 
 const logger = streamDeck.logger.createScope("SkillOrder");
 

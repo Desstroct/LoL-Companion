@@ -6,8 +6,6 @@ import {
 	DidReceiveSettingsEvent,
 	KeyDownEvent,
 	DialRotateEvent,
-	type DialAction,
-	type KeyAction,
 } from "@elgato/streamdeck";
 import streamDeck from "@elgato/streamdeck";
 import type { JsonObject } from "@elgato/utils";
@@ -31,17 +29,17 @@ export class OTP extends SingletonAction<OTPSettings> {
 	/** Currently selected champion index */
 	private selectedIndex = 0;
 
-	override onWillAppear(ev: WillAppearEvent<OTPSettings>): void | Promise<void> {
+	override onWillAppear(_ev: WillAppearEvent<OTPSettings>): void | Promise<void> {
 		this.loadSavedChampions();
 		return this.renderCurrent();
 	}
 
-	override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<OTPSettings>): Promise<void> {
+	override async onDidReceiveSettings(_ev: DidReceiveSettingsEvent<OTPSettings>): Promise<void> {
 		await this.loadSavedChampions();
 		await this.renderCurrent();
 	}
 
-	override onWillDisappear(ev: WillDisappearEvent<OTPSettings>): void {
+	override onWillDisappear(_ev: WillDisappearEvent<OTPSettings>): void {
 		// Save to settings when disappearing
 		this.saveToSettings();
 	}

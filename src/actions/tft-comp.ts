@@ -20,8 +20,6 @@ const DARK_BLUE = "#0A1428";
 const GOLD = "#C89B3C";
 const GREEN = "#2ECC71";
 const BLUE = "#3498DB";
-const RED = "#E74C3C";
-const PURPLE = "#9B59B6";
 
 /** Tier colors */
 const TIER_COLORS: Record<string, string> = {
@@ -66,7 +64,7 @@ export class TftCompAdvisor extends SingletonAction<TftCompSettings> {
 
 	override onWillAppear(ev: WillAppearEvent<TftCompSettings>): void | Promise<void> {
 		const filter = ev.payload.settings.tierFilter ?? "ALL";
-		const state = this.getState(ev.action.id, filter);
+		this.getState(ev.action.id, filter);
 		this.startPolling();
 
 		if (ev.action.isDial()) {
@@ -247,14 +245,6 @@ export class TftCompAdvisor extends SingletonAction<TftCompSettings> {
 				return `${prefix}${abbreviateName(c.name)}`;
 			})
 			.join(" ");
-
-		const champFull = comp.champions
-			.map((c) => {
-				const prefix = c.threeStarred ? "★" : "";
-				const items = c.items.length > 0 ? ` (${c.items.map(abbreviateItem).join(",")})` : "";
-				return `${prefix}${c.name}${items}`;
-			})
-			.join(" · ");
 
 		// Items for carries (champions with items)
 		const carries = comp.champions.filter((c) => c.items.length > 0);

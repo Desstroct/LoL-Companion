@@ -809,12 +809,7 @@ export class RecallWindow extends SingletonAction<RecallWindowSettings> {
 		const targetStr = formatGold(state.targetGold);
 		const gameTimeStr = formatTime(state.gameTime);
 
-		// Timing color and indicator
-		const timingColor = state.timing.quality === "great" ? GREEN
-			: state.timing.quality === "good" ? BLUE
-			: state.timing.quality === "bad" ? RED
-			: "#999";
-
+		// Timing emoji indicator
 		const timingEmoji = state.timing.quality === "great" ? "🟢"
 			: state.timing.quality === "good" ? "🔵"
 			: state.timing.quality === "bad" ? "🔴"

@@ -1,8 +1,6 @@
 import https from "node:https";
-import streamDeck from "@elgato/streamdeck";
 import type { GameClientAllData, GamePlayer, GameData, GameEvents, ActivePlayer } from "../types/lol";
 
-const logger = streamDeck.logger.createScope("GameClient");
 
 const GAME_CLIENT_BASE = "https://127.0.0.1:2999";
 const agent = new https.Agent({ rejectUnauthorized: false });
