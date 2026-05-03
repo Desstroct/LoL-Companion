@@ -332,24 +332,27 @@
             const input = inputEl.value.trim();
             if (!input) return;
 
-            const alias = normalizeAlias(input);
-            if (!alias) return;
+            const inputAlias = normalizeAlias(input);
+            if (!inputAlias) return;
 
-            if (savedChamps[alias]) {
+            // Use DDragon lookup if available, otherwise store with best-guess display data.
+            const found = ddReady ? (champLookup[inputAlias] || champLookup[normalizeAlias(input)]) : null;
+
+            // Key MUST use normalizeAlias(ddId) so it matches ChampionStats.toLolalytics(ddId)
+            // used by AutoRune/SmartPick/BestItem. e.g. user types "Wukong" → key = "monkeyking"
+            const storeAlias = found ? normalizeAlias(found.id) : inputAlias;
+
+            if (savedChamps[storeAlias]) {
                 showStatus("Already in the list", true);
                 return;
             }
-
-            // Use DDragon lookup if available, otherwise store with best-guess display data.
-            // The plugin validates/resolves champion data on its end via its own DDragon instance.
-            const found = ddReady ? (champLookup[alias] || champLookup[normalizeAlias(input)]) : null;
 
             // If DDragon is ready and the alias genuinely doesn't exist, warn (but still allow)
             if (ddReady && !found) {
                 showStatus(`"${input}" not recognised — added anyway`, true);
             }
 
-            savedChamps[alias] = {
+            savedChamps[storeAlias] = {
                 enabled: true,
                 autoRune: true,
                 autoItem: true,

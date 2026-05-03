@@ -88,9 +88,12 @@ export class OTP extends SingletonAction<OTPSettings> {
 		if (this.actions.length === 0) this.stopPolling();
 	}
 
-	override async onDidReceiveSettings(_ev: DidReceiveSettingsEvent<OTPSettings>): Promise<void> {
+	override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<OTPSettings>): Promise<void> {
 		champKeyCache.clear();
-		await this.loadSavedChampions();
+		const otpChampions = ev.payload.settings?.otpChampions;
+		if (otpChampions) {
+			this.otpChampions = new Map(Object.entries(otpChampions));
+		}
 		await this.renderCurrent();
 	}
 

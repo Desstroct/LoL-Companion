@@ -1,4 +1,6 @@
 {
+	/* Use the project's TypeScript version (5.9+) for correct moduleResolution:Bundler support */
+	"typescript.tsdk": "node_modules/typescript/lib",
 	/* JSON schemas */
 	"json.schemas": [
 		{
