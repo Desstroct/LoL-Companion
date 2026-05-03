@@ -183,6 +183,7 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 				lastChampKey: "", lastRunes: [], selectedIndex: 0, applied: false,
 				spells: [], spellsApplied: false,
 				lastEnemyKey: "", vsChampName: "",
+				runeFetchFailedUntil: 0,
 			};
 			this.actionStates.set(actionId, s);
 		}
@@ -305,8 +306,10 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 
 			const champChanged = champKey !== state.lastChampKey;
 			const enemyChanged = enemyKey !== state.lastEnemyKey;
+			// Retry once the cooldown expires if we still have no rune data
+			const shouldRetry = state.lastRunes.length === 0 && Date.now() >= state.runeFetchFailedUntil && state.lastChampKey !== "";
 
-			if (!champChanged && !enemyChanged) {
+			if (!champChanged && !enemyChanged && !shouldRetry) {
 				// Same champion, same enemy — check auto-apply for runes AND spells
 				// Check OTP settings: if user has OTP configured for this champion and autoRune is disabled, skip auto-apply
 				const otpConfig = otp.getCurrentOTP();
@@ -320,10 +323,12 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 			if (champChanged) {
 				// New champion — reset everything
 				state.lastChampKey = champKey;
+				state.lastRunes = [];
 				state.selectedIndex = 0;
 				state.applied = false;
 				state.spells = [];
 				state.spellsApplied = false;
+				state.runeFetchFailedUntil = 0;
 			}
 
 			// Track enemy changes
@@ -350,6 +355,9 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 			} else {
 				await a.setTitle(`${champ.name}\nSearching...`);
 			}
+
+			// Cooldown: back off 30s after a failed fetch instead of hammering every 3s
+			if (Date.now() < state.runeFetchFailedUntil) continue;
 
 			// Fetch runes — matchup-specific if enemy is detected
 			const vsAlias = enemyKey || undefined;
@@ -391,9 +399,8 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 				await this.renderAction(a, state, s);
 			} catch (e) {
 				logger.error(`Failed to get runes: ${e}`);
-				// Reset state so next poll retries the fetch
-				if (champChanged) state.lastChampKey = "";
-				if (enemyChanged) state.lastEnemyKey = "";
+				// Back off 30s before retrying — avoids hammering the API on repeated failures
+				state.runeFetchFailedUntil = Date.now() + 30_000;
 			}
 		}
 	}
@@ -588,6 +595,8 @@ interface AutoRuneState {
 	lastEnemyKey: string;
 	/** Display name of the enemy laner */
 	vsChampName: string;
+	/** Don't retry rune fetch before this timestamp (ms) — backoff after failure */
+	runeFetchFailedUntil: number;
 }
 
 type AutoRuneSettings = {
