@@ -8,7 +8,6 @@ import {
 	WillAppearEvent,
 	WillDisappearEvent,
 	type DialAction,
-	type FeedbackPayload,
 	type KeyAction,
 } from "@elgato/streamdeck";
 import streamDeck from "@elgato/streamdeck";
@@ -16,7 +15,7 @@ import { lcuConnector } from "../services/lcu-connector";
 import { lcuApi } from "../services/lcu-api";
 import { gameMode } from "../services/game-mode";
 import { dataDragon } from "../services/data-dragon";
-import { championStats, ChampionStats, MatchupData } from "../services/champion-stats";
+import { championStats, ChampionStats } from "../services/champion-stats";
 import { getChampionIcon, prefetchChampionIcons } from "../services/lol-icons";
 import { findEnemyLaner, getUnavailableAliases, championMatchesLane } from "../services/champ-select-utils";
 import { otp } from "../actions/otp";

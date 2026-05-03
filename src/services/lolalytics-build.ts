@@ -1,7 +1,5 @@
 import streamDeck from "@elgato/streamdeck";
-import { dataDragon } from "./data-dragon";
 import { throttledFetch } from "./lolalytics-throttle";
-import { ChampionStats } from "./champion-stats";
 import type { RunePageData } from "./rune-data";
 import { DiskCache } from "./disk-cache";
 

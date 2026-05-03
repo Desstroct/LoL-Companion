@@ -29,14 +29,13 @@ const SYNERGY_ROLE_STACK_LIMIT = 2;          // Penalty triggers at this many sa
 const AP_TAGS = new Set(["Mage"]);
 /** AD champion tags — champions with these as primary tag deal mostly physical damage */
 const AD_TAGS = new Set(["Marksman", "Fighter"]);
-/** Mixed/context-dependent — use secondary tag to disambiguate */
-const MIXED_TAGS = new Set(["Assassin", "Support"]);
 
 /**
  * Determine a champion's damage type from Data Dragon tags.
  * More accurate than info.magic for champions like Ezreal, Corki, Kayn, etc.
  */
 function getDamageType(champ: { tags: string[] }): "ap" | "ad" | "mixed" {
+	if (!champ.tags || champ.tags.length === 0) return "mixed";
 	const primary = champ.tags[0];
 	const secondary = champ.tags[1];
 	if (AP_TAGS.has(primary)) return "ap";
@@ -250,10 +249,12 @@ export class ChampionStats {
 		}
 
 		// 3. Role diversity penalty: if candidate shares primary tag with too many allies
-		const primaryTag = candidateChamp.tags[0];
-		const tagCount = profile.tags.filter((t) => t === primaryTag).length;
-		if (tagCount >= SYNERGY_ROLE_STACK_LIMIT) {
-			bonus += SYNERGY_ROLE_STACK_PENALTY;
+		if (candidateChamp.tags && candidateChamp.tags.length > 0) {
+			const primaryTag = candidateChamp.tags[0];
+			const tagCount = profile.tags.filter((t) => t === primaryTag).length;
+			if (tagCount >= SYNERGY_ROLE_STACK_LIMIT) {
+				bonus += SYNERGY_ROLE_STACK_PENALTY;
+			}
 		}
 
 		return Math.max(-SYNERGY_MAX_BONUS, Math.min(SYNERGY_MAX_BONUS, bonus));
@@ -277,6 +278,10 @@ export class ChampionStats {
 		// Extract major.minor patch from Data Dragon version (e.g. "16.3.1" → "16.3")
 		const ddVersion = dataDragon.getVersion();
 		const patchParts = ddVersion.split(".");
+		if (patchParts.length < 2) {
+			logger.error(`Invalid Data Dragon version format: ${ddVersion}`);
+			return [];
+		}
 		const currentPatch = `${patchParts[0]}.${patchParts[1]}`;
 
 		// Try current patch first, then "30" (last 30 days) as fallback

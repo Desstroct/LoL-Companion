@@ -2,7 +2,6 @@ import streamDeck from "@elgato/streamdeck";
 import { dataDragon } from "./data-dragon";
 import { throttledFetch } from "./lolalytics-throttle";
 import { lolaBuild } from "./lolalytics-build";
-import { ChampionStats } from "./champion-stats";
 import { DiskCache } from "./disk-cache";
 
 const logger = streamDeck.logger.createScope("RuneData");
