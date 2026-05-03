@@ -3,6 +3,7 @@ import {
 	SingletonAction,
 	WillAppearEvent,
 	WillDisappearEvent,
+	DidReceiveSettingsEvent,
 	KeyDownEvent,
 	DialRotateEvent,
 	type DialAction,
@@ -33,6 +34,11 @@ export class OTP extends SingletonAction<OTPSettings> {
 	override onWillAppear(ev: WillAppearEvent<OTPSettings>): void | Promise<void> {
 		this.loadSavedChampions();
 		return this.renderCurrent();
+	}
+
+	override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<OTPSettings>): Promise<void> {
+		await this.loadSavedChampions();
+		await this.renderCurrent();
 	}
 
 	override onWillDisappear(ev: WillDisappearEvent<OTPSettings>): void {

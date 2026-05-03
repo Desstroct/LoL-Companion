@@ -164,10 +164,21 @@ export class DataDragon {
 	 * Get champion data by display name (e.g., "Lee Sin", "Aatrox").
 	 * Case-insensitive search.
 	 */
+	private normalizeChampionName(name: string): string {
+		return name
+			.normalize("NFD")
+			.replace(/[\u0300-\u036f]/g, "")
+			.toLowerCase()
+			.replace(/['\s.]/g, "");
+	}
+
 	getChampionByName(name: string): DdChampion | undefined {
-		const lower = name.toLowerCase();
+		const lower = this.normalizeChampionName(name);
 		for (const champ of this.champions.values()) {
-			if (champ.name.toLowerCase() === lower || champ.id.toLowerCase() === lower) {
+			if (
+				this.normalizeChampionName(champ.name) === lower ||
+				champ.id.toLowerCase() === lower
+			) {
 				return champ;
 			}
 		}
