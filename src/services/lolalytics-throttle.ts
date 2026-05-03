@@ -104,18 +104,48 @@ function waitForToken(signal?: AbortSignal): Promise<void> {
  * Rate-limited fetch for Lolalytics URLs.
  * Drop-in replacement for `fetch(url, { headers, signal })`.
  * Shared User-Agent header is applied automatically.
+ *
+ * Concurrent requests to the same URL are deduplicated: only one actual
+ * fetch is made and all callers share the same Response body (cloned).
  */
+
+/** In-flight request deduplication: URL → pending fetch promise */
+const inflightRequests = new Map<string, Promise<Response>>();
+
 export async function throttledFetch(
 	url: string,
 	options?: { signal?: AbortSignal; headers?: Record<string, string> },
 ): Promise<Response> {
-	await waitForToken(options?.signal);
+	// Check for an existing in-flight request to the same URL
+	const existing = inflightRequests.get(url);
+	if (existing) {
+		logger.debug(`Dedup hit: reusing in-flight request for ${url}`);
+		const resp = await existing;
+		return resp.clone();
+	}
 
-	const mergedHeaders = { ...FETCH_HEADERS, ...options?.headers };
-	logger.debug(`Throttled fetch: ${url} (tokens left: ${tokens}, queued: ${queue.length})`);
+	const fetchPromise = (async () => {
+		await waitForToken(options?.signal);
+		const mergedHeaders = { ...FETCH_HEADERS, ...options?.headers };
+		logger.debug(`Throttled fetch: ${url} (tokens left: ${tokens}, queued: ${queue.length})`);
+		return fetch(url, {
+			headers: mergedHeaders,
+			signal: options?.signal,
+		});
+	})();
 
-	return fetch(url, {
-		headers: mergedHeaders,
-		signal: options?.signal,
-	});
+	inflightRequests.set(url, fetchPromise);
+
+	try {
+		const response = await fetchPromise;
+		return response;
+	} finally {
+		inflightRequests.delete(url);
+	}
+}
+
+/** Throttle queue stats for observability / debugging. */
+export function getThrottleStats(): { queueDepth: number; tokensAvailable: number; maxQueue: number } {
+	refillTokens();
+	return { queueDepth: queue.length, tokensAvailable: tokens, maxQueue: MAX_QUEUE_SIZE };
 }

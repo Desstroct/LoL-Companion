@@ -10,8 +10,18 @@ import streamDeck from "@elgato/streamdeck";
 import { lcuConnector } from "../services/lcu-connector";
 import { lcuApi } from "../services/lcu-api";
 import { getRankedEmblemIcon } from "../services/lol-icons";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const logger = streamDeck.logger.createScope("LpTracker");
+
+const BASELINE_PATH = join(
+	dirname(dirname(fileURLToPath(import.meta.url))),
+	"..",
+	"cache",
+	"lp-baseline.json",
+);
 
 /** Queue types the user can cycle through */
 const QUEUE_KEYS = ["RANKED_SOLO_5x5", "RANKED_FLEX_SR", "RANKED_TFT", "RANKED_TFT_DOUBLE_UP"] as const;
@@ -57,6 +67,13 @@ interface LpState {
 	trackingStarted: boolean; // whether we've captured the baseline
 }
 
+interface LpBaseline {
+	[queueKey: string]: { lp: number; tier: string; div: string; ts: number };
+}
+
+/** Max age for a persisted baseline: 24 hours */
+const BASELINE_MAX_AGE = 24 * 60 * 60 * 1000;
+
 /**
  * LP Tracker — shows current rank, LP, win rate, and LP delta for the session.
  *
@@ -69,6 +86,8 @@ interface LpState {
 export class LpTracker extends SingletonAction<LpTrackerSettings> {
 	private pollInterval: ReturnType<typeof setInterval> | null = null;
 	private actionStates = new Map<string, LpState>();
+	private savedBaselines: LpBaseline = {};
+	private baselinesLoaded = false;
 
 	private getState(id: string): LpState {
 		let s = this.actionStates.get(id);
@@ -77,6 +96,26 @@ export class LpTracker extends SingletonAction<LpTrackerSettings> {
 			this.actionStates.set(id, s);
 		}
 		return s;
+	}
+
+	private async loadBaselines(): Promise<void> {
+		if (this.baselinesLoaded) return;
+		try {
+			const raw = await readFile(BASELINE_PATH, "utf-8");
+			this.savedBaselines = JSON.parse(raw) as LpBaseline;
+		} catch {
+			this.savedBaselines = {};
+		}
+		this.baselinesLoaded = true;
+	}
+
+	private async saveBaselines(): Promise<void> {
+		try {
+			await mkdir(dirname(BASELINE_PATH), { recursive: true });
+			await writeFile(BASELINE_PATH, JSON.stringify(this.savedBaselines), "utf-8");
+		} catch (e) {
+			logger.warn(`Failed to save LP baseline: ${e}`);
+		}
 	}
 
 	override onWillAppear(ev: WillAppearEvent<LpTrackerSettings>): void | Promise<void> {
@@ -201,11 +240,21 @@ export class LpTracker extends SingletonAction<LpTrackerSettings> {
 			const tierColor = TIER_COLORS[tier] ?? "#FFFFFF";
 			const qLabel = QUEUE_LABELS[queueKey] ?? queueKey;
 
-			// Capture session baseline
+			// Capture session baseline (restore from disk if plugin restarted)
 			if (!state.trackingStarted) {
-				state.sessionStartLp = lp;
-				state.sessionStartTier = tier;
-				state.sessionStartDiv = div;
+				await this.loadBaselines();
+				const saved = this.savedBaselines[queueKey];
+				if (saved && (Date.now() - saved.ts) < BASELINE_MAX_AGE) {
+					state.sessionStartLp = saved.lp;
+					state.sessionStartTier = saved.tier;
+					state.sessionStartDiv = saved.div;
+				} else {
+					state.sessionStartLp = lp;
+					state.sessionStartTier = tier;
+					state.sessionStartDiv = div;
+					this.savedBaselines[queueKey] = { lp, tier, div, ts: Date.now() };
+					await this.saveBaselines();
+				}
 				state.trackingStarted = true;
 			}
 

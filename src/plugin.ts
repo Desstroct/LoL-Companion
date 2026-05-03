@@ -67,6 +67,8 @@ import { SessionStats } from "./actions/session-stats";
 import { PostGame } from "./actions/post-game";
 import { TftCompAdvisor } from "./actions/tft-comp";
 import { DuoSynergyAction } from "./actions/duo-synergy";
+import { ObjectiveTimer } from "./actions/objective-timer";
+import { OTP } from "./actions/otp";
 import { lcuConnector } from "./services/lcu-connector";
 import { gameMode } from "./services/game-mode";
 import { dataDragon } from "./services/data-dragon";
@@ -154,6 +156,8 @@ streamDeck.actions.registerAction(new SessionStats());
 streamDeck.actions.registerAction(new PostGame());
 streamDeck.actions.registerAction(new TftCompAdvisor());
 streamDeck.actions.registerAction(new DuoSynergyAction());
+streamDeck.actions.registerAction(new ObjectiveTimer());
+streamDeck.actions.registerAction(new OTP());
 
 // Connect to Stream Deck and initialize
 streamDeck.connect().then(() => {

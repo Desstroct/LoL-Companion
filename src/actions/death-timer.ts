@@ -128,6 +128,8 @@ export class DeathTimer extends SingletonAction {
 				}
 			}
 		} else {
+			const deathCount = me.scores.deaths;
+			const deathLabel = deathCount > 0 ? ` · ${deathCount}d` : "";
 			for (const a of this.actions) {
 				const wasJustDead = this.lastDeadMap.get(a.id) ?? false;
 				this.lastDeadMap.set(a.id, false);
@@ -135,12 +137,12 @@ export class DeathTimer extends SingletonAction {
 					await a.setFeedback({
 						champ_icon: champIcon ?? "",
 						status_text: wasJustDead ? "RESPAWNED!" : "ALIVE",
-						timer_text: `Lvl ${me.level}`,
+						timer_text: `Lvl ${me.level}${deathLabel}`,
 						respawn_bar: { value: 100, bar_fill_c: "#2ECC71" },
 					});
 				} else {
 					if (champIcon) await a.setImage(champIcon);
-					await a.setTitle(wasJustDead ? "ALIVE!\n✨" : `ALIVE\nLvl ${me.level}`);
+					await a.setTitle(wasJustDead ? "ALIVE!\n✨" : `ALIVE Lvl ${me.level}${deathLabel}`);
 				}
 			}
 		}

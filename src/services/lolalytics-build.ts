@@ -176,14 +176,14 @@ export class LolaBuildParser {
 			// Extract the <script type="qwik/json"> block
 			const match = html.match(/<script type=["']qwik\/json["']>([\s\S]*?)<\/script>/);
 			if (!match) {
-				logger.warn("No qwik/json script found in build page");
+				logger.warn("Qwik parse failed: no <script type=\"qwik/json\"> block found in HTML — Lolalytics page structure may have changed");
 				return null;
 			}
 
 			const qwikData = JSON.parse(match[1]) as { objs: unknown[] };
 			const objs = qwikData.objs;
 			if (!Array.isArray(objs) || objs.length === 0) {
-				logger.warn("Empty or invalid qwik objs array");
+				logger.warn(`Qwik parse failed: objs array is ${!Array.isArray(objs) ? "not an array" : "empty"} (HTML size: ${html.length})`);
 				return null;
 			}
 
@@ -245,7 +245,12 @@ export class LolaBuildParser {
 			}
 
 			if (mainDataIdx === -1) {
-				logger.debug("Could not find main data object in Qwik data (expected on matchup pages)");
+				// Log available keys to help diagnose format changes
+				const sampleKeys = objs
+					.filter((o): o is Record<string, unknown> => typeof o === "object" && o !== null && !Array.isArray(o))
+					.slice(0, 5)
+					.map((o) => Object.keys(o).join(","));
+				logger.debug(`Qwik parse: no main data object found. Sample obj keys: [${sampleKeys.join(" | ")}] (total objs: ${objs.length})`);
 				return null;
 			}
 
@@ -258,7 +263,7 @@ export class LolaBuildParser {
 			} | null;
 
 			if (!summary) {
-				logger.warn("Could not resolve summary data");
+				logger.warn(`Qwik parse: summary resolved to null/undefined at objs[${mainDataIdx}].summary — data structure may have changed`);
 				return null;
 			}
 
@@ -270,9 +275,16 @@ export class LolaBuildParser {
 			// Extract early skill levels from main data
 			const skillEarly = this.extractSkillEarly(mainObj, objs, deepResolve);
 
+			if (runes.length === 0 && summonerSpells.length === 0 && skillPriority.length === 0) {
+				logger.warn(`Qwik parse: all sections empty for ${_champion} ${_lane} — data format may have changed`);
+			}
+
 			return { runes, summonerSpells, skillPriority, skillOrder, skillEarly };
 		} catch (e) {
-			logger.error(`Failed to parse Qwik data: ${e}`);
+			const errMsg = e instanceof SyntaxError
+				? `JSON parse error in qwik/json block: ${e.message}`
+				: `${e}`;
+			logger.error(`Qwik parse failed for ${_champion} ${_lane}: ${errMsg}`);
 			return null;
 		}
 	}
@@ -329,9 +341,43 @@ export class LolaBuildParser {
 			return null;
 		}
 
+		// Validate: all primary/secondary perk IDs must be > 0 (resolved successfully)
+		if (pri.some((id) => id <= 0) || sec.some((id) => id <= 0)) {
+			logger.warn(`Unresolved perk IDs in ${source} page: pri=[${pri}] sec=[${sec}]`);
+			return null;
+		}
+
 		const primaryStyleId = TREE_STYLE_IDS[page.pri] ?? this.treeFromKeystoneId(pri[0]);
 		const subStyleId = TREE_STYLE_IDS[page.sec] ?? this.treeFromRuneId(sec[0]);
 		if (!primaryStyleId || !subStyleId) return null;
+
+		// Validate: primary and secondary trees must be different
+		if (primaryStyleId === subStyleId) {
+			logger.warn(`Same primary/secondary tree ${primaryStyleId} in ${source} page — rejecting`);
+			return null;
+		}
+
+		// Validate: primary perks should belong to the primary tree range
+		const priTreeBase = primaryStyleId;
+		const priInTree = pri.every((id) => {
+			const tree = this.treeFromKeystoneId(id);
+			return tree === priTreeBase;
+		});
+		if (!priInTree) {
+			logger.warn(`Primary perks [${pri}] don't all belong to tree ${priTreeBase} in ${source} page`);
+			// Non-fatal: still usable but warn
+		}
+
+		// Validate: secondary perks should belong to the secondary tree range
+		const secTreeBase = subStyleId;
+		const secInTree = sec.every((id) => {
+			const tree = this.treeFromRuneId(id);
+			return tree === secTreeBase;
+		});
+		if (!secInTree) {
+			logger.warn(`Secondary perks [${sec}] don't all belong to tree ${secTreeBase} in ${source} page`);
+			// Non-fatal: still usable but warn
+		}
 
 		const selectedPerkIds = [...pri, ...sec, ...mod];
 		const keystoneName = KEYSTONE_NAMES[pri[0]] ?? `Keystone ${pri[0]}`;
@@ -350,9 +396,11 @@ export class LolaBuildParser {
 	private extractSummonerSpells(summary: { pick?: SummarySection; win?: SummarySection }): SummonerSpellCombo[] {
 		const results: SummonerSpellCombo[] = [];
 
+		const isValidSpellId = (id: number) => id >= 1 && id <= 100;
+
 		if (summary.pick?.sums) {
 			const { ids, n, wr } = summary.pick.sums;
-			if (Array.isArray(ids) && ids.length === 2) {
+			if (Array.isArray(ids) && ids.length === 2 && ids.every(isValidSpellId)) {
 				results.push({
 					ids,
 					winRate: wr ?? 0,
@@ -365,7 +413,7 @@ export class LolaBuildParser {
 
 		if (summary.win?.sums) {
 			const { ids, n, wr } = summary.win.sums;
-			if (Array.isArray(ids) && ids.length === 2) {
+			if (Array.isArray(ids) && ids.length === 2 && ids.every(isValidSpellId)) {
 				// Avoid duplicate if same combo
 				const isDupe = results.some(
 					(r) => r.ids[0] === ids[0] && r.ids[1] === ids[1],

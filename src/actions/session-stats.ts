@@ -12,6 +12,7 @@ import streamDeck from "@elgato/streamdeck";
 import { lcuConnector } from "../services/lcu-connector";
 import { lcuApi } from "../services/lcu-api";
 import { gameMode } from "../services/game-mode";
+import { dataDragon } from "../services/data-dragon";
 import { getRankedEmblemIcon } from "../services/lol-icons";
 
 const logger = streamDeck.logger.createScope("SessionStats");
@@ -58,10 +59,6 @@ interface SessionState {
 	lastDisplay: string;
 	/** Baseline captured at session start (per queue) */
 	baselines: Map<string, { tier: string; div: string; lp: number; totalLp: number; wins: number; losses: number }>;
-	/** Session W/L per queue */
-	sessionRecord: Map<string, { wins: number; losses: number }>;
-	/** Current streak per queue: positive = wins, negative = losses */
-	streak: Map<string, number>;
 	/** Session start timestamp */
 	sessionStart: number;
 }
@@ -97,9 +94,6 @@ export class SessionStats extends SingletonAction<SessionStatsSettings> {
 				queueIndex: 0,
 				lastDisplay: "",
 				baselines: new Map(),
-
-				sessionRecord: new Map(),
-				streak: new Map(),
 				sessionStart: Date.now(),
 			};
 			this.actionStates.set(id, s);
@@ -156,8 +150,6 @@ export class SessionStats extends SingletonAction<SessionStatsSettings> {
 	private resetSession(actionId: string): void {
 		const state = this.getState(actionId);
 		state.baselines.clear();
-		state.sessionRecord.clear();
-		state.streak.clear();
 		state.lastDisplay = "";
 		state.sessionStart = Date.now();
 		logger.info(`Session reset for action ${actionId}`);
@@ -272,12 +264,18 @@ export class SessionStats extends SingletonAction<SessionStatsSettings> {
 			if (streak > 0) streakStr = `🔥 ${streak}W`;
 			else if (streak < 0) streakStr = `💀 ${Math.abs(streak)}L`;
 
+			// Most-played champion + avg KDA this session
+			const champStats = this.getSessionChampStats(matches, queueId, state.sessionStart);
+			const champLine = champStats
+				? `${champStats.name} ${champStats.avgKda} KDA`
+				: "";
+
 			// Current rank info
 			const tierLabel = TIER_SHORT[entry.tier] ?? entry.tier;
 			const tierColor = TIER_COLORS[entry.tier] ?? "#FFFFFF";
 
 			// Dedup
-			const displayKey = `${queueKey}|${entry.tier}|${entry.division}|${entry.leaguePoints}|${entry.wins}|${entry.losses}|${streak}`;
+			const displayKey = `${queueKey}|${entry.tier}|${entry.division}|${entry.leaguePoints}|${entry.wins}|${entry.losses}|${streak}|${champStats?.name}`;
 			if (displayKey === state.lastDisplay) continue;
 			state.lastDisplay = displayKey;
 
@@ -287,7 +285,9 @@ export class SessionStats extends SingletonAction<SessionStatsSettings> {
 			if (a.isDial()) {
 				await a.setFeedback({
 					title: `${qLabel} · ${tierLabel} ${entry.division}`,
-					record_text: totalGames > 0 ? `${sessionWins}W ${sessionLosses}L (${sessionWR}%)` : "No games yet",
+					record_text: totalGames > 0
+						? `${sessionWins}W ${sessionLosses}L (${sessionWR}%)${champLine ? ` · ${champLine}` : ""}`
+						: "No games yet",
 					lp_text: lpStr,
 					streak_text: streakStr,
 					winrate_bar: {
@@ -335,6 +335,51 @@ export class SessionStats extends SingletonAction<SessionStatsSettings> {
 	}
 
 	/**
+	 * Get the most-played champion + average KDA this session for a queue.
+	 */
+	private getSessionChampStats(
+		matches: MatchEntry[],
+		queueId: number,
+		sessionStart: number,
+	): { name: string; avgKda: string; games: number } | null {
+		const queueMatches = matches.filter(
+			(m) => m.queueId === queueId && m.gameCreation >= sessionStart,
+		);
+		if (queueMatches.length === 0) return null;
+
+		// Count games per champion
+		const champCounts = new Map<number, { games: number; kills: number; deaths: number; assists: number }>();
+		for (const m of queueMatches) {
+			const p = m.participants?.[0];
+			if (!p) continue;
+			const cid = p.championId;
+			const existing = champCounts.get(cid) ?? { games: 0, kills: 0, deaths: 0, assists: 0 };
+			existing.games++;
+			existing.kills += p.stats?.kills ?? 0;
+			existing.deaths += p.stats?.deaths ?? 0;
+			existing.assists += p.stats?.assists ?? 0;
+			champCounts.set(cid, existing);
+		}
+
+		// Find most-played
+		let best: { cid: number; data: { games: number; kills: number; deaths: number; assists: number } } | null = null;
+		for (const [cid, data] of champCounts) {
+			if (!best || data.games > best.data.games) {
+				best = { cid, data };
+			}
+		}
+		if (!best) return null;
+
+		const champ = dataDragon.getChampionByKey(String(best.cid));
+		const name = champ?.name ?? `#${best.cid}`;
+		const avgKda = best.data.deaths > 0
+			? ((best.data.kills + best.data.assists) / best.data.deaths).toFixed(1)
+			: "Perfect";
+
+		return { name, avgKda, games: best.data.games };
+	}
+
+	/**
 	 * Calculate current streak from match history for a specific queue.
 	 * Returns positive for win streak, negative for loss streak.
 	 */
@@ -367,8 +412,12 @@ interface MatchEntry {
 	gameCreation: number;
 	queueId: number;
 	participants: Array<{
+		championId: number;
 		stats: {
 			win: boolean;
+			kills: number;
+			deaths: number;
+			assists: number;
 		};
 	}>;
 }

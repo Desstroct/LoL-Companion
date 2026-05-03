@@ -11,7 +11,7 @@ import { gameMode } from "../services/game-mode";
 import { itemBuilds, ItemBuilds } from "../services/item-builds";
 import type { ItemBuild } from "../services/item-builds";
 import { dataDragon } from "../services/data-dragon";
-import { getItemIcon } from "../services/lol-icons";
+import { getItemIcon, prefetchItemIcons } from "../services/lol-icons";
 
 const logger = streamDeck.logger.createScope("BestItem");
 
@@ -215,6 +215,11 @@ export class BestItem extends SingletonAction {
 						if (s.currentChampion === champName && s.currentLane === lane) {
 							s.currentBuild = build;
 						}
+					}
+
+					// Prefetch all item icons so they're warm when user browses
+					if (build) {
+						prefetchItemIcons(build.fullBuild);
 					}
 
 					if (!build) {

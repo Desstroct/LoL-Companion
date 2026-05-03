@@ -13,9 +13,12 @@ const DUO_LANE_MAP: Record<string, string> = {
 	bottom: "support",
 	support: "bottom",
 	top: "jungle",
-	jungle: "top", // fallback — jungle pairs well with every lane
+	jungle: "top", // primary — also merges "middle" in parseResult
 	middle: "jungle",
 };
+
+// Jungle pairs with both top and mid — we merge both for better recommendations
+const JUNGLE_SECONDARY_LANE = "middle";
 
 export interface DuoEntry {
 	/** DDragon champion ID (e.g. "Lulu", "Thresh") */
@@ -126,6 +129,9 @@ export class DuoSynergyService {
 	/**
 	 * Parse the build-team response into a sorted DuoSynergyResult.
 	 * Data format per entry: [champKey, winRate, delta1, synergy, pairRate, games]
+	 *
+	 * For jungle, merges both top and mid lane data (picking each champion's
+	 * best synergy from either lane) since junglers pair with both solo laners.
 	 */
 	private parseResult(
 		teamData: Record<string, number[][]>,
@@ -135,6 +141,16 @@ export class DuoSynergyService {
 		// Determine the best duo lane
 		const duoLane = DUO_LANE_MAP[lane] ?? "support";
 		const laneData = teamData[duoLane];
+
+		// For jungle: merge top + mid synergy data
+		if (lane === "jungle") {
+			const topEntries = teamData["top"] ?? [];
+			const midEntries = teamData[JUNGLE_SECONDARY_LANE] ?? [];
+
+			if (topEntries.length > 0 || midEntries.length > 0) {
+				return this.mergeMultiLaneEntries(topEntries, midEntries, championAlias, lane);
+			}
+		}
 
 		if (!laneData || laneData.length === 0) {
 			// Try all lanes and pick the one with most data
@@ -151,6 +167,63 @@ export class DuoSynergyService {
 		}
 
 		return this.parseLaneEntries(laneData, championAlias, lane, duoLane);
+	}
+
+	/**
+	 * Merge synergy data from two lanes (top + mid) for jungle.
+	 * For each champion appearing in both, pick the higher synergy value.
+	 */
+	private mergeMultiLaneEntries(
+		primaryEntries: number[][],
+		secondaryEntries: number[][],
+		championAlias: string,
+		lane: string,
+	): DuoSynergyResult | null {
+		const MIN_GAMES = 50;
+		const merged = new Map<string, DuoEntry>();
+
+		// Process primary lane entries
+		for (const entry of primaryEntries) {
+			const [champKey, winRate, delta, synergy, _pairRate, games] = entry;
+			if (!champKey || games < MIN_GAMES) continue;
+			const champ = dataDragon.getChampionByKey(String(champKey));
+			if (!champ) continue;
+			merged.set(String(champKey), {
+				championId: champ.id,
+				championName: champ.name,
+				championKey: String(champKey),
+				winRate, delta, synergy, games,
+			});
+		}
+
+		// Process secondary lane entries — keep the higher synergy per champion
+		for (const entry of secondaryEntries) {
+			const [champKey, winRate, delta, synergy, _pairRate, games] = entry;
+			if (!champKey || games < MIN_GAMES) continue;
+			const champ = dataDragon.getChampionByKey(String(champKey));
+			if (!champ) continue;
+			const existing = merged.get(String(champKey));
+			if (!existing || synergy > existing.synergy) {
+				merged.set(String(champKey), {
+					championId: champ.id,
+					championName: champ.name,
+					championKey: String(champKey),
+					winRate, delta, synergy, games,
+				});
+			}
+		}
+
+		const parsed = [...merged.values()];
+		if (parsed.length === 0) return null;
+
+		parsed.sort((a, b) => b.synergy - a.synergy);
+
+		return {
+			champion: championAlias,
+			lane,
+			duoLane: "top+mid",
+			entries: parsed,
+		};
 	}
 
 	private parseLaneEntries(

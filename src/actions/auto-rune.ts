@@ -21,6 +21,7 @@ import { dataDragon } from "../services/data-dragon";
 import { runeData, RunePageData } from "../services/rune-data";
 import { ChampionStats } from "../services/champion-stats";
 import { lolaBuild, type SummonerSpellCombo } from "../services/lolalytics-build";
+import { findEnemyLaner } from "../services/champ-select-utils";
 import type { LcuChampSelectSession } from "../types/lol";
 
 const logger = streamDeck.logger.createScope("AutoRune");
@@ -296,7 +297,9 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 				: ChampionStats.toLolalyticsLane(myPosition || "top");
 
 			// Detect enemy laner for matchup-specific data
-			const enemyInfo = this.getEnemyLaner(session, myPosition, s);
+			const enemyInfo = (s.matchup !== false && !gameMode.isARAM())
+				? findEnemyLaner(session, myPosition)
+				: null;
 			const enemyKey = enemyInfo?.alias ?? "";
 
 			const champChanged = champKey !== state.lastChampKey;
@@ -388,100 +391,6 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 				if (champChanged) state.lastChampKey = "";
 				if (enemyChanged) state.lastEnemyKey = "";
 			}
-		}
-	}
-
-	// ---- Enemy detection ----
-
-	/** LCU position → Lolalytics default lane mapping for champion inference */
-	private static readonly POSITION_TO_DEFAULT_LANE: Record<string, string[]> = {
-		top: ["top"],
-		jungle: ["jungle"],
-		middle: ["middle", "mid"],
-		bottom: ["bottom", "adc"],
-		utility: ["support"],
-	};
-
-	/**
-	 * Detect the enemy laner.
-	 * Strategy:
-	 *   1. Match by assignedPosition (if LCU exposes it for enemies)
-	 *   2. Fallback: pick the enemy whose champion's primary lane matches our position
-	 * Returns null if matchup mode is disabled, it's ARAM, or no enemy has picked yet.
-	 */
-	private getEnemyLaner(
-		session: LcuChampSelectSession,
-		myPosition: string,
-		settings: AutoRuneSettings,
-	): { alias: string; name: string } | null {
-		if (settings.matchup === false) return null;
-		if (gameMode.isARAM()) return null;
-		if (!myPosition) return null;
-
-		// Strategy 1: Direct assignedPosition match
-		const directMatch = session.theirTeam.find(
-			(p) => p.assignedPosition === myPosition && p.championId > 0,
-		);
-		if (directMatch) {
-			const champ = dataDragon.getChampionByKey(String(directMatch.championId));
-			if (champ) {
-				return { alias: ChampionStats.toLolalytics(champ.id), name: champ.name };
-			}
-		}
-
-		// Strategy 2: Infer from champion's primary role via Data Dragon tags
-		// Map our position to expected champion tags/lanes
-		const myLane = ChampionStats.toLolalyticsLane(myPosition);
-
-		// Check each enemy champion's default lanes
-		for (const enemy of session.theirTeam) {
-			if (enemy.championId <= 0) continue;
-			const champ = dataDragon.getChampionByKey(String(enemy.championId));
-			if (!champ) continue;
-
-			// Use Data Dragon tags to infer lane compatibility
-			const laneMatch = this.championMatchesLane(champ, myLane);
-			if (laneMatch) {
-				return { alias: ChampionStats.toLolalytics(champ.id), name: champ.name };
-			}
-		}
-
-		// Strategy 3: If only one enemy has picked so far, use them (early draft)
-		const pickedEnemies = session.theirTeam.filter((p) => p.championId > 0);
-		if (pickedEnemies.length === 1) {
-			const champ = dataDragon.getChampionByKey(String(pickedEnemies[0].championId));
-			if (champ) {
-				return { alias: ChampionStats.toLolalytics(champ.id), name: champ.name };
-			}
-		}
-
-		return null;
-	}
-
-	/**
-	 * Heuristic: does this champion likely play in the given lane?
-	 * Uses Data Dragon tags as a rough signal.
-	 */
-	private championMatchesLane(champ: { tags: string[]; name: string }, lane: string): boolean {
-		const tags = champ.tags;
-		switch (lane) {
-			case "top":
-				// Tanks, Fighters typically go top
-				return tags.includes("Fighter") || (tags.includes("Tank") && !tags.includes("Support"));
-			case "jungle":
-				// Hard to infer purely from tags — skip (assignedPosition should work for jungle)
-				return false;
-			case "middle":
-				// Mages, Assassins typically go mid
-				return tags.includes("Mage") || tags.includes("Assassin");
-			case "bottom":
-				// Marksmen go bot
-				return tags.includes("Marksman");
-			case "support":
-				// Support tag
-				return tags.includes("Support");
-			default:
-				return false;
 		}
 	}
 

@@ -99,7 +99,7 @@ export class KdaTracker extends SingletonAction {
 			return;
 		}
 
-		const { kills, deaths, assists, creepScore } = me.scores;
+		const { kills, deaths, assists, creepScore, wardScore } = me.scores;
 		const gameTimeMinutes = allData.gameData.gameTime / 60;
 
 		// Fetch champion icon for display (championName may be undefined during loading)
@@ -118,8 +118,14 @@ export class KdaTracker extends SingletonAction {
 		const gold = allData.activePlayer.currentGold;
 		const goldStr = gold >= 1000 ? `${(gold / 1000).toFixed(1)}k` : `${gold}`;
 
+		// Kill participation: (K+A) / team total kills
+		const teamKills = allData.allPlayers
+			.filter((p) => p.team === me.team)
+			.reduce((sum, p) => sum + p.scores.kills, 0);
+		const kp = teamKills > 0 ? Math.round(((kills + assists) / teamKills) * 100) : 0;
+
 		const kdaLine = `${kills}/${deaths}/${assists}`;
-		const csLine = `${creepScore}cs ${csPerMin}/m`;
+		const csLine = `${creepScore}cs ${csPerMin}/m · ${goldStr}g`;
 		const kdaRatio = deaths === 0 ? `Perfect ${kda}` : `${kda} KDA`;
 
 		// KDA bar: map 0-10 KDA to 0-100%, cap at 100
@@ -133,13 +139,13 @@ export class KdaTracker extends SingletonAction {
 					champ_icon: champIcon ?? "",
 					kda_line: kdaLine,
 					cs_line: csLine,
-					gold_text: `${goldStr}g`,
+					gold_text: `${kp}% KP · ${Math.round(wardScore)} vis`,
 					kda_bar: { value: kdaBarValue, bar_fill_c: barColor },
 					ratio_text: kdaRatio,
 				});
 			} else {
 				if (champIcon) await a.setImage(champIcon);
-				await a.setTitle(`${kdaLine}\n${kdaRatio}`);
+				await a.setTitle(`${kdaLine}\n${kdaRatio}\n${kp}%KP`);
 			}
 		}
 	}

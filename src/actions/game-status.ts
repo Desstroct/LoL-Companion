@@ -139,25 +139,39 @@ export class GameStatus extends SingletonAction<GameStatusSettings> {
 
 		// If LCU says InProgress, double check with Game Client
 		// Skip for TFT — the Live Client Data API doesn't serve TFT data
+		let gameTimeSec = 0;
 		if (phase === "InProgress" && !gameMode.isTFT()) {
 			const inGame = await gameClient.isInGame();
 			if (!inGame) {
 				phase = "GameStart"; // Game is loading
+			} else {
+				gameTimeSec = await gameClient.getGameTime();
 			}
 		}
 
-		if (phase !== this.currentPhase) {
+		if (phase !== this.currentPhase || (phase === "InProgress" && gameTimeSec > 0)) {
 			this.currentPhase = phase;
 
 			// Use TFT labels when the game mode is TFT
 			const displayMap = gameMode.isTFT() ? TFT_PHASE_DISPLAY : PHASE_DISPLAY;
 			const display = displayMap[phase] ?? PHASE_DISPLAY[phase] ?? PHASE_DISPLAY.None;
 
-			logger.info(`Game phase changed: ${phase} (mode=${gameMode.get()})`);
+			// Show game time when in-game
+			let label = display.label;
+			if (phase === "InProgress" && gameTimeSec > 0) {
+				const min = Math.floor(gameTimeSec / 60);
+				const sec = Math.floor(gameTimeSec % 60);
+				const timeStr = `${min}:${String(sec).padStart(2, "0")}`;
+				label = gameMode.isTFT() ? `TFT\n${timeStr}` : `In Game\n${timeStr}`;
+			}
+
+			if (phase !== "InProgress") {
+				logger.info(`Game phase changed: ${phase} (mode=${gameMode.get()})`);
+			}
 
 			// Update all visible instances of this action
 			for (const a of this.actions) {
-				await a.setTitle(display.label);
+				await a.setTitle(label);
 			}
 		}
 	}

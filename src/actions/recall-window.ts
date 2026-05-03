@@ -91,7 +91,9 @@ interface RecallState {
 	/** Whether enemy laner is currently dead */
 	enemyDead: boolean;
 	/** Upcoming component breakpoints */
-	componentBreakpoints: { gold: number; label: string }[];
+	componentBreakpoints: { gold: number; label: string; itemId: number }[];
+	/** Current player level (from Live Client API) */
+	playerLevel: number;
 	/** Track last objective kill times for respawn calculations */
 	lastDragonKill: number;
 	lastBaronKill: number;
@@ -193,6 +195,7 @@ export class RecallWindow extends SingletonAction<RecallWindowSettings> {
 				enemyLanerName: "",
 				enemyDead: false,
 				componentBreakpoints: [],
+				playerLevel: 0,
 				lastDragonKill: 0,
 				lastBaronKill: 0,
 				lastHeraldKill: 0,
@@ -244,6 +247,7 @@ export class RecallWindow extends SingletonAction<RecallWindowSettings> {
 				s.champName = "";
 				s.enemyLanerName = "";
 				s.componentBreakpoints = [];
+				s.playerLevel = 0;
 				s.lastDragonKill = 0;
 				s.lastBaronKill = 0;
 				s.lastHeraldKill = 0;
@@ -299,6 +303,7 @@ export class RecallWindow extends SingletonAction<RecallWindowSettings> {
 			state.gameTime = gameTime;
 			state.champName = champName;
 			state.lane = myPosition;
+			state.playerLevel = activePlayer.level;
 
 			// Track enemy laner
 			if (enemyLaner) {
@@ -592,11 +597,35 @@ export class RecallWindow extends SingletonAction<RecallWindowSettings> {
 
 	/**
 	 * Check if player is close to a level power spike.
-	 * Don't recall right before hitting level 6/11/16.
+	 * Don't recall right before hitting level 6/11/16 — ultimate unlocks/upgrades.
 	 */
-	private checkLevelSpike(_state: RecallState): TimingSignal & { priority: number } | null {
-		// We don't have exact XP data from the API, so we can't precisely predict
-		// level timing. This is a placeholder for future enhancement.
+	private checkLevelSpike(state: RecallState): TimingSignal & { priority: number } | null {
+		if (state.playerLevel <= 0) return null;
+
+		// Power spike levels: 6 (R unlock), 11 (R rank 2), 16 (R rank 3)
+		const SPIKE_LEVELS = [6, 11, 16];
+
+		for (const spikeLevel of SPIKE_LEVELS) {
+			if (state.playerLevel === spikeLevel - 1) {
+				return {
+					quality: "bad",
+					reason: `Almost level ${spikeLevel} — don't lose XP`,
+					shortReason: `Lvl ${spikeLevel} soon`,
+					priority: 7,
+				};
+			}
+		}
+
+		// Just hit a spike level — good time to recall with a power advantage
+		if (SPIKE_LEVELS.includes(state.playerLevel) && state.goldReady) {
+			return {
+				quality: "good",
+				reason: `Hit level ${state.playerLevel} — buy and fight`,
+				shortReason: `Lvl ${state.playerLevel} spike`,
+				priority: 4,
+			};
+		}
+
 		return null;
 	}
 
@@ -610,16 +639,16 @@ export class RecallWindow extends SingletonAction<RecallWindowSettings> {
 	private buildComponentBreakpoints(
 		fullBuild: number[],
 		startingItems: number[],
-	): { gold: number; label: string }[] {
-		const breakpoints: { gold: number; label: string }[] = [];
+	): { gold: number; label: string; itemId: number }[] {
+		const breakpoints: { gold: number; label: string; itemId: number }[] = [];
 		const seen = new Set<number>();
 
-		// Starting items as first breakpoint
+		// Starting items as first breakpoint (itemId 0 = composite entry)
 		if (startingItems.length > 0) {
 			const startCost = startingItems.reduce((sum, id) => sum + dataDragon.getItemCost(id), 0);
 			const startName = startingItems.map((id) => dataDragon.getItemName(id)).join(" + ");
 			if (startCost > 0) {
-				breakpoints.push({ gold: startCost, label: startName.length > 20 ? startName.slice(0, 18) + "…" : startName });
+				breakpoints.push({ gold: startCost, label: startName.length > 20 ? startName.slice(0, 18) + "…" : startName, itemId: startingItems[0] });
 			}
 		}
 
@@ -638,7 +667,7 @@ export class RecallWindow extends SingletonAction<RecallWindowSettings> {
 					const compCost = dataDragon.getItemCost(compId);
 					const compName = dataDragon.getItemName(compId);
 					if (compCost >= 300) {
-						breakpoints.push({ gold: compCost, label: compName });
+						breakpoints.push({ gold: compCost, label: compName, itemId: compId });
 						seen.add(compId);
 					}
 				}
@@ -647,7 +676,7 @@ export class RecallWindow extends SingletonAction<RecallWindowSettings> {
 			// Full item
 			if (itemCost > 0) {
 				const itemName = dataDragon.getItemName(itemId);
-				breakpoints.push({ gold: itemCost, label: itemName });
+				breakpoints.push({ gold: itemCost, label: itemName, itemId });
 			}
 		}
 
@@ -655,7 +684,7 @@ export class RecallWindow extends SingletonAction<RecallWindowSettings> {
 		breakpoints.sort((a, b) => a.gold - b.gold);
 
 		// Deduplicate by gold cost (keep first label)
-		const deduped: { gold: number; label: string }[] = [];
+		const deduped: { gold: number; label: string; itemId: number }[] = [];
 		for (const bp of breakpoints) {
 			if (deduped.length === 0 || deduped[deduped.length - 1].gold !== bp.gold) {
 				deduped.push(bp);
@@ -728,25 +757,23 @@ export class RecallWindow extends SingletonAction<RecallWindowSettings> {
 		// 2. Component breakpoints — find smallest one above current gold
 		//    or the closest one we can actually afford if we have enough for something
 		if (state.componentBreakpoints.length > 0) {
-			// Find breakpoints for items we haven't bought yet
-			const unbought = state.componentBreakpoints.filter((bp) => {
-				// Check if the player already owns this item (by matching name → id in Data Dragon)
-				// Simple approach: if current gold < bp.gold, it's still a valid target
-				return true; // We'll just use the breakpoint list in order
-			});
+			// Filter out items the player already owns
+			const unbought = state.componentBreakpoints.filter((bp) => !playerItemIds.has(bp.itemId));
 
-			// Find the cheapest component we can afford
-			const affordable = unbought.filter((bp) => state.currentGold >= bp.gold);
-			if (affordable.length > 0) {
-				// We can afford something — find the most expensive thing we can buy
-				const bestBuy = affordable[affordable.length - 1];
-				return { target: bestBuy.gold, label: bestBuy.label };
-			}
+			if (unbought.length > 0) {
+				// Find the cheapest component we can afford
+				const affordable = unbought.filter((bp) => state.currentGold >= bp.gold);
+				if (affordable.length > 0) {
+					// We can afford something — find the most expensive thing we can buy
+					const bestBuy = affordable[affordable.length - 1];
+					return { target: bestBuy.gold, label: bestBuy.label };
+				}
 
-			// Find the next target we're saving toward
-			const nextTarget = unbought.find((bp) => bp.gold > state.currentGold);
-			if (nextTarget) {
-				return { target: nextTarget.gold, label: nextTarget.label };
+				// Find the next target we're saving toward
+				const nextTarget = unbought.find((bp) => bp.gold > state.currentGold);
+				if (nextTarget) {
+					return { target: nextTarget.gold, label: nextTarget.label };
+				}
 			}
 		}
 

@@ -27,6 +27,7 @@ const logger = streamDeck.logger.createScope("AutoAccept");
 export class AutoAccept extends SingletonAction<AutoAcceptSettings> {
 	private pollInterval: ReturnType<typeof setInterval> | null = null;
 	private renderTimeout: ReturnType<typeof setTimeout> | null = null;
+	private pollFast = false; // true when in ReadyCheck (250ms), false otherwise (1000ms)
 	private enabled = true; // On by default
 	private lastPhase: GameflowPhase = "None";
 	private hasAcceptedCurrent = false;
@@ -58,7 +59,7 @@ export class AutoAccept extends SingletonAction<AutoAcceptSettings> {
 
 	private startPolling(): void {
 		if (this.pollInterval) return;
-		this.pollInterval = setInterval(() => this.checkReadyCheck().catch((e) => logger.error(`checkReadyCheck error: ${e}`)), 500);
+		this.pollInterval = setInterval(() => this.checkReadyCheck().catch((e) => logger.error(`checkReadyCheck error: ${e}`)), 1000);
 	}
 
 	private stopPolling(): void {
@@ -89,6 +90,12 @@ export class AutoAccept extends SingletonAction<AutoAcceptSettings> {
 		}
 
 		if (this.enabled && phase === "ReadyCheck" && !this.hasAcceptedCurrent) {
+			// Speed up polling during ReadyCheck for faster response
+			if (!this.pollFast) {
+				this.pollFast = true;
+				if (this.pollInterval) clearInterval(this.pollInterval);
+				this.pollInterval = setInterval(() => this.checkReadyCheck().catch((e) => logger.error(`checkReadyCheck error: ${e}`)), 250);
+			}
 			logger.info("Ready check detected! Auto-accepting...");
 			const ok = await lcuApi.post("/lol-matchmaking/v1/ready-check/accept");
 			if (ok) {
@@ -106,6 +113,11 @@ export class AutoAccept extends SingletonAction<AutoAcceptSettings> {
 			} else {
 				logger.warn("Failed to accept ready check");
 			}
+		} else if (phase !== "ReadyCheck" && this.pollFast) {
+			// Slow back down outside ReadyCheck
+			this.pollFast = false;
+			if (this.pollInterval) clearInterval(this.pollInterval);
+			this.pollInterval = setInterval(() => this.checkReadyCheck().catch((e) => logger.error(`checkReadyCheck error: ${e}`)), 1000);
 		}
 	}
 

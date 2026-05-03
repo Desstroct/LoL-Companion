@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>OTP Settings</title>
+    <script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            padding: 16px;
+            background: #1e1e1e;
+            color: #fff;
+        }
+        .sdpi-item {
+            margin-bottom: 12px;
+        }
+        .sdpi-item label {
+            display: block;
+            font-size: 12px;
+            color: #aaa;
+            margin-bottom: 4px;
+        }
+        .champion-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .champion-item {
+            display: flex;
+            align-items: center;
+            padding: 8px;
+            background: #2a2a2a;
+            border-radius: 4px;
+            margin-bottom: 4px;
+        }
+        .champion-item img {
+            width: 32px;
+            height: 32px;
+            border-radius: 4px;
+            margin-right: 8px;
+        }
+        .champion-item .name {
+            flex: 1;
+            font-size: 14px;
+        }
+        .champion-item .actions {
+            display: flex;
+            gap: 4px;
+        }
+        .champion-item button {
+            padding: 4px 8px;
+            font-size: 11px;
+            background: #444;
+            color: #fff;
+            border: none;
+            border-radius: 2px;
+            cursor: pointer;
+        }
+        .champion-item button:hover {
+            background: #555;
+        }
+        .champion-item button.delete {
+            background: #c0392b;
+        }
+        .add-form {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        .add-form input {
+            flex: 1;
+            padding: 8px;
+            background: #2a2a2a;
+            color: #fff;
+            border: 1px solid #444;
+            border-radius: 4px;
+        }
+        .add-form button {
+            padding: 8px 16px;
+            background: #27ae60;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .settings-group {
+            margin-top: 16px;
+            padding: 12px;
+            background: #2a2a2a;
+            border-radius: 4px;
+        }
+        .settings-group h3 {
+            margin: 0 0 8px 0;
+            font-size: 14px;
+            color: #fff;
+        }
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 4px;
+        }
+        .checkbox-item input {
+            margin-right: 8px;
+        }
+    </style>
+</head>
+<body>
+    <sdpi-item label="OTP Champions">
+        <div class="add-form">
+            <input type="text" id="champInput" placeholder="Champion name (e.g., Aatrox)" />
+            <button id="addBtn">Add</button>
+        </div>
+        <div class="champion-list" id="champList">
+            <!-- Champion items will be added here -->
+        </div>
+    </sdpi-item>
+
+    <sdpi-item label="Info">
+        <p style="font-size: 11px; color: #999; padding: 8px;">
+            <strong>Key:</strong> Press to cycle through saved champions<br>
+            <strong>Dial:</strong> Rotate to browse champions<br>
+            <strong>Long press:</strong> Open settings to add/remove champions
+        </p>
+    </sdpi-item>
+
+    <script>
+        const champInput = document.getElementById('champInput');
+        const addBtn = document.getElementById('addBtn');
+        const champList = document.getElementById('champList');
+
+        // Load saved champions
+        let savedChamps = {};
+
+        function loadChampions() {
+            streamDeck.getSettings((settings) => {
+                savedChamps = settings.otpChampions || {};
+                renderList();
+            });
+        }
+
+        function renderList() {
+            champList.innerHTML = '';
+            Object.entries(savedChamps).forEach(([alias, config]) => {
+                const item = document.createElement('div');
+                item.className = 'champion-item';
+                item.innerHTML = `
+                    <img src="https://ddragon.leagueoflegends.com/cdn/15.6.1/img/champion/${capitalize(alias)}.png" onerror="this.src=''">
+                    <span class="name">${capitalize(alias)}</span>
+                    <div class="actions">
+                        <button class="delete" data-alias="${alias}">Remove</button>
+                    </div>
+                `;
+                champList.appendChild(item);
+            });
+        }
+
+        function capitalize(str) {
+            return str.charAt(0).toUpperCase() + str.slice(1);
+        }
+
+        addBtn.addEventListener('click', () => {
+            const alias = champInput.value.toLowerCase().replace(/\s/g, '');
+            if (alias && !savedChamps[alias]) {
+                savedChamps[alias] = {
+                    enabled: true,
+                    autoRune: true,
+                    autoItem: true,
+                    autoSpell: true,
+                    counterMode: true,
+                    bestMode: true
+                };
+                streamDeck.setSettings({ otpChampions: savedChamps });
+                champInput.value = '';
+                renderList();
+            }
+        });
+
+        champList.addEventListener('click', (e) => {
+            if (e.target.classList.contains('delete')) {
+                const alias = e.target.dataset.alias;
+                delete savedChamps[alias];
+                streamDeck.setSettings({ otpChampions: savedChamps });
+                renderList();
+            }
+        });
+
+        // Initialize
+        loadChampions();
+    </script>
+</body>
+</html>

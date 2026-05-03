@@ -43,11 +43,17 @@ interface MatchStats {
 	gameMode: string;
 	queueId: number;
 	gameId: number;
+	totalHeal: number;
+	damageToObjectives: number;
+	doubleKills: number;
+	tripleKills: number;
+	quadraKills: number;
+	pentaKills: number;
 }
 
 /** What we show — multiple pages the user can cycle through */
-type DisplayPage = "overview" | "damage" | "details";
-const PAGES: DisplayPage[] = ["overview", "damage", "details"];
+type DisplayPage = "overview" | "damage" | "details" | "combat";
+const PAGES: DisplayPage[] = ["overview", "damage", "details", "combat"];
 
 type PostGameSettings = Record<string, never>;
 
@@ -164,32 +170,41 @@ export class PostGame extends SingletonAction<PostGameSettings> {
 
 	/**
 	 * Fetch the most recent match from LCU match history.
+	 * Retries with exponential backoff when data isn't ready yet (common at EndOfGame).
 	 */
-	private async fetchLatestMatch(): Promise<void> {
+	private async fetchLatestMatch(maxRetries = 3): Promise<void> {
 		if (!lcuConnector.isConnected()) return;
 
-		try {
-			const data = await lcuApi.get<LcuMatchHistoryResponse>(MATCH_HISTORY_URL);
-			const games = data?.games?.games;
-			if (!games || games.length === 0) {
-				logger.debug("No recent matches in history");
-				return;
+		for (let attempt = 0; attempt <= maxRetries; attempt++) {
+			if (attempt > 0) {
+				const delay = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
+				logger.debug(`Post-game fetch retry ${attempt}/${maxRetries} in ${delay}ms`);
+				await new Promise((r) => setTimeout(r, delay));
+				if (!lcuConnector.isConnected()) return;
 			}
 
-			// Most recent game
-			const game = games[0];
-			if (game.gameId === this.lastGameId) return; // Already displayed
+			try {
+				const data = await lcuApi.get<LcuMatchHistoryResponse>(MATCH_HISTORY_URL);
+				const games = data?.games?.games;
+				if (!games || games.length === 0) {
+					logger.debug(`No recent matches in history (attempt ${attempt})`);
+					continue; // Retry — data may not be available yet
+				}
 
-			// Find the player's participant data
-			const participant = game.participants?.[0];
-			const stats = participant?.stats;
-			if (!stats) {
-				logger.warn("No participant stats in match history entry");
-				return;
-			}
+				// Most recent game
+				const game = games[0];
+				if (game.gameId === this.lastGameId) return; // Already displayed
 
-			const champId = participant.championId;
-			const champ = dataDragon.getChampionByKey(String(champId));
+				// Find the player's participant data
+				const participant = game.participants?.[0];
+				const stats = participant?.stats;
+				if (!stats) {
+					logger.warn(`No participant stats in match history entry (attempt ${attempt})`);
+					continue; // Retry
+				}
+
+				const champId = participant.championId;
+				const champ = dataDragon.getChampionByKey(String(champId));
 
 			this.lastMatchStats = {
 				win: stats.win,
@@ -205,6 +220,12 @@ export class PostGame extends SingletonAction<PostGameSettings> {
 				gameMode: game.gameMode ?? "",
 				queueId: game.queueId ?? 0,
 				gameId: game.gameId,
+				totalHeal: stats.totalHeal ?? 0,
+				damageToObjectives: stats.damageDealtToObjectives ?? 0,
+				doubleKills: stats.doubleKills ?? 0,
+				tripleKills: stats.tripleKills ?? 0,
+				quadraKills: stats.quadraKills ?? 0,
+				pentaKills: stats.pentaKills ?? 0,
 			};
 			this.lastGameId = game.gameId;
 			this.displayPages.clear(); // Reset to overview on new game
@@ -214,8 +235,14 @@ export class PostGame extends SingletonAction<PostGameSettings> {
 				`(${this.lastMatchStats.kills}/${this.lastMatchStats.deaths}/${this.lastMatchStats.assists}) ` +
 				`${Math.round(this.lastMatchStats.gameDuration / 60)}min`,
 			);
-		} catch (e) {
-			logger.error(`Failed to fetch match history: ${e}`);
+			return; // Success — exit retry loop
+			} catch (e) {
+				if (attempt === maxRetries) {
+					logger.error(`Failed to fetch match history after ${maxRetries + 1} attempts: ${e}`);
+				} else {
+					logger.debug(`Post-game fetch attempt ${attempt} failed: ${e}`);
+				}
+			}
 		}
 	}
 
@@ -306,6 +333,29 @@ export class PostGame extends SingletonAction<PostGameSettings> {
 						},
 					});
 					break;
+
+				case "combat": {
+					const healK = (stats.totalHeal / 1000).toFixed(1);
+					const objK = (stats.damageToObjectives / 1000).toFixed(1);
+					const multiParts: string[] = [];
+					if (stats.pentaKills > 0) multiParts.push(`${stats.pentaKills} Penta`);
+					if (stats.quadraKills > 0) multiParts.push(`${stats.quadraKills} Quadra`);
+					if (stats.tripleKills > 0) multiParts.push(`${stats.tripleKills} Triple`);
+					if (stats.doubleKills > 0) multiParts.push(`${stats.doubleKills} Double`);
+					const multiStr = multiParts.length > 0 ? multiParts.join(" · ") : "No multi-kills";
+					await a.setFeedback({
+						title: `${stats.championName} · Combat`,
+						result_text: { value: resultText, color: resultColor },
+						kda_text: { value: multiStr, color: "#FFF" },
+						stat1_text: { value: `${healK}k healing`, color: "#2ECC71" },
+						stat2_text: { value: `${objK}k obj damage`, color: "#E67E22" },
+						stat_bar: {
+							value: Math.min(100, Math.round(stats.damageToObjectives / 400)),
+							bar_fill_c: "#E67E22",
+						},
+					});
+					break;
+				}
 			}
 		} else {
 			// Key: render SVG image
@@ -400,5 +450,11 @@ interface LcuParticipant {
 		goldEarned: number;
 		totalDamageDealtToChampions: number;
 		visionScore: number;
+		totalHeal: number;
+		damageDealtToObjectives: number;
+		doubleKills: number;
+		tripleKills: number;
+		quadraKills: number;
+		pentaKills: number;
 	};
 }

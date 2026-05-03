@@ -4,6 +4,7 @@ import {
 	SingletonAction,
 	WillAppearEvent,
 	WillDisappearEvent,
+	type DialAction,
 	type FeedbackPayload,
 } from "@elgato/streamdeck";
 import streamDeck from "@elgato/streamdeck";
@@ -13,7 +14,9 @@ import { gameMode } from "../services/game-mode";
 import { dataDragon } from "../services/data-dragon";
 import { duoSynergy } from "../services/duo-synergy";
 import { ItemBuilds } from "../services/item-builds";
+import { ChampionStats } from "../services/champion-stats";
 import { getChampionIcon, getChampionIconByKey, prefetchChampionIcons } from "../services/lol-icons";
+import { getUnavailableAliases } from "../services/champ-select-utils";
 
 const logger = streamDeck.logger.createScope("DuoSynergy");
 
@@ -22,7 +25,7 @@ const DUO_LABEL: Record<string, string> = {
 	bottom: "Best Supp",
 	support: "Best ADC",
 	top: "Best Jungler",
-	jungle: "Best Top/Mid",
+	jungle: "Best Solo",
 	middle: "Best Jungler",
 };
 
@@ -105,7 +108,7 @@ export class DuoSynergyAction extends SingletonAction<DuoSynergySettings> {
 		}
 	}
 
-	private async renderDial(a: any, state: DuoSynergyState): Promise<void> {
+	private async renderDial(a: DialAction<DuoSynergySettings>, state: DuoSynergyState): Promise<void> {
 		if (!a.isDial()) return;
 		const pick = state.lastPicks[state.viewIndex];
 		if (!pick) return;
@@ -198,7 +201,7 @@ export class DuoSynergyAction extends SingletonAction<DuoSynergySettings> {
 				?? "bottom";
 
 			// Convert LCU position → Lolalytics lane
-			const lane = this.toLolalyticsLane(role);
+			const lane = ChampionStats.toLolalyticsLane(role);
 			const alias = ItemBuilds.toAlias(myChamp.name);
 			const hash = `${alias}:${lane}`;
 			const state = this.getState(a.id);
@@ -243,8 +246,14 @@ export class DuoSynergyAction extends SingletonAction<DuoSynergySettings> {
 					continue;
 				}
 
+				// Filter out banned and already-picked champions
+				const unavailable = getUnavailableAliases(session);
+
 				// Map entries to display picks
-				state.lastPicks = result.entries.slice(0, 20).map((e) => ({
+				state.lastPicks = result.entries
+					.filter((e) => !unavailable.has(e.championId.toLowerCase()))
+					.slice(0, 20)
+					.map((e) => ({
 					alias: e.championId.toLowerCase(),
 					name: e.championName,
 					winRate: e.winRate,
@@ -278,18 +287,4 @@ export class DuoSynergyAction extends SingletonAction<DuoSynergySettings> {
 		}
 	}
 
-	/** Convert LCU assigned position to Lolalytics lane. */
-	private toLolalyticsLane(position: string): string {
-		const map: Record<string, string> = {
-			top: "top",
-			jungle: "jungle",
-			middle: "middle",
-			mid: "middle",
-			bottom: "bottom",
-			adc: "bottom",
-			utility: "support",
-			support: "support",
-		};
-		return map[position.toLowerCase()] ?? "bottom";
-	}
 }

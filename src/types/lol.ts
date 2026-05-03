@@ -33,6 +33,8 @@ export interface LcuRankedEntry {
 	wins: number;
 	losses: number;
 	miniSeriesProgress?: string;
+	previousSeasonHighestTier?: string;
+	previousSeasonHighestDivision?: string;
 }
 
 export interface LcuRankedStats {

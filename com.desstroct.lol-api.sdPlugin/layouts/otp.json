@@ -1,0 +1,28 @@
+{
+	"Bars": [
+		{
+			"id": "champ_icon",
+			"icon": "champ_icon"
+		}
+	],
+	"Controls": [
+		{
+			"id": "title",
+			"type": "text",
+			"text": "title",
+			"value": "OTP"
+		},
+		{
+			"id": "champion",
+			"type": "text",
+			"text": "champion",
+			"value": ""
+		},
+		{
+			"id": "info",
+			"type": "text",
+			"text": "info",
+			"value": ""
+		}
+	]
+}

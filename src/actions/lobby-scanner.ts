@@ -298,33 +298,59 @@ export class LobbyScannerAction extends SingletonAction<LobbyScannerSettings> {
 			// Ranked info from pre-fetched results
 			let rankStr = "";
 			let wrPct = 0;
+			let totalGames = 0;
+			let isPrevSeason = false;
 			if (player.puuid && player.puuid !== "") {
 				const ranked = rankedMap.get(player.puuid) ?? null;
-				if (ranked?.queueMap?.RANKED_SOLO_5x5) {
-					const solo = ranked.queueMap.RANKED_SOLO_5x5;
-					const tier = solo.tier ? solo.tier.charAt(0) + solo.tier.slice(1).toLowerCase() : "?";
+				const solo = ranked?.queueMap?.RANKED_SOLO_5x5;
+				if (solo && solo.tier) {
+					const tier = solo.tier.charAt(0) + solo.tier.slice(1).toLowerCase();
 					const div = solo.division ?? "";
-					wrPct = solo.wins + solo.losses > 0
-						? Math.round((solo.wins / (solo.wins + solo.losses)) * 100)
+					totalGames = (solo.wins ?? 0) + (solo.losses ?? 0);
+					wrPct = totalGames > 0
+						? Math.round((solo.wins / totalGames) * 100)
 						: 0;
 					rankStr = `${tier} ${div}`;
+				}
+				// Fallback: show previous season rank for unranked players
+				if (!rankStr && solo?.previousSeasonHighestTier) {
+					const prevTier = solo.previousSeasonHighestTier.charAt(0) + solo.previousSeasonHighestTier.slice(1).toLowerCase();
+					const prevDiv = solo.previousSeasonHighestDivision ?? "";
+					rankStr = `S14 ${prevTier} ${prevDiv}`;
+					isPrevSeason = true;
+				}
+				// Fallback: check Flex queue
+				if (!rankStr) {
+					const flex = ranked?.queueMap?.RANKED_FLEX_SR;
+					if (flex && flex.tier) {
+						const tier = flex.tier.charAt(0) + flex.tier.slice(1).toLowerCase();
+						const div = flex.division ?? "";
+						totalGames = (flex.wins ?? 0) + (flex.losses ?? 0);
+						wrPct = totalGames > 0
+							? Math.round((flex.wins / totalGames) * 100)
+							: 0;
+						rankStr = `Flex ${tier} ${div}`;
+					}
 				}
 			}
 
 			if (a.isDial()) {
-				const barColor = wrPct >= 55 ? "#2ECC71" : wrPct >= 50 ? "#F1C40F" : wrPct > 0 ? "#E74C3C" : "#666666";
+				const barColor = isPrevSeason ? "#888888"
+					: wrPct >= 55 ? "#2ECC71" : wrPct >= 50 ? "#F1C40F" : wrPct > 0 ? "#E74C3C" : "#666666";
+				const wrLabel = isPrevSeason ? "prev season"
+					: wrPct > 0 ? `${wrPct}% WR · ${totalGames}g` : "";
 				await a.setFeedback({
 					champ_icon: champIcon ?? "",
 					title: `${pos} · ${teamLabel} ${slotLabel}`,
 					champion: champName,
 					rank: rankStr || "Unranked",
-					wr_text: wrPct > 0 ? `${wrPct}% WR` : "",
+					wr_text: wrLabel,
 					wr_bar: { value: wrPct || 50, bar_fill_c: barColor },
 				});
 			} else {
 				if (champIcon) await a.setImage(champIcon);
 				const title = rankStr
-					? `${champName}\n${rankStr} ${wrPct}%`
+					? `${champName}\n${rankStr}${isPrevSeason ? "" : ` ${wrPct}%`}${totalGames > 0 && !isPrevSeason ? `\n${totalGames}g` : ""}`
 					: `${pos}\n${champName}`;
 				await a.setTitle(title);
 			}

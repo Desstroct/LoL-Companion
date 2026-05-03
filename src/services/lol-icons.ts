@@ -107,6 +107,27 @@ export function prefetchChampionIcons(aliases: string[]): void {
 	}
 }
 
+/** Prefetch item icons (non-blocking). */
+export function prefetchItemIcons(itemIds: number[]): void {
+	for (const id of itemIds) {
+		if (!iconCache.has(`item:${id}`)) {
+			getItemIcon(id).catch(() => {});
+		}
+	}
+}
+
+/** Prefetch all objective icons — dragons, baron, herald (non-blocking). */
+export function prefetchObjectiveIcons(): void {
+	for (const type of Object.keys(DRAGON_ICON_URLS)) {
+		if (!iconCache.has(`dragon:${type}`)) {
+			getDragonIcon(type).catch(() => {});
+		}
+	}
+	if (!iconCache.has("baron")) getBaronIcon().catch(() => {});
+	if (!iconCache.has("herald")) getHeraldIcon().catch(() => {});
+	if (!iconCache.has("grubs")) getGrubsIcon().catch(() => {});
+}
+
 // ────────────────── Summoner spell icons ──────────────────
 
 /**

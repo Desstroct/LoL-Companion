@@ -14,6 +14,42 @@ const logger = streamDeck.logger.createScope("ChampionStats");
  * - n: number of games in matchup
  * - allWr: overall win rate of the counter champion
  */
+// ── Synergy scoring constants ──
+// These control how much each factor contributes to the synergy bonus (±5 max).
+const SYNERGY_DAMAGE_BALANCE_BONUS = 2.5;    // Bonus when team needs AP/AD balance
+const SYNERGY_BALANCED_TEAM_BONUS = 0.5;     // Small bonus when team damage is balanced
+const SYNERGY_TANK_BONUS = 1.5;              // Bonus for tank when team has none
+const SYNERGY_OFFTANK_BONUS = 1.0;           // Bonus for tanky non-tank when team has none
+const SYNERGY_ROLE_STACK_PENALTY = -1.0;     // Penalty for stacking same role tag
+const SYNERGY_MAX_BONUS = 5;                 // Maximum absolute synergy bonus
+const SYNERGY_TANKY_DEFENSE_THRESHOLD = 7;   // Candidate is tanky if defense >= this
+const SYNERGY_ROLE_STACK_LIMIT = 2;          // Penalty triggers at this many same-tag allies
+
+/** AP champion tags — champions with these as primary tag deal mostly magic damage */
+const AP_TAGS = new Set(["Mage"]);
+/** AD champion tags — champions with these as primary tag deal mostly physical damage */
+const AD_TAGS = new Set(["Marksman", "Fighter"]);
+/** Mixed/context-dependent — use secondary tag to disambiguate */
+const MIXED_TAGS = new Set(["Assassin", "Support"]);
+
+/**
+ * Determine a champion's damage type from Data Dragon tags.
+ * More accurate than info.magic for champions like Ezreal, Corki, Kayn, etc.
+ */
+function getDamageType(champ: { tags: string[] }): "ap" | "ad" | "mixed" {
+	const primary = champ.tags[0];
+	const secondary = champ.tags[1];
+	if (AP_TAGS.has(primary)) return "ap";
+	if (AD_TAGS.has(primary)) return "ad";
+	// Assassins: AP if secondary is Mage, otherwise AD
+	if (primary === "Assassin") return secondary === "Mage" ? "ap" : "ad";
+	// Supports: AP if secondary is Mage, otherwise mixed
+	if (primary === "Support") return secondary === "Mage" ? "ap" : "mixed";
+	// Tanks: mixed damage
+	if (primary === "Tank") return "mixed";
+	return "mixed";
+}
+
 const LOLALYTICS_API = "https://a1.lolalytics.com";
 
 export interface MatchupData {
@@ -27,6 +63,8 @@ export interface MatchupData {
 	games: number;
 	/** Default/primary lane for this champion (from Lolalytics) */
 	defaultLane?: string;
+	/** Overall win rate of this champion across all matchups */
+	allWr?: number;
 }
 
 /**
@@ -143,29 +181,30 @@ export class ChampionStats {
 	 * Build a team profile from ally champion keys for synergy analysis.
 	 */
 	private buildTeamProfile(allyKeys: string[]): TeamProfile {
-		let totalMagic = 0;
-		let totalAttack = 0;
 		let totalDefense = 0;
 		let count = 0;
+		let apCount = 0;
+		let adCount = 0;
 		const tags: string[] = [];
 
 		for (const key of allyKeys) {
 			const champ = dataDragon.getChampionByKey(key);
 			if (!champ) continue;
-			totalMagic += champ.info.magic;
-			totalAttack += champ.info.attack;
 			totalDefense += champ.info.defense;
+			const dmgType = getDamageType(champ);
+			if (dmgType === "ap") apCount++;
+			else if (dmgType === "ad") adCount++;
 			tags.push(...champ.tags);
 			count++;
 		}
 
 		if (count === 0) {
-			return { avgMagic: 5, avgAttack: 5, avgDefense: 5, tags, hasTank: false, hasEngage: false, count: 0 };
+			return { apCount: 0, adCount: 0, avgDefense: 5, tags, hasTank: false, hasEngage: false, count: 0 };
 		}
 
 		return {
-			avgMagic: totalMagic / count,
-			avgAttack: totalAttack / count,
+			apCount,
+			adCount,
 			avgDefense: totalDefense / count,
 			tags,
 			hasTank: tags.includes("Tank"),
@@ -184,40 +223,40 @@ export class ChampionStats {
 	 */
 	private computeSynergyBonus(candidateAlias: string, profile: TeamProfile): number {
 		if (!candidateAlias) return 0;
-		// Resolve candidate champion data via public API
 		const candidateChamp = dataDragon.getChampionByName(candidateAlias);
 		if (!candidateChamp || profile.count === 0) return 0;
 
 		let bonus = 0;
+		const candidateDmg = getDamageType(candidateChamp);
 
-		// 1. Damage balance: team avg magic vs candidate magic
-		//    If team is AD-heavy (avgMagic < 4) and candidate is AP (magic >= 7): bonus
-		//    If team is AP-heavy (avgMagic > 6) and candidate is AD (magic <= 3): bonus
-		if (profile.avgMagic < 4 && candidateChamp.info.magic >= 7) {
-			bonus += 2.5; // Team needs AP
-		} else if (profile.avgMagic > 6 && candidateChamp.info.magic <= 3) {
-			bonus += 2.5; // Team needs AD
-		} else if (profile.avgMagic >= 4 && profile.avgMagic <= 6) {
-			bonus += 0.5; // Balanced team, small bonus for any
+		// 1. Damage balance: team AP/AD ratio vs candidate damage type
+		const teamIsAdHeavy = profile.adCount >= 2 && profile.apCount === 0;
+		const teamIsApHeavy = profile.apCount >= 2 && profile.adCount === 0;
+		const teamIsBalanced = !teamIsAdHeavy && !teamIsApHeavy;
+
+		if (teamIsAdHeavy && candidateDmg === "ap") {
+			bonus += SYNERGY_DAMAGE_BALANCE_BONUS; // Team needs AP
+		} else if (teamIsApHeavy && candidateDmg === "ad") {
+			bonus += SYNERGY_DAMAGE_BALANCE_BONUS; // Team needs AD
+		} else if (teamIsBalanced) {
+			bonus += SYNERGY_BALANCED_TEAM_BONUS; // Balanced team
 		}
 
 		// 2. Tank/frontline presence
-		//    If no tanks on team and candidate is a tank/fighter: bonus
 		if (!profile.hasTank && candidateChamp.tags.includes("Tank")) {
-			bonus += 1.5;
-		} else if (!profile.hasTank && candidateChamp.info.defense >= 7) {
-			bonus += 1.0;
+			bonus += SYNERGY_TANK_BONUS;
+		} else if (!profile.hasTank && candidateChamp.info.defense >= SYNERGY_TANKY_DEFENSE_THRESHOLD) {
+			bonus += SYNERGY_OFFTANK_BONUS;
 		}
 
-		// 3. Role diversity penalty: if candidate shares primary tag with most allies
+		// 3. Role diversity penalty: if candidate shares primary tag with too many allies
 		const primaryTag = candidateChamp.tags[0];
 		const tagCount = profile.tags.filter((t) => t === primaryTag).length;
-		if (tagCount >= 2) {
-			bonus -= 1.0; // Too many of the same role
+		if (tagCount >= SYNERGY_ROLE_STACK_LIMIT) {
+			bonus += SYNERGY_ROLE_STACK_PENALTY;
 		}
 
-		// Clamp to ±5
-		return Math.max(-5, Math.min(5, bonus));
+		return Math.max(-SYNERGY_MAX_BONUS, Math.min(SYNERGY_MAX_BONUS, bonus));
 	}
 
 	/**
@@ -282,6 +321,7 @@ export class ChampionStats {
 						winRateVs: c.vsWr,
 						games: c.n,
 						defaultLane: c.defaultLane,
+						allWr: c.allWr,
 					});
 				}
 
@@ -321,7 +361,7 @@ export class ChampionStats {
 						const champ = dataDragon.getChampionByKey(String(c.cid));
 						const alias = champ ? ChampionStats.toLolalytics(champ.id) : String(c.cid);
 						const name = champ?.name ?? `Champion ${c.cid}`;
-						matchups.push({ alias, name, winRateVs: c.vsWr, games: c.n, defaultLane: c.defaultLane });
+						matchups.push({ alias, name, winRateVs: c.vsWr, games: c.n, defaultLane: c.defaultLane, allWr: c.allWr });
 					}
 					if (matchups.length > 0) {
 						logger.info(`Lane fallback: ${matchups.length} matchups for ${championAlias} via default lane (requested: ${lane})`);
@@ -443,8 +483,8 @@ interface LolalyticCounterResponse {
 }
 
 interface TeamProfile {
-	avgMagic: number;
-	avgAttack: number;
+	apCount: number;
+	adCount: number;
 	avgDefense: number;
 	tags: string[];
 	hasTank: boolean;
