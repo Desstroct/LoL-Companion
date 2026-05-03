@@ -15,6 +15,8 @@ export class DataDragon {
 	private championsByKey: Map<string, DdChampion> = new Map();
 	private summonerSpells: Map<string, DdSummonerSpell> = new Map();
 	private items: Map<string, DdItem> = new Map();
+	/** runeId → CDN-relative icon path (e.g. "perk-images/Styles/...") */
+	private runeIcons: Map<number, string> = new Map();
 	private initialized = false;
 	private versionCheckTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -42,7 +44,7 @@ export class DataDragon {
 				this.version = versions[0];
 				logger.info(`Data Dragon version: ${this.version}`);
 			} else {
-				this.version = "14.24.1"; // Fallback
+				this.version = "15.14.1"; // Fallback
 				logger.warn(`Could not fetch DD version, using fallback ${this.version}`);
 			}
 
@@ -52,6 +54,8 @@ export class DataDragon {
 			await this.loadSummonerSpells();
 			// Load item data
 			await this.loadItems();
+			// Load rune icon paths (used as CDN fallback for keystone images)
+			await this.loadRunes();
 
 			this.initialized = true;
 			logger.info(`Data Dragon initialized: ${this.champions.size} champions, ${this.summonerSpells.size} spells, ${this.items.size} items`);
@@ -125,6 +129,9 @@ export class DataDragon {
 				throw new Error("Champion data empty after fetch");
 			}
 
+			// Reload rune icons for the new version
+			await this.loadRunes();
+
 			// Atomic swap — old maps are GC'd
 			this.champions = tmpChampions;
 			this.championsByKey = tmpChampionsByKey;
@@ -143,7 +150,7 @@ export class DataDragon {
 	 * Get the current Data Dragon version.
 	 */
 	getVersion(): string {
-		return this.version ?? "14.24.1";
+		return this.version ?? "15.14.1";
 	}
 
 	/**
@@ -258,6 +265,16 @@ export class DataDragon {
 		return `${DD_BASE}/cdn/${this.getVersion()}/img/item/${itemId}.png`;
 	}
 
+	/**
+	 * Get the CDN URL for a rune/keystone icon by its Riot perk ID.
+	 * Returns null if rune data hasn't loaded or the ID is unknown.
+	 * URL format: ddragon.leagueoflegends.com/cdn/img/{icon} (no version in path).
+	 */
+	getRuneIconUrl(runeId: number): string | null {
+		const icon = this.runeIcons.get(runeId);
+		return icon ? `${DD_BASE}/cdn/img/${icon}` : null;
+	}
+
 	// ---- Private methods ----
 
 	private async loadChampions(): Promise<void> {
@@ -294,6 +311,20 @@ export class DataDragon {
 		}
 	}
 
+	private async loadRunes(): Promise<void> {
+		const url = `${DD_BASE}/cdn/${this.getVersion()}/data/en_US/runesReforged.json`;
+		const data = await this.fetchJson<DdRuneTree[]>(url);
+		if (!data) return;
+		for (const tree of data) {
+			for (const slot of tree.slots) {
+				for (const rune of slot.runes) {
+					this.runeIcons.set(rune.id, rune.icon);
+				}
+			}
+		}
+		logger.debug(`Loaded ${this.runeIcons.size} rune icons from DDragon`);
+	}
+
 	private async fetchJson<T>(url: string): Promise<T | null> {
 		try {
 			const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
@@ -311,3 +342,10 @@ export class DataDragon {
 
 // Singleton instance
 export const dataDragon = new DataDragon();
+
+// ─────────── Internal DDragon types ───────────
+
+interface DdRuneTree {
+	id: number;
+	slots: Array<{ runes: Array<{ id: number; icon: string }> }>;
+}

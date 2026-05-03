@@ -98,6 +98,17 @@ export async function getChampionIconByName(name: string): Promise<string | null
 	return null;
 }
 
+/**
+ * Get a rune/keystone icon as a base64 data URI using DDragon's perk image CDN.
+ * Falls back gracefully when the rune ID is unknown or DDragon hasn't loaded yet.
+ * @param runeId Riot perk ID (e.g. 8992 for Deathfire Touch)
+ */
+export async function getRuneIcon(runeId: number): Promise<string | null> {
+	const url = dataDragon.getRuneIconUrl(runeId);
+	if (!url) return null;
+	return fetchIcon(`rune:${runeId}`, url);
+}
+
 /** Prefetch champion icons (non-blocking). */
 export function prefetchChampionIcons(aliases: string[]): void {
 	for (const alias of aliases) {

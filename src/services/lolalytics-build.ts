@@ -66,20 +66,26 @@ const TREE_STYLE_IDS: Record<number, number> = {
 
 /** Keystone ID → human-readable name */
 const KEYSTONE_NAMES: Record<number, string> = {
+	// Precision
 	8005: "Press the Attack",
 	8008: "Lethal Tempo",
 	8010: "Conqueror",
 	8021: "Fleet Footwork",
+	// Domination
 	8112: "Electrocute",
 	8124: "Predator",
 	8128: "Dark Harvest",
 	9923: "Hail of Blades",
+	// Sorcery
 	8214: "Summon Aery",
 	8229: "Arcane Comet",
-	8230: "Phase Rush",
+	8230: "Stormraider's Surge", // renamed from Phase Rush in 26.09
+	8992: "Deathfire Touch",     // new in 26.09
+	// Inspiration
 	8351: "Glacial Augment",
 	8360: "Unsealed Spellbook",
 	8369: "First Strike",
+	// Resolve
 	8437: "Grasp of the Undying",
 	8439: "Aftershock",
 	8465: "Guardian",
@@ -532,8 +538,10 @@ export class LolaBuildParser {
 	// ─────────── Tree ID helpers ───────────
 
 	private treeFromKeystoneId(id: number): number {
+		// Special cases must come before the range check
+		if (id === 9923) return 8100; // Hail of Blades (Domination)
+		if (id === 8992) return 8200; // Deathfire Touch (Sorcery, 26.09) — 8992 would compute 8900 via range math
 		if (id >= 8000 && id < 8500) return Math.floor(id / 100) * 100;
-		if (id === 9923) return 8100; // Hail of Blades
 		return 8000;
 	}
 

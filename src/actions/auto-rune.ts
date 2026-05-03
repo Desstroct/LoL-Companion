@@ -22,6 +22,7 @@ import { runeData, RunePageData } from "../services/rune-data";
 import { ChampionStats } from "../services/champion-stats";
 import { lolaBuild, type SummonerSpellCombo } from "../services/lolalytics-build";
 import { findEnemyLaner } from "../services/champ-select-utils";
+import { getRuneIcon } from "../services/lol-icons";
 import { otp } from "../actions/otp";
 
 const logger = streamDeck.logger.createScope("AutoRune");
@@ -32,17 +33,26 @@ const keystoneCache = new Map<number, string>(); // keystoneId → raw base64
 const treeCache = new Map<number, string>(); // treeStyleId → raw base64
 const composedCache = new Map<string, string>(); // "keystoneId:treeId" → data URI
 
-/** Load a keystone icon from disk as raw base64 (cached) */
-function getKeystoneBase64(keystoneId: number): string | null {
+/** Load a keystone icon as raw base64. Tries local disk first, falls back to DDragon CDN. */
+async function getKeystoneBase64(keystoneId: number): Promise<string | null> {
 	if (keystoneCache.has(keystoneId)) return keystoneCache.get(keystoneId)!;
+	// Primary: local bundled PNG (fast, no network)
 	try {
 		const imgPath = join(PLUGIN_DIR, "imgs", "actions", "auto-rune", "keystones", `${keystoneId}@2x.png`);
 		const b64 = readFileSync(imgPath).toString("base64");
 		keystoneCache.set(keystoneId, b64);
 		return b64;
 	} catch {
-		return null;
+		// Local file missing — fall through to CDN
 	}
+	// Fallback: fetch from DDragon perk-images CDN (handles new keystones added in patches)
+	const dataUri = await getRuneIcon(keystoneId);
+	if (!dataUri) return null;
+	const prefix = "data:image/png;base64,";
+	if (!dataUri.startsWith(prefix)) return null;
+	const b64 = dataUri.slice(prefix.length);
+	keystoneCache.set(keystoneId, b64);
+	return b64;
 }
 
 /** Load a rune tree style icon from disk as raw base64 (cached) */
@@ -70,11 +80,11 @@ const GREEN = "#27AE60";
  * When applied=true, the border turns green to indicate runes are active.
  * Returns a data:image/svg+xml;base64 URI ready for setImage().
  */
-function composeRuneImage(keystoneId: number, subStyleId: number, applied: boolean): string | null {
+async function composeRuneImage(keystoneId: number, subStyleId: number, applied: boolean): Promise<string | null> {
 	const cacheKey = `${keystoneId}:${subStyleId}:${applied ? 1 : 0}`;
 	if (composedCache.has(cacheKey)) return composedCache.get(cacheKey)!;
 
-	const ksB64 = getKeystoneBase64(keystoneId);
+	const ksB64 = await getKeystoneBase64(keystoneId);
 	if (!ksB64) return null;
 	const treeB64 = getTreeBase64(subStyleId);
 
@@ -120,9 +130,9 @@ function composeRuneImage(keystoneId: number, subStyleId: number, applied: boole
 	return dataUri;
 }
 
-/** Legacy helper: keystone-only data URI (for dial feedback that needs just the icon) */
-function getKeystoneImage(keystoneId: number): string | null {
-	const b64 = getKeystoneBase64(keystoneId);
+/** Keystone-only data URI (for dial feedback that needs just the icon) */
+async function getKeystoneImage(keystoneId: number): Promise<string | null> {
+	const b64 = await getKeystoneBase64(keystoneId);
 	return b64 ? `data:image/png;base64,${b64}` : null;
 }
 
@@ -300,11 +310,13 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 			const s = (await a.getSettings()) as AutoRuneSettings;
 			const state = this.getState(a.id);
 
-			// Determine lane / role
+			// Determine lane / role — OTP preferred lane overrides LCU assignment
 			const myPosition = (s.role && s.role !== "auto" ? s.role : null) ?? me.assignedPosition ?? "";
+			const otpLaneOverride = otp.getOTPForChampion(champAlias)?.preferredLane;
+			const effectivePosition = (otpLaneOverride && otpLaneOverride !== "auto") ? otpLaneOverride : myPosition;
 			const lane = gameMode.isARAM()
 				? "aram"
-				: ChampionStats.toLolalyticsLane(myPosition || "top");
+				: ChampionStats.toLolalyticsLane(effectivePosition || "top");
 
 			// Detect enemy laner for matchup-specific data
 			const enemyInfo = (s.matchup !== false && !gameMode.isARAM())
@@ -320,8 +332,8 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 			if (!champChanged && !enemyChanged && !shouldRetry) {
 				// Same champion, same enemy — check auto-apply for runes AND spells
 				// Check OTP settings: if user has OTP configured for this champion and autoRune is disabled, skip auto-apply
-				const otpConfig = otp.getCurrentOTP();
-				const shouldAutoApply = s.autoApply && (!otpConfig || otpConfig.config.autoRune !== false);
+				const otpConfig = otp.getOTPForChampion(champAlias);
+				const shouldAutoApply = s.autoApply && (!otpConfig || otpConfig.autoRune !== false);
 				if (isLocked && shouldAutoApply && (!state.applied || !state.spellsApplied) && state.lastRunes.length > 0) {
 					await this.applyRunesForAction(a, state, s);
 				}
@@ -451,13 +463,14 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 		const vsTag = state.vsChampName ? ` vs ${state.vsChampName}` : "";
 
 		// Check OTP settings for this champion
-		const otpConfig = otp.getCurrentOTP();
-		const otpDisabled = otpConfig && otpConfig.config.autoRune === false;
+		const champAlias = champ ? ChampionStats.toLolalytics(champ.id) : null;
+		const otpConfig = champAlias ? otp.getOTPForChampion(champAlias) : null;
+		const otpDisabled = otpConfig?.autoRune === false;
 		const otpIndicator = otpDisabled ? " (OTP)" : "";
 
 		// Get the keystone icon for the detected rune
 		const keystoneId = rune.selectedPerkIds[0];
-		const keystoneImg = getKeystoneImage(keystoneId);
+		const keystoneImg = await getKeystoneImage(keystoneId);
 
 		const shortChamp = champName.length > 10 ? champName.slice(0, 9) + "…" : champName;
 		const shortVs = state.vsChampName
@@ -473,7 +486,7 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 			});
 		} else {
 			// Set key image: primary keystone + secondary tree badge, green border when applied
-			const composedImg = composeRuneImage(keystoneId, rune.subStyleId, state.applied);
+			const composedImg = await composeRuneImage(keystoneId, rune.subStyleId, state.applied);
 			if (composedImg) {
 				await a.setImage(composedImg);
 			} else if (keystoneImg) {

@@ -7,184 +7,377 @@
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            padding: 16px;
-            background: #1e1e1e;
+            background: transparent;
             color: #fff;
         }
-        .sdpi-item {
-            margin-bottom: 12px;
-        }
-        .sdpi-item label {
-            display: block;
-            font-size: 12px;
-            color: #aaa;
-            margin-bottom: 4px;
-        }
-        .champion-list {
-            max-height: 300px;
-            overflow-y: auto;
-        }
-        .champion-item {
+        .add-row {
             display: flex;
+            gap: 6px;
             align-items: center;
-            padding: 8px;
-            background: #2a2a2a;
-            border-radius: 4px;
-            margin-bottom: 4px;
+            padding: 4px 0;
         }
-        .champion-item img {
-            width: 32px;
-            height: 32px;
-            border-radius: 4px;
-            margin-right: 8px;
-        }
-        .champion-item .name {
+        .add-row input {
             flex: 1;
-            font-size: 14px;
-        }
-        .champion-item .actions {
-            display: flex;
-            gap: 4px;
-        }
-        .champion-item button {
-            padding: 4px 8px;
-            font-size: 11px;
-            background: #444;
-            color: #fff;
-            border: none;
-            border-radius: 2px;
-            cursor: pointer;
-        }
-        .champion-item button:hover {
-            background: #555;
-        }
-        .champion-item button.delete {
-            background: #c0392b;
-        }
-        .add-form {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 16px;
-        }
-        .add-form input {
-            flex: 1;
-            padding: 8px;
-            background: #2a2a2a;
+            padding: 5px 8px;
+            background: #1e1e1e;
             color: #fff;
             border: 1px solid #444;
             border-radius: 4px;
+            font-size: 12px;
         }
-        .add-form button {
-            padding: 8px 16px;
-            background: #27ae60;
+        .add-row input:focus { outline: none; border-color: #C89B3C; }
+        .btn-add {
+            padding: 5px 12px;
+            background: #27AE60;
             color: #fff;
             border: none;
             border-radius: 4px;
             cursor: pointer;
+            font-size: 12px;
+            white-space: nowrap;
         }
-        .settings-group {
-            margin-top: 16px;
-            padding: 12px;
-            background: #2a2a2a;
-            border-radius: 4px;
+        .btn-add:hover { background: #2ecc71; }
+        .status-msg {
+            font-size: 11px;
+            padding: 2px 0;
+            min-height: 16px;
+            display: block;
         }
-        .settings-group h3 {
-            margin: 0 0 8px 0;
-            font-size: 14px;
-            color: #fff;
+        .status-msg.error { color: #e74c3c; }
+        .status-msg.ok    { color: #2ecc71; }
+        .champ-list { margin-top: 4px; }
+        .empty-msg { font-size: 11px; color: #777; margin: 4px 0; }
+        .champ-row {
+            background: #1e1e1e;
+            border: 1px solid #333;
+            border-radius: 6px;
+            margin-bottom: 6px;
+            overflow: hidden;
         }
-        .checkbox-item {
+        .champ-header {
             display: flex;
             align-items: center;
-            margin-bottom: 4px;
+            padding: 6px 8px;
+            gap: 8px;
+            background: #252525;
         }
-        .checkbox-item input {
-            margin-right: 8px;
+        .champ-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 4px;
+            border: 1px solid #444;
+            flex-shrink: 0;
+            object-fit: cover;
+            background: #333;
         }
+        .champ-name {
+            flex: 1;
+            font-size: 13px;
+            font-weight: 600;
+            color: #eee;
+        }
+        .btn-remove {
+            padding: 2px 8px;
+            background: #7b2020;
+            color: #ff8080;
+            border: 1px solid #a03030;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 11px;
+        }
+        .btn-remove:hover { background: #a03030; color: #fff; }
+        .champ-config {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 6px 8px;
+            font-size: 11px;
+            color: #aaa;
+        }
+        .champ-config select {
+            background: #2a2a2a;
+            color: #ddd;
+            border: 1px solid #444;
+            border-radius: 3px;
+            padding: 2px 4px;
+            font-size: 11px;
+        }
+        .champ-config label {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            cursor: pointer;
+            user-select: none;
+        }
+        .champ-config input[type="checkbox"] {
+            width: 13px;
+            height: 13px;
+            cursor: pointer;
+        }
+        .lane-group { display: flex; align-items: center; gap: 4px; }
     </style>
 </head>
 <body>
-    <sdpi-item label="OTP Champions">
-        <div class="add-form">
-            <input type="text" id="champInput" placeholder="Champion name (e.g., Aatrox)" />
-            <button id="addBtn">Add</button>
+    <sdpi-item label="Add Champion">
+        <div class="add-row">
+            <input type="text" id="champInput" placeholder="e.g. Aatrox, Master Yi" autocomplete="off" spellcheck="false">
+            <button class="btn-add" id="addBtn">Add</button>
         </div>
-        <div class="champion-list" id="champList">
-            <!-- Champion items will be added here -->
+        <span class="status-msg" id="statusMsg"></span>
+    </sdpi-item>
+
+    <sdpi-item label="OTP List">
+        <div class="champ-list" id="champList">
+            <p class="empty-msg">No champions yet — add one above.</p>
         </div>
     </sdpi-item>
 
     <sdpi-item label="Info">
-        <p style="font-size: 11px; color: #999; padding: 8px;">
-            <strong>Key:</strong> Press to cycle through saved champions<br>
-            <strong>Dial:</strong> Rotate to browse champions<br>
-            <strong>Long press:</strong> Open settings to add/remove champions
-        </p>
+        <details>
+            <summary>How it works</summary>
+            <p style="font-size: 11px; color: #999; padding: 8px 0;">
+                Other actions (Auto Rune, Best Item) check your OTP list to apply
+                per-champion settings.<br><br>
+                <b>Lane:</b> Override the lane used for data lookups — useful when autofilled.<br>
+                <b>Auto Rune:</b> Uncheck to disable auto rune for this champion only.<br>
+                <b>Auto Spell:</b> Uncheck to disable auto spell for this champion only.<br><br>
+                <b>Key / Dial:</b> Browse your OTP list. During Champion Select the dial
+                auto-jumps to your current champion and shows ACTIVE.
+            </p>
+        </details>
     </sdpi-item>
 
     <script>
-        const champInput = document.getElementById('champInput');
-        const addBtn = document.getElementById('addBtn');
-        const champList = document.getElementById('champList');
-
-        // Load saved champions
         let savedChamps = {};
+        let ddVersion = "15.8.1";
+        // normalized alias → { id: string, name: string } — populated after DDragon loads
+        let champLookup = {};
+        let ddReady = false;
 
-        function loadChampions() {
-            streamDeck.getSettings((settings) => {
-                savedChamps = settings.otpChampions || {};
-                renderList();
-            });
+        // ── Helpers ──
+
+        function normalizeAlias(str) {
+            return str.normalize("NFD")
+                .replace(/[̀-ͯ]/g, "")
+                .toLowerCase()
+                .replace(/['\s.]/g, "");
         }
+
+        function capitalizeWords(str) {
+            return str.replace(/\b[a-z]/g, c => c.toUpperCase());
+        }
+
+        function escapeHtml(str) {
+            return String(str)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;");
+        }
+
+        function champImgUrl(ddId) {
+            if (!ddId) return "";
+            return `https://ddragon.leagueoflegends.com/cdn/${ddVersion}/img/champion/${ddId}.png`;
+        }
+
+        // Guess a DDragon ID from a normalized alias when DDragon isn't loaded.
+        // e.g. "aatrox" → "Aatrox", "masteryi" → "Masteryi" (approximate — image may fail)
+        function guessImgUrl(alias) {
+            const guessed = alias.charAt(0).toUpperCase() + alias.slice(1);
+            return champImgUrl(guessed);
+        }
+
+        // ── DDragon (optional — only used for proper names and images) ──
+
+        async function initDDragon() {
+            try {
+                const versions = await fetch("https://ddragon.leagueoflegends.com/api/versions.json")
+                    .then(r => r.json());
+                ddVersion = versions[0];
+                const data = await fetch(
+                    `https://ddragon.leagueoflegends.com/cdn/${ddVersion}/data/en_US/champion.json`
+                ).then(r => r.json());
+
+                for (const [id, champ] of Object.entries(data.data)) {
+                    const entry = { id, name: champ.name };
+                    champLookup[normalizeAlias(id)] = entry;
+                    const byName = normalizeAlias(champ.name);
+                    if (!champLookup[byName]) champLookup[byName] = entry;
+                }
+                ddReady = true;
+                // Enrich existing entries that were added before DDragon loaded
+                let enriched = false;
+                for (const [alias, config] of Object.entries(savedChamps)) {
+                    if (!config.ddId) {
+                        const found = champLookup[alias];
+                        if (found) {
+                            config.name = found.name;
+                            config.ddId = found.id;
+                            enriched = true;
+                        }
+                    }
+                }
+                if (enriched) { renderList(); save(); }
+            } catch (e) {
+                console.warn("DDragon init failed:", e);
+            }
+        }
+
+        // ── Rendering ──
 
         function renderList() {
-            champList.innerHTML = '';
-            Object.entries(savedChamps).forEach(([alias, config]) => {
-                const item = document.createElement('div');
-                item.className = 'champion-item';
-                item.innerHTML = `
-                    <img src="https://ddragon.leagueoflegends.com/cdn/15.6.1/img/champion/${capitalize(alias)}.png" onerror="this.src=''">
-                    <span class="name">${capitalize(alias)}</span>
-                    <div class="actions">
-                        <button class="delete" data-alias="${alias}">Remove</button>
+            const list = document.getElementById("champList");
+            const entries = Object.entries(savedChamps);
+            if (entries.length === 0) {
+                list.innerHTML = '<p class="empty-msg">No champions yet — add one above.</p>';
+                return;
+            }
+            list.innerHTML = "";
+            for (const [alias, config] of entries) {
+                list.appendChild(createChampRow(alias, config));
+            }
+        }
+
+        function createChampRow(alias, config) {
+            const ddId = config.ddId || null;
+            const name = config.name || capitalizeWords(alias);
+            const imgSrc = ddId ? champImgUrl(ddId) : guessImgUrl(alias);
+            const lane = config.preferredLane || "auto";
+            const autoRune = config.autoRune !== false;
+            const autoSpell = config.autoSpell !== false;
+
+            const row = document.createElement("div");
+            row.className = "champ-row";
+            row.innerHTML = `
+                <div class="champ-header">
+                    <img class="champ-icon" src="${escapeHtml(imgSrc)}" onerror="this.src=''" alt="">
+                    <span class="champ-name">${escapeHtml(name)}</span>
+                    <button class="btn-remove" data-alias="${escapeHtml(alias)}">Remove</button>
+                </div>
+                <div class="champ-config">
+                    <div class="lane-group">
+                        Lane:
+                        <select class="lane-select" data-alias="${escapeHtml(alias)}">
+                            <option value="auto"    ${lane === "auto"    ? "selected" : ""}>Auto</option>
+                            <option value="top"     ${lane === "top"     ? "selected" : ""}>Top</option>
+                            <option value="jungle"  ${lane === "jungle"  ? "selected" : ""}>Jungle</option>
+                            <option value="middle"  ${lane === "middle"  ? "selected" : ""}>Mid</option>
+                            <option value="bottom"  ${lane === "bottom"  ? "selected" : ""}>Bot</option>
+                            <option value="utility" ${lane === "utility" ? "selected" : ""}>Support</option>
+                        </select>
                     </div>
-                `;
-                champList.appendChild(item);
-            });
+                    <label>
+                        <input type="checkbox" class="auto-rune-cb" data-alias="${escapeHtml(alias)}" ${autoRune ? "checked" : ""}>
+                        Auto Rune
+                    </label>
+                    <label>
+                        <input type="checkbox" class="auto-spell-cb" data-alias="${escapeHtml(alias)}" ${autoSpell ? "checked" : ""}>
+                        Auto Spell
+                    </label>
+                </div>
+            `;
+            return row;
         }
 
-        function capitalize(str) {
-            return str.charAt(0).toUpperCase() + str.slice(1);
+        // ── Save ──
+
+        function save() {
+            $SD.setSettings({ otpChampions: savedChamps });
         }
 
-        addBtn.addEventListener('click', () => {
-            const alias = champInput.value.toLowerCase().replace(/\s/g, '');
-            if (alias && !savedChamps[alias]) {
-                savedChamps[alias] = {
-                    enabled: true,
-                    autoRune: true,
-                    autoItem: true,
-                    autoSpell: true,
-                    counterMode: true,
-                    bestMode: true
-                };
-                streamDeck.setSettings({ otpChampions: savedChamps });
-                champInput.value = '';
-                renderList();
+        // ── Event delegation ──
+
+        document.getElementById("champList").addEventListener("change", e => {
+            const target = e.target;
+            const alias = target.dataset && target.dataset.alias;
+            if (!alias || !savedChamps[alias]) return;
+
+            if (target.classList.contains("lane-select")) {
+                savedChamps[alias].preferredLane = target.value;
+            } else if (target.classList.contains("auto-rune-cb")) {
+                savedChamps[alias].autoRune = target.checked;
+            } else if (target.classList.contains("auto-spell-cb")) {
+                savedChamps[alias].autoSpell = target.checked;
             }
+            save();
         });
 
-        champList.addEventListener('click', (e) => {
-            if (e.target.classList.contains('delete')) {
-                const alias = e.target.dataset.alias;
+        document.getElementById("champList").addEventListener("click", e => {
+            if (e.target.classList.contains("btn-remove")) {
+                const alias = e.target.dataset && e.target.dataset.alias;
+                if (!alias) return;
                 delete savedChamps[alias];
-                streamDeck.setSettings({ otpChampions: savedChamps });
                 renderList();
+                save();
             }
         });
 
-        // Initialize
-        loadChampions();
+        // ── Add champion ──
+
+        document.getElementById("addBtn").addEventListener("click", addChampion);
+        document.getElementById("champInput").addEventListener("keydown", e => {
+            if (e.key === "Enter") addChampion();
+        });
+
+        function showStatus(msg, isError) {
+            const el = document.getElementById("statusMsg");
+            el.textContent = msg;
+            el.className = "status-msg " + (isError ? "error" : "ok");
+            if (!isError) setTimeout(() => { el.textContent = ""; el.className = "status-msg"; }, 2500);
+        }
+
+        function addChampion() {
+            const inputEl = document.getElementById("champInput");
+            const input = inputEl.value.trim();
+            if (!input) return;
+
+            const alias = normalizeAlias(input);
+            if (!alias) return;
+
+            if (savedChamps[alias]) {
+                showStatus("Already in the list", true);
+                return;
+            }
+
+            // Use DDragon lookup if available, otherwise store with best-guess display data.
+            // The plugin validates/resolves champion data on its end via its own DDragon instance.
+            const found = ddReady ? (champLookup[alias] || champLookup[normalizeAlias(input)]) : null;
+
+            // If DDragon is ready and the alias genuinely doesn't exist, warn (but still allow)
+            if (ddReady && !found) {
+                showStatus(`"${input}" not recognised — added anyway`, true);
+            }
+
+            savedChamps[alias] = {
+                enabled: true,
+                autoRune: true,
+                autoItem: true,
+                autoSpell: true,
+                counterMode: true,
+                bestMode: true,
+                preferredLane: "auto",
+                name: found ? found.name : capitalizeWords(input),
+                ddId: found ? found.id : null,
+            };
+
+            inputEl.value = "";
+            if (!ddReady || found) showStatus("Added " + (found ? found.name : capitalizeWords(input)), false);
+            renderList();
+            save();
+        }
+
+        // ── $SD connection ──
+
+        $SD.on("connected", () => $SD.getSettings());
+
+        $SD.on("didReceiveSettings", ({ payload }) => {
+            savedChamps = (payload.settings && payload.settings.otpChampions) || {};
+            renderList();
+        });
+
+        // Start DDragon fetch early (runs in background — not required for add to work)
+        initDDragon();
     </script>
 </body>
 </html>
