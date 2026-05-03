@@ -12,6 +12,7 @@ import { itemBuilds, ItemBuilds } from "../services/item-builds";
 import type { ItemBuild } from "../services/item-builds";
 import { dataDragon } from "../services/data-dragon";
 import { getItemIcon, prefetchItemIcons } from "../services/lol-icons";
+import { otp } from "../actions/otp";
 
 const logger = streamDeck.logger.createScope("BestItem");
 
@@ -171,6 +172,11 @@ export class BestItem extends SingletonAction {
 			return;
 		}
 
+		// ── Check OTP settings for this champion ──
+		const otpConfig = otp.getCurrentOTP();
+		const champAlias = ItemBuilds.toAlias(me.championName);
+		const otpDisabled = otpConfig && otpConfig.alias === champAlias && otpConfig.config.autoItem === false;
+
 		// ── Fetch build if not loaded yet (shared across instances — same champion) ──
 		const champName = me.championName;
 		const lane = gameMode.isARAM() ? "aram" : ItemBuilds.toLolalyticsLane(me.position);
@@ -183,6 +189,24 @@ export class BestItem extends SingletonAction {
 
 		for (const a of this.actions) {
 			const state = this.getState(a.id);
+
+			// Check if OTP disables this action for current champion
+			if (otpDisabled) {
+				if (a.isDial()) {
+					await a.setFeedback({
+						item_icon: "",
+						title: "BEST ITEM",
+						item_name: "Disabled (OTP)",
+						cost_text: "",
+						gold_bar: { value: 0 },
+						status_text: "",
+					});
+				} else {
+					await a.setImage("");
+					await a.setTitle("Best Item\nOTP Off");
+				}
+				continue;
+			}
 
 			if (champName !== state.currentChampion || lane !== state.currentLane || (!state.currentBuild && !this.buildPromise)) {
 				state.currentChampion = champName;

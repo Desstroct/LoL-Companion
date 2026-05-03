@@ -23,6 +23,7 @@ import { ChampionStats } from "../services/champion-stats";
 import { lolaBuild, type SummonerSpellCombo } from "../services/lolalytics-build";
 import { findEnemyLaner } from "../services/champ-select-utils";
 import type { LcuChampSelectSession } from "../types/lol";
+import { otp } from "../actions/otp";
 
 const logger = streamDeck.logger.createScope("AutoRune");
 
@@ -307,7 +308,10 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 
 			if (!champChanged && !enemyChanged) {
 				// Same champion, same enemy — check auto-apply for runes AND spells
-				if (isLocked && s.autoApply && (!state.applied || !state.spellsApplied) && state.lastRunes.length > 0) {
+				// Check OTP settings: if user has OTP configured for this champion and autoRune is disabled, skip auto-apply
+				const otpConfig = otp.getCurrentOTP();
+				const shouldAutoApply = s.autoApply && (!otpConfig || otpConfig.config.autoRune !== false);
+				if (isLocked && shouldAutoApply && (!state.applied || !state.spellsApplied) && state.lastRunes.length > 0) {
 					await this.applyRunesForAction(a, state, s);
 				}
 				continue;
@@ -427,6 +431,11 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 		const barColor = rune.winRate >= 54 ? "#2ECC71" : rune.winRate >= 50 ? "#F1C40F" : "#E74C3C";
 		const vsTag = state.vsChampName ? ` vs ${state.vsChampName}` : "";
 
+		// Check OTP settings for this champion
+		const otpConfig = otp.getCurrentOTP();
+		const otpDisabled = otpConfig && otpConfig.config.autoRune === false;
+		const otpIndicator = otpDisabled ? " (OTP)" : "";
+
 		// Get the keystone icon for the detected rune
 		const keystoneId = rune.selectedPerkIds[0];
 		const keystoneImg = getKeystoneImage(keystoneId);
@@ -438,7 +447,7 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 		if (a.isDial()) {
 			await a.setFeedback({
 				keystone_icon: keystoneImg ?? "",
-				title: `${shortChamp}${shortVs} · ${label}${appliedMark}`,
+				title: `${shortChamp}${shortVs}${otpIndicator} · ${label}${appliedMark}`,
 				rune_name: rune.keystoneName,
 				rune_info: `${rune.winRate}% WR · ${gamesStr} games${vsTag ? " (matchup)" : ""}`,
 				wr_bar: { value: rune.winRate, bar_fill_c: barColor },
