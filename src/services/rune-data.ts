@@ -39,7 +39,8 @@ const KEYSTONE_NAMES: Record<number, string> = {
 	// Sorcery
 	8214: "Summon Aery",
 	8229: "Arcane Comet",
-	8230: "Phase Rush",
+	8230: "Stormraider's Surge", // replaced Phase Rush in 26.09
+	8992: "Deathfire Touch",     // new in 26.09
 	// Resolve
 	8437: "Grasp of the Undying",
 	8439: "Aftershock",
@@ -224,7 +225,8 @@ export class RuneData {
 	 */
 	private treeFromKeystoneId(id: number): number {
 		if (id >= 8000 && id < 8500) return Math.floor(id / 100) * 100;
-		if (id === 9923) return 8100; // Hail of Blades
+		if (id === 9923) return 8100; // Hail of Blades (Domination)
+		if (id === 8992) return 8200; // Deathfire Touch (Sorcery, 26.09)
 		return 8000;
 	}
 

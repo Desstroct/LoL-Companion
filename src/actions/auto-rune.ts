@@ -62,13 +62,16 @@ function getTreeBase64(treeStyleId: number): string | null {
 const GOLD = "#C89B3C";
 const DARK_BLUE = "#0A1428";
 
+const GREEN = "#27AE60";
+
 /**
  * Compose an SVG key image with primary keystone (large, centered) and
  * secondary tree icon (small badge, bottom-right corner).
+ * When applied=true, the border turns green to indicate runes are active.
  * Returns a data:image/svg+xml;base64 URI ready for setImage().
  */
-function composeRuneImage(keystoneId: number, subStyleId: number): string | null {
-	const cacheKey = `${keystoneId}:${subStyleId}`;
+function composeRuneImage(keystoneId: number, subStyleId: number, applied: boolean): string | null {
+	const cacheKey = `${keystoneId}:${subStyleId}:${applied ? 1 : 0}`;
 	if (composedCache.has(cacheKey)) return composedCache.get(cacheKey)!;
 
 	const ksB64 = getKeystoneBase64(keystoneId);
@@ -95,15 +98,19 @@ function composeRuneImage(keystoneId: number, subStyleId: number): string | null
 		   <image href="data:image/png;base64,${treeB64}" x="${badgeX}" y="${badgeY}" width="${badgeSize}" height="${badgeSize}" clip-path="url(#tc)"/>`
 		: "";
 
+	const borderColor = applied ? GREEN : GOLD;
+	const glowColor = applied ? GREEN : GOLD;
+	const glowOpacity = applied ? "0.28" : "0.22";
+
 	const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${S}" height="${S}">
 		<rect width="${S}" height="${S}" rx="${cr}" fill="${DARK_BLUE}"/>
 		<defs><radialGradient id="g" cx="50%" cy="50%" r="50%">
-			<stop offset="0%" stop-color="${GOLD}" stop-opacity="0.22"/>
-			<stop offset="55%" stop-color="${GOLD}" stop-opacity="0.07"/>
-			<stop offset="100%" stop-color="${GOLD}" stop-opacity="0"/>
+			<stop offset="0%" stop-color="${glowColor}" stop-opacity="${glowOpacity}"/>
+			<stop offset="55%" stop-color="${glowColor}" stop-opacity="0.07"/>
+			<stop offset="100%" stop-color="${glowColor}" stop-opacity="0"/>
 		</radialGradient></defs>
 		<circle cx="72" cy="72" r="55" fill="url(#g)"/>
-		<rect x="${br}" y="${br}" width="${S - br * 2}" height="${S - br * 2}" rx="${cr - br}" stroke="${GOLD}" stroke-width="${br}" fill="none"/>
+		<rect x="${br}" y="${br}" width="${S - br * 2}" height="${S - br * 2}" rx="${cr - br}" stroke="${borderColor}" stroke-width="${br}" fill="none"/>
 		<image href="data:image/png;base64,${ksB64}" x="${pad}" y="${pad}" width="${ksSize}" height="${ksSize}"/>
 		${treeBadge}
 	</svg>`;
@@ -132,15 +139,16 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 		this.startPolling();
 		const role = ev.payload.settings.role ?? "auto";
 		const roleLabel = role === "auto" ? "AUTO" : role.toUpperCase();
+		const mode = ev.payload.settings.autoApply === false ? "Manual" : "Auto";
 		if (ev.action.isDial()) {
 			return ev.action.setFeedback({
-				title: `Auto Rune · ${roleLabel}`,
+				title: `${mode} Rune · ${roleLabel}`,
 				rune_name: "Waiting...",
 				rune_info: "",
 				wr_bar: { value: 0 },
 			});
 		}
-		return ev.action.setTitle(`Auto Rune\n${roleLabel}`);
+		return ev.action.setTitle(`${mode} Rune\n${roleLabel}`);
 	}
 
 	override onWillDisappear(ev: WillDisappearEvent<AutoRuneSettings>): void | Promise<void> {
@@ -251,17 +259,18 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 					const s = (await a.getSettings()) as AutoRuneSettings;
 					const role = s.role ?? "auto";
 					const roleLabel = role === "auto" ? "AUTO" : role.toUpperCase();
+					const mode = s.autoApply === false ? "Manual" : "Auto";
 					if (a.isDial()) {
 						await a.setFeedback({
 							keystone_icon: "",
-							title: `Auto Rune · ${roleLabel}`,
+							title: `${mode} Rune · ${roleLabel}`,
 							rune_name: "Waiting...",
 							rune_info: "",
 							wr_bar: { value: 0 },
 						});
 					} else {
 						await a.setImage("");
-						await a.setTitle(`Auto Rune\n${roleLabel}`);
+						await a.setTitle(`${mode} Rune\n${roleLabel}`);
 					}
 				}
 			}
@@ -409,24 +418,25 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 	private async renderAction(
 		a: DialAction<AutoRuneSettings> | KeyAction<AutoRuneSettings>,
 		state: AutoRuneState,
-		_settings: AutoRuneSettings,
+		settings: AutoRuneSettings,
 	): Promise<void> {
 		const rune = state.lastRunes[state.selectedIndex];
 		const champ = state.lastChampKey ? dataDragon.getChampionByKey(state.lastChampKey) : null;
 		const champName = champ?.name ?? "?";
+		const mode = settings.autoApply === false ? "Manual" : "Auto";
 
 		if (!rune) {
 			if (a.isDial()) {
 				await a.setFeedback({
 					keystone_icon: "",
-					title: champName,
+					title: `${champName} · ${mode}`,
 					rune_name: "No data",
 					rune_info: "",
 					wr_bar: { value: 0 },
 				});
 			} else {
 				await a.setImage("");
-				await a.setTitle(`${champName}\nNo rune data`);
+				await a.setTitle(`${champName}\nNo data`);
 			}
 			return;
 		}
@@ -434,7 +444,10 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 		const label = rune.source === "highest_wr" ? "Best WR" : "Popular";
 		const appliedMark = state.applied && state.spellsApplied ? " ✅" : state.applied ? " ✓" : "";
 		const gamesStr = rune.games >= 1000 ? `${(rune.games / 1000).toFixed(1)}k` : `${rune.games}`;
-		const barColor = rune.winRate >= 54 ? "#2ECC71" : rune.winRate >= 50 ? "#F1C40F" : "#E74C3C";
+		const barColor = state.applied ? GREEN
+			: rune.winRate >= 54 ? "#2ECC71"
+			: rune.winRate >= 50 ? "#F1C40F"
+			: "#E74C3C";
 		const vsTag = state.vsChampName ? ` vs ${state.vsChampName}` : "";
 
 		// Check OTP settings for this champion
@@ -455,19 +468,21 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 				keystone_icon: keystoneImg ?? "",
 				title: `${shortChamp}${shortVs}${otpIndicator} · ${label}${appliedMark}`,
 				rune_name: rune.keystoneName,
-				rune_info: `${rune.winRate}% WR · ${gamesStr} games${vsTag ? " (matchup)" : ""}`,
+				rune_info: `${rune.winRate}% WR · ${gamesStr} games · ${mode}${vsTag ? " (matchup)" : ""}`,
 				wr_bar: { value: rune.winRate, bar_fill_c: barColor },
 			});
 		} else {
-			// Set key image: primary keystone + secondary tree badge
-			const composedImg = composeRuneImage(keystoneId, rune.subStyleId);
+			// Set key image: primary keystone + secondary tree badge, green border when applied
+			const composedImg = composeRuneImage(keystoneId, rune.subStyleId, state.applied);
 			if (composedImg) {
 				await a.setImage(composedImg);
 			} else if (keystoneImg) {
 				await a.setImage(keystoneImg);
 			}
 			await a.setTitle(
-				`${champName}${appliedMark}${vsTag ? `\nvs ${state.vsChampName}` : ""}`,
+				state.applied
+					? `${champName}${appliedMark}${vsTag ? `\nvs ${state.vsChampName}` : ""}`
+					: `${champName}${vsTag ? `\nvs ${state.vsChampName}` : `\n${mode}`}`,
 			);
 		}
 	}

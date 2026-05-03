@@ -16,26 +16,28 @@
             <option value="utility">Support</option>
         </sdpi-select>
     </sdpi-item>
-    <sdpi-item label="Auto Apply">
-        <sdpi-checkbox setting="autoApply" label="Apply runes when champion is locked"></sdpi-checkbox>
+    <sdpi-item label="Mode">
+        <sdpi-checkbox setting="autoApply" label="Automatic — apply runes when you lock in"></sdpi-checkbox>
+        <p style="font-size: 11px; color: #777; margin: 2px 0 0 0; padding: 0 4px;">
+            Unchecked = Manual mode: press the key to apply.
+        </p>
     </sdpi-item>
     <sdpi-item label="Auto Spells">
         <sdpi-checkbox setting="autoSpells" label="Also set optimal summoner spells" default="true"></sdpi-checkbox>
     </sdpi-item>
-    <sdpi-item label="Matchup Mode">
-        <sdpi-checkbox setting="matchup" label="Adapt runes & spells to enemy laner" default="true"></sdpi-checkbox>
+    <sdpi-item label="Matchup">
+        <sdpi-checkbox setting="matchup" label="Adapt runes &amp; spells to enemy laner" default="true"></sdpi-checkbox>
     </sdpi-item>
     <sdpi-item label="Info">
         <details>
             <summary>How it works</summary>
             <p style="font-size: 11px; color: #999; padding: 8px;">
-                During Champion Select, fetches the optimal rune page from Lolalytics for your locked champion.<br><br>
-                <b>Key/Touch:</b> Apply runes to the client.<br>
+                During Champion Select, fetches the optimal rune page from Lolalytics.<br><br>
+                <b>Auto mode:</b> Runes applied automatically when you lock in. Key border turns green on success.<br>
+                <b>Manual mode:</b> Press the key/dial to apply runes when ready.<br><br>
                 <b>Dial rotate:</b> Switch between "Highest WR" and "Most Popular" builds.<br>
-                <b>Auto Apply:</b> When enabled, runes are set automatically when you lock a champion.<br>
-                <b>Auto Spells:</b> When enabled, summoner spells are also set to the highest win-rate combo.<br>
-                <b>Matchup Mode:</b> When enabled, runes and spells are adapted to the enemy laner once they pick.<br>
-                If the matchup has too few games (&lt;50), generic runes are used instead.
+                <b>Auto Spells:</b> Also sets the highest win-rate summoner spell combo.<br>
+                <b>Matchup:</b> Adapts runes to the enemy laner. Falls back to generic if &lt;50 games of data.
             </p>
         </details>
     </sdpi-item>
