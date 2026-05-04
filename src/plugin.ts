@@ -54,19 +54,14 @@ import { LobbyScannerAction } from "./actions/lobby-scanner";
 import { KdaTracker } from "./actions/kda-tracker";
 import { AutoAccept } from "./actions/auto-accept";
 import { SmartPick } from "./actions/smart-pick";
-import { LobbyLevelTracker } from "./actions/lobby-level";
 import { AutoRune } from "./actions/auto-rune";
 import { BestItem } from "./actions/best-item";
 import { DeathTimer } from "./actions/death-timer";
-import { AutoPick } from "./actions/auto-pick";
 import { LpTracker } from "./actions/lp-tracker";
 import { JunglePath } from "./actions/jungle-path";
 import { SkillOrder } from "./actions/skill-order";
 import { RecallWindow } from "./actions/recall-window";
 import { SessionStats } from "./actions/session-stats";
-import { PostGame } from "./actions/post-game";
-import { TftCompAdvisor } from "./actions/tft-comp";
-import { DuoSynergyAction } from "./actions/duo-synergy";
 import { ObjectiveTimer } from "./actions/objective-timer";
 import { otp } from "./actions/otp";
 import { lcuConnector } from "./services/lcu-connector";
@@ -76,7 +71,6 @@ import { championStats } from "./services/champion-stats";
 import { itemBuilds } from "./services/item-builds";
 import { lolaBuild } from "./services/lolalytics-build";
 import { runeData } from "./services/rune-data";
-import { duoSynergy } from "./services/duo-synergy";
 
 streamDeck.logger.setLevel("info");
 
@@ -100,7 +94,6 @@ async function flushCaches() {
 			itemBuilds.flushCache(),
 			lolaBuild.flushCache(),
 			runeData.flushCache(),
-			duoSynergy.flushCache(),
 		]);
 	} catch { /* swallow */ }
 }
@@ -143,19 +136,14 @@ streamDeck.actions.registerAction(new LobbyScannerAction());
 streamDeck.actions.registerAction(new KdaTracker());
 streamDeck.actions.registerAction(new AutoAccept());
 streamDeck.actions.registerAction(new SmartPick());
-streamDeck.actions.registerAction(new LobbyLevelTracker());
 streamDeck.actions.registerAction(new AutoRune());
 streamDeck.actions.registerAction(new BestItem());
 streamDeck.actions.registerAction(new DeathTimer());
-streamDeck.actions.registerAction(new AutoPick());
 streamDeck.actions.registerAction(new LpTracker());
 streamDeck.actions.registerAction(new JunglePath());
 streamDeck.actions.registerAction(new SkillOrder());
 streamDeck.actions.registerAction(new RecallWindow());
 streamDeck.actions.registerAction(new SessionStats());
-streamDeck.actions.registerAction(new PostGame());
-streamDeck.actions.registerAction(new TftCompAdvisor());
-streamDeck.actions.registerAction(new DuoSynergyAction());
 streamDeck.actions.registerAction(new ObjectiveTimer());
 streamDeck.actions.registerAction(otp);
 

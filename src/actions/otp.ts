@@ -1,5 +1,7 @@
 import {
 	action,
+	type KeyAction,
+	type DialAction,
 	SingletonAction,
 	WillAppearEvent,
 	WillDisappearEvent,
@@ -78,10 +80,12 @@ export class OTP extends SingletonAction<OTPSettings> {
 	/** Lolalytics alias of the champion currently being picked in champion select */
 	private activeAlias: string | null = null;
 
-	override async onWillAppear(_ev: WillAppearEvent<OTPSettings>): Promise<void> {
-		await this.loadSavedChampions();
+	override async onWillAppear(ev: WillAppearEvent<OTPSettings>): Promise<void> {
+		// Read directly from the event payload — never depend on this.actions being populated yet
+		const saved = ev.payload.settings?.otpChampions;
+		if (saved) this.otpChampions = new Map(Object.entries(saved));
 		this.startPolling();
-		await this.renderCurrent();
+		await this.renderAction(ev.action);
 	}
 
 	override async onWillDisappear(_ev: WillDisappearEvent<OTPSettings>): Promise<void> {
@@ -139,19 +143,6 @@ export class OTP extends SingletonAction<OTPSettings> {
 
 	private getChampionList(): string[] {
 		return Array.from(this.otpChampions.keys());
-	}
-
-	private async loadSavedChampions(): Promise<void> {
-		try {
-			const actionArray = [...this.actions];
-			if (actionArray.length === 0) return;
-			const settings = await actionArray[0].getSettings() as OTPSettings;
-			if (settings?.otpChampions) {
-				this.otpChampions = new Map(Object.entries(settings.otpChampions));
-			}
-		} catch (e) {
-			logger.warn(`Failed to load OTP settings: ${e}`);
-		}
 	}
 
 	private async saveToSettings(): Promise<void> {
@@ -228,30 +219,20 @@ export class OTP extends SingletonAction<OTPSettings> {
 
 	// ──────────────── Rendering ────────────────
 
-	private async renderCurrent(): Promise<void> {
+	/** Render the current OTP state onto a single action instance. */
+	private async renderAction(a: KeyAction<OTPSettings> | DialAction<OTPSettings>): Promise<void> {
 		const champions = this.getChampionList();
 
 		if (champions.length === 0) {
-			for (const a of this.actions) {
-				if (a.isDial()) {
-					await a.setFeedback({
-						champ_icon: "",
-						title: "OTP",
-						champion: "No champions",
-						info: "Add via settings",
-						status: "",
-					});
-				} else {
-					await a.setImage("");
-					await a.setTitle("OTP\nAdd champ");
-				}
+			if (a.isDial()) {
+				await a.setFeedback({ champ_icon: "", title: "OTP", champion: "No champions", info: "Add via settings", status: "" });
+			} else {
+				await a.setImage(""); await a.setTitle("OTP\nAdd champ");
 			}
 			return;
 		}
 
-		if (this.selectedIndex >= champions.length) {
-			this.selectedIndex = champions.length - 1;
-		}
+		if (this.selectedIndex >= champions.length) this.selectedIndex = champions.length - 1;
 
 		const alias = champions[this.selectedIndex];
 		const config = this.otpChampions.get(alias);
@@ -268,27 +249,28 @@ export class OTP extends SingletonAction<OTPSettings> {
 		if (config.autoRune !== false) features.push("Rune");
 		if (config.autoSpell !== false) features.push("Spell");
 		const infoStr = `${laneLabel} · ${features.length > 0 ? features.join("+") : "No auto"}`;
-
 		const countStr = `${this.selectedIndex + 1}/${champions.length}`;
 
+		if (a.isDial()) {
+			await a.setFeedback({
+				champ_icon: icon ?? "",
+				title: `OTP · ${countStr}`,
+				champion: champName,
+				info: infoStr,
+				status: isActive ? "ACTIVE" : "",
+			});
+		} else {
+			const composedImg = composeChampKey(alias, icon, isActive);
+			if (composedImg) await a.setImage(composedImg);
+			else if (icon) await a.setImage(icon);
+			await a.setTitle(isActive ? `${champName}\nACTIVE` : champName);
+		}
+	}
+
+	/** Re-render all visible instances. */
+	private async renderCurrent(): Promise<void> {
 		for (const a of this.actions) {
-			if (a.isDial()) {
-				await a.setFeedback({
-					champ_icon: icon ?? "",
-					title: `OTP · ${countStr}`,
-					champion: champName,
-					info: infoStr,
-					status: isActive ? "ACTIVE" : "",
-				});
-			} else {
-				const composedImg = composeChampKey(alias, icon, isActive);
-				if (composedImg) {
-					await a.setImage(composedImg);
-				} else if (icon) {
-					await a.setImage(icon);
-				}
-				await a.setTitle(isActive ? `${champName}\nACTIVE` : champName);
-			}
+			await this.renderAction(a);
 		}
 	}
 
