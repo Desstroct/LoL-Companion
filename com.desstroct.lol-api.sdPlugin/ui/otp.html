@@ -283,7 +283,7 @@
         // ── Save ──
 
         function save() {
-            $SD.setSettings({ otpChampions: savedChamps });
+            $SD.setGlobalSettings({ otpChampions: savedChamps });
         }
 
         // ── Event delegation ──
@@ -372,9 +372,9 @@
 
         // ── $SD connection ──
 
-        $SD.on("connected", () => $SD.getSettings());
+        $SD.on("connected", () => $SD.getGlobalSettings());
 
-        $SD.on("didReceiveSettings", ({ payload }) => {
+        $SD.on("didReceiveGlobalSettings", ({ payload }) => {
             savedChamps = (payload.settings && payload.settings.otpChampions) || {};
             renderList();
         });

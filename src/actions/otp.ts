@@ -5,7 +5,6 @@ import {
 	SingletonAction,
 	WillAppearEvent,
 	WillDisappearEvent,
-	DidReceiveSettingsEvent,
 	KeyDownEvent,
 	DialRotateEvent,
 	DialUpEvent,
@@ -80,25 +79,30 @@ export class OTP extends SingletonAction<OTPSettings> {
 	/** Lolalytics alias of the champion currently being picked in champion select */
 	private activeAlias: string | null = null;
 
+	constructor() {
+		super();
+		// Live updates from the PI (setGlobalSettings triggers this)
+		streamDeck.settings.onDidReceiveGlobalSettings<OTPSettings>((ev) => {
+			const champs = ev.settings?.otpChampions;
+			this.otpChampions = champs ? new Map(Object.entries(champs)) : new Map();
+			champKeyCache.clear();
+			this.renderCurrent().catch(() => {});
+		});
+	}
+
 	override async onWillAppear(ev: WillAppearEvent<OTPSettings>): Promise<void> {
-		// Read directly from the event payload — never depend on this.actions being populated yet
-		const saved = ev.payload.settings?.otpChampions;
-		if (saved) this.otpChampions = new Map(Object.entries(saved));
+		try {
+			const settings = await streamDeck.settings.getGlobalSettings<OTPSettings>();
+			if (settings?.otpChampions) {
+				this.otpChampions = new Map(Object.entries(settings.otpChampions));
+			}
+		} catch {}
 		this.startPolling();
 		await this.renderAction(ev.action);
 	}
 
 	override async onWillDisappear(_ev: WillDisappearEvent<OTPSettings>): Promise<void> {
 		if (this.actions.length === 0) this.stopPolling();
-	}
-
-	override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<OTPSettings>): Promise<void> {
-		champKeyCache.clear();
-		const otpChampions = ev.payload.settings?.otpChampions;
-		if (otpChampions) {
-			this.otpChampions = new Map(Object.entries(otpChampions));
-		}
-		await this.renderCurrent();
 	}
 
 	override async onKeyDown(_ev: KeyDownEvent<OTPSettings>): Promise<void> {
@@ -148,9 +152,7 @@ export class OTP extends SingletonAction<OTPSettings> {
 	private async saveToSettings(): Promise<void> {
 		try {
 			const championsObj = Object.fromEntries(this.otpChampions);
-			for (const a of this.actions) {
-				await a.setSettings({ otpChampions: championsObj } as OTPSettings);
-			}
+			await streamDeck.settings.setGlobalSettings({ otpChampions: championsObj });
 		} catch (e) {
 			logger.warn(`Failed to save OTP settings: ${e}`);
 		}
