@@ -418,7 +418,7 @@
 		{
 			"Name": "Objective Timer",
 			"UUID": "com.desstroct.lol-api.objective-timer",
-			"Icon": "imgs/actions/jungle-timer/icon",
+			"Icon": "imgs/actions/objective-timer/icon",
 			"Tooltip": "Tracks Dragon, Baron, and Rift Herald respawn timers in real-time during games. Dial: rotate to cycle objectives, press to switch view.",
 			"PropertyInspectorPath": "ui/objective-timer.html",
 			"Controllers": [
@@ -435,7 +435,7 @@
 			},
 			"States": [
 				{
-					"Image": "imgs/actions/jungle-timer/key",
+					"Image": "imgs/actions/objective-timer/key",
 					"TitleAlignment": "middle"
 				}
 			]
