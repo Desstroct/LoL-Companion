@@ -18,7 +18,6 @@ import { dataDragon } from "../services/data-dragon";
 import { championStats, ChampionStats } from "../services/champion-stats";
 import { getChampionIcon, prefetchChampionIcons } from "../services/lol-icons";
 import { findEnemyLaner, getUnavailableAliases, championMatchesLane } from "../services/champ-select-utils";
-import { otp } from "../actions/otp";
 
 const logger = streamDeck.logger.createScope("SmartPick");
 
@@ -232,37 +231,10 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 			const lane = ChampionStats.toLolalyticsLane(role);
 			const state = this.getState(a.id, settings.defaultMode);
 
-			// Check OTP settings for current champion
-			const otpSettings = otp.getCurrentOTP();
-			let effectiveMode = state.mode;
-			if (otpSettings) {
-				if (otpSettings.config.counterMode === false && effectiveMode === "counter") {
-					effectiveMode = "best";
-				} else if (otpSettings.config.bestMode === false && effectiveMode === "best") {
-					effectiveMode = "counter";
-				}
-				// If both modes are disabled, show disabled state
-				if (otpSettings.config.counterMode === false && otpSettings.config.bestMode === false) {
-					const modeLabel = state.mode === "counter" ? "Counter" : "Best";
-					if (a.isDial()) {
-						await a.setFeedback({
-							champ_icon: "",
-							title: `${modeLabel} · ${role.toUpperCase()} (OTP)`,
-							pick_name: "Disabled",
-							pick_info: "",
-							score_bar: { value: 0 }
-						});
-					} else {
-						await a.setTitle(`${modeLabel}\nDisabled`);
-					}
-					continue;
-				}
-			}
-
-			if (effectiveMode === "counter") {
-				await this.updateCounterMode(a, session, role, lane, state, effectiveMode);
+			if (state.mode === "counter") {
+				await this.updateCounterMode(a, session, role, lane, state);
 			} else {
-				await this.updateBestMode(a, session, role, lane, state, effectiveMode);
+				await this.updateBestMode(a, session, role, lane, state);
 			}
 		}
 	}
@@ -273,7 +245,6 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 		role: string,
 		lane: string,
 		state: SmartPickState,
-		effectiveMode: PickMode = state.mode,
 	): Promise<void> {
 		if (!session) return;
 
@@ -282,9 +253,8 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 		const enemy = enemyResult?.player ?? null;
 
 		if (!enemy) {
-			const otpIndicator = effectiveMode !== state.mode ? " (OTP)" : "";
 			if (a.isDial()) {
-				await a.setFeedback({ title: `⚔️ Counter · ${role.toUpperCase()}${otpIndicator}`, pick_name: "No enemy yet", pick_info: "", champ_icon: "", score_bar: { value: 0 } });
+				await a.setFeedback({ title: `⚔️ Counter · ${role.toUpperCase()}`, pick_name: "No enemy yet", pick_info: "", champ_icon: "", score_bar: { value: 0 } });
 			} else {
 				await a.setTitle(`Counter\nNo enemy`);
 			}
@@ -335,9 +305,8 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 			prefetchChampionIcons(picks.slice(0, 5).map((p) => p.alias));
 
 			if (picks.length === 0) {
-				const otpIndicator = effectiveMode !== state.mode ? " (OTP)" : "";
 				if (a.isDial()) {
-					await a.setFeedback({ title: `⚔️ vs ${enemyChamp.name}${otpIndicator}`, pick_name: "No data", pick_info: "", champ_icon: "", score_bar: { value: 0 } });
+					await a.setFeedback({ title: `⚔️ vs ${enemyChamp.name}`, pick_name: "No data", pick_info: "", champ_icon: "", score_bar: { value: 0 } });
 				} else {
 					await a.setTitle(`vs ${enemyChamp.name}\nNo data`);
 				}
@@ -352,9 +321,8 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 			}
 		} catch (e) {
 			logger.error(`Counter mode error: ${e}`);
-			const otpIndicator = effectiveMode !== state.mode ? " (OTP)" : "";
 			if (a.isDial()) {
-				await a.setFeedback({ title: `vs ${enemyChamp.name}${otpIndicator}`, pick_name: "Error", pick_info: "", champ_icon: "", score_bar: { value: 0 } });
+				await a.setFeedback({ title: `vs ${enemyChamp.name}`, pick_name: "Error", pick_info: "", champ_icon: "", score_bar: { value: 0 } });
 			} else {
 				await a.setTitle(`Counter\nError`);
 			}
@@ -367,7 +335,6 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 		role: string,
 		lane: string,
 		state: SmartPickState,
-		effectiveMode: PickMode = state.mode,
 	): Promise<void> {
 		if (!session) return;
 
@@ -402,9 +369,8 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 		}
 
 		if (allEnemyAliases.length === 0) {
-			const otpIndicator = effectiveMode !== state.mode ? " (OTP)" : "";
 			if (a.isDial()) {
-				await a.setFeedback({ title: `★ Best · ${role.toUpperCase()}${otpIndicator}`, pick_name: "No enemy yet", pick_info: "", champ_icon: "", score_bar: { value: 0 } });
+				await a.setFeedback({ title: `★ Best · ${role.toUpperCase()}`, pick_name: "No enemy yet", pick_info: "", champ_icon: "", score_bar: { value: 0 } });
 			} else {
 				await a.setTitle(`Best\nNo enemy`);
 			}
@@ -447,9 +413,8 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 			prefetchChampionIcons(picks.slice(0, 5).map((p) => p.alias));
 
 			if (picks.length === 0) {
-				const otpIndicator = effectiveMode !== state.mode ? " (OTP)" : "";
 				if (a.isDial()) {
-					await a.setFeedback({ title: `★ ${state.lastInfo}${otpIndicator}`, pick_name: "No data", pick_info: "", champ_icon: "", score_bar: { value: 0 } });
+					await a.setFeedback({ title: `★ ${state.lastInfo}`, pick_name: "No data", pick_info: "", champ_icon: "", score_bar: { value: 0 } });
 				} else {
 					await a.setTitle(`Best\nNo data`);
 				}
@@ -464,9 +429,8 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 			}
 		} catch (e) {
 			logger.error(`Best mode error: ${e}`);
-			const otpIndicator = effectiveMode !== state.mode ? " (OTP)" : "";
 			if (a.isDial()) {
-				await a.setFeedback({ title: `★ Best · ${role.toUpperCase()}${otpIndicator}`, pick_name: "Error", pick_info: "", champ_icon: "", score_bar: { value: 0 } });
+				await a.setFeedback({ title: `★ Best · ${role.toUpperCase()}`, pick_name: "Error", pick_info: "", champ_icon: "", score_bar: { value: 0 } });
 			} else {
 				await a.setTitle(`Best\nError`);
 			}

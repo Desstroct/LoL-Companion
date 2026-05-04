@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(npx eslint *)",
+      "WebSearch",
+      "WebFetch(domain:www.leagueoflegends.com)",
+      "WebFetch(domain:wiki.leagueoflegends.com)",
+      "WebFetch(domain:metabot.gg)",
+      "PowerShell(streamdeck restart com.desstroct.lol-api 2>&1)",
+      "PowerShell(streamdeck restart com.desstroct.lol-api)",
+      "Bash(Remove-Item -Force \"c:\\\\Users\\\\guigu\\\\lol-api\\\\src\\\\actions\\\\auto-pick.ts\" \"c:\\\\Users\\\\guigu\\\\lol-api\\\\src\\\\actions\\\\duo-synergy.ts\" \"c:\\\\Users\\\\guigu\\\\lol-api\\\\src\\\\actions\\\\post-game.ts\" \"c:\\\\Users\\\\guigu\\\\lol-api\\\\src\\\\actions\\\\lobby-level.ts\" \"c:\\\\Users\\\\guigu\\\\lol-api\\\\src\\\\actions\\\\tft-comp.ts\" \"c:\\\\Users\\\\guigu\\\\lol-api\\\\src\\\\services\\\\duo-synergy.ts\")",
+      "PowerShell(Get-ChildItem \"$env:APPDATA\\\\Elgato\\\\StreamDeck\\\\logs\\\\\" | Sort-Object LastWriteTime -Descending | Select-Object -First 5 | Format-Table Name, LastWriteTime)",
+      "PowerShell(Get-ChildItem \"$env:APPDATA\\\\Elgato\\\\StreamDeck\\\\logs\\\\\" | Format-Table Name, LastWriteTime)",
+      "PowerShell(Get-Process -Name \"node\" -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-ChildItem \"$env:APPDATA\\\\Elgato\\\\StreamDeck\\\\logs\\\\\" | Where-Object { $_.LastWriteTime -gt \\(Get-Date\\).AddMinutes\\(-30\\) } | Format-Table Name, LastWriteTime)",
+      "PowerShell(Get-Content \"$env:APPDATA\\\\Elgato\\\\StreamDeck\\\\logs\\\\StreamDeck.log\" -Tail 30 2>&1)",
+      "PowerShell(Get-Content \"$env:APPDATA\\\\Elgato\\\\StreamDeck\\\\logs\\\\StreamDeck.log\" | Select-String \"lol-api\" | Select-Object -Last 30)",
+      "PowerShell(Get-ChildItem \"$env:APPDATA\\\\Elgato\\\\StreamDeck\\\\ProfilesV2\" | Format-Table Name, LastWriteTime; Write-Host \"---\"; Get-ChildItem \"$env:APPDATA\\\\Elgato\\\\StreamDeck\\\\ProfilesV2\\\\B48DF08E-8FC4-406D-B090-64DC734C30DD.sdProfile\\\\manifest.json\" | Select-Object -First 1 | ForEach-Object { $c = Get-Content $_.FullName -Raw | ConvertFrom-Json; Write-Host \"Device: $\\($c.Device.Model\\)\" })",
+      "PowerShell(Get-ChildItem \"$env:APPDATA\\\\Elgato\\\\StreamDeck\\\\ProfilesV3\" -Recurse | Where-Object { -not $_.PSIsContainer } | Format-Table FullName, Length, LastWriteTime | Select-Object -First 30)",
+      "PowerShell(Get-ChildItem \"$env:APPDATA\\\\Elgato\\\\StreamDeck\\\\ProfilesV3\" -Recurse | Format-Table FullName, Length, LastWriteTime | Select-Object -First 30)"
+    ]
+  }
+}

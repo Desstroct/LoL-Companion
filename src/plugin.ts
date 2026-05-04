@@ -63,7 +63,6 @@ import { SkillOrder } from "./actions/skill-order";
 import { RecallWindow } from "./actions/recall-window";
 import { SessionStats } from "./actions/session-stats";
 import { ObjectiveTimer } from "./actions/objective-timer";
-import { otp } from "./actions/otp";
 import { lcuConnector } from "./services/lcu-connector";
 import { gameMode } from "./services/game-mode";
 import { dataDragon } from "./services/data-dragon";
@@ -145,7 +144,6 @@ streamDeck.actions.registerAction(new SkillOrder());
 streamDeck.actions.registerAction(new RecallWindow());
 streamDeck.actions.registerAction(new SessionStats());
 streamDeck.actions.registerAction(new ObjectiveTimer());
-streamDeck.actions.registerAction(otp);
 
 // Connect to Stream Deck and initialize
 streamDeck.connect().then(() => {

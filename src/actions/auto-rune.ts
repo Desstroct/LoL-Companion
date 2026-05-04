@@ -23,7 +23,6 @@ import { ChampionStats } from "../services/champion-stats";
 import { lolaBuild, type SummonerSpellCombo } from "../services/lolalytics-build";
 import { findEnemyLaner } from "../services/champ-select-utils";
 import { getRuneIcon } from "../services/lol-icons";
-import { otp } from "../actions/otp";
 
 const logger = streamDeck.logger.createScope("AutoRune");
 
@@ -310,10 +309,8 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 			const s = (await a.getSettings()) as AutoRuneSettings;
 			const state = this.getState(a.id);
 
-			// Determine lane / role — OTP preferred lane overrides LCU assignment
 			const myPosition = (s.role && s.role !== "auto" ? s.role : null) ?? me.assignedPosition ?? "";
-			const otpLaneOverride = otp.getOTPForChampion(champAlias)?.preferredLane;
-			const effectivePosition = (otpLaneOverride && otpLaneOverride !== "auto") ? otpLaneOverride : myPosition;
+			const effectivePosition = myPosition;
 			const lane = gameMode.isARAM()
 				? "aram"
 				: ChampionStats.toLolalyticsLane(effectivePosition || "top");
@@ -331,9 +328,7 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 
 			if (!champChanged && !enemyChanged && !shouldRetry) {
 				// Same champion, same enemy — check auto-apply for runes AND spells
-				// Check OTP settings: if user has OTP configured for this champion and autoRune is disabled, skip auto-apply
-				const otpConfig = otp.getOTPForChampion(champAlias);
-				const shouldAutoApply = s.autoApply && (!otpConfig || otpConfig.autoRune !== false);
+				const shouldAutoApply = s.autoApply;
 				if (isLocked && shouldAutoApply && (!state.applied || !state.spellsApplied) && state.lastRunes.length > 0) {
 					await this.applyRunesForAction(a, state, s);
 				}
@@ -462,12 +457,6 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 			: "#E74C3C";
 		const vsTag = state.vsChampName ? ` vs ${state.vsChampName}` : "";
 
-		// Check OTP settings for this champion
-		const champAlias = champ ? ChampionStats.toLolalytics(champ.id) : null;
-		const otpConfig = champAlias ? otp.getOTPForChampion(champAlias) : null;
-		const otpDisabled = otpConfig?.autoRune === false;
-		const otpIndicator = otpDisabled ? " (OTP)" : "";
-
 		// Get the keystone icon for the detected rune
 		const keystoneId = rune.selectedPerkIds[0];
 		const keystoneImg = await getKeystoneImage(keystoneId);
@@ -479,7 +468,7 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 		if (a.isDial()) {
 			await a.setFeedback({
 				keystone_icon: keystoneImg ?? "",
-				title: `${shortChamp}${shortVs}${otpIndicator} · ${label}${appliedMark}`,
+				title: `${shortChamp}${shortVs} · ${label}${appliedMark}`,
 				rune_name: rune.keystoneName,
 				rune_info: `${rune.winRate}% WR · ${gamesStr} games · ${mode}${vsTag ? " (matchup)" : ""}`,
 				wr_bar: { value: rune.winRate, bar_fill_c: barColor },
