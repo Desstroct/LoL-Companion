@@ -40,9 +40,10 @@ export class ItemBuilds {
 	 *
 	 * @param championAlias Lolalytics alias (e.g., "aatrox", "masteryi")
 	 * @param lane Lolalytics lane (e.g., "top", "jungle", "middle", "bottom", "support")
+	 * @param style When provided, picks the most-played build of that damage type instead of overall most-played
 	 */
-	async getBuild(championAlias: string, lane: string): Promise<ItemBuild | null> {
-		const key = `${championAlias}:${lane}`;
+	async getBuild(championAlias: string, lane: string, style?: "ap" | "ad"): Promise<ItemBuild | null> {
+		const key = style ? `${championAlias}:${lane}:${style}` : `${championAlias}:${lane}`;
 		const cached = await this.cache.get(key);
 
 		if (cached) {
@@ -86,7 +87,7 @@ export class ItemBuilds {
 					continue;
 				}
 
-				const build = this.extractBuild(json.itemSets);
+				const build = this.extractBuild(json.itemSets, style);
 
 				if (!build || build.fullBuild.length === 0) {
 					logger.warn(`Parsed no build data for ${championAlias} ${lane} (attempt ${attempt + 1})`);
@@ -114,16 +115,66 @@ export class ItemBuilds {
 	// ─────────── Build extraction ───────────
 
 	/**
+	 * Classify a set of item IDs as an AP or AD build using DDragon tags.
+	 * "SpellDamage" tag = AP signal; "Damage" tag = AD signal.
+	 */
+	private classifyBuildStyle(itemIds: number[]): "ap" | "ad" | "generic" {
+		let ap = 0, ad = 0;
+		for (const id of itemIds) {
+			const tags = dataDragon.getItem(String(id))?.tags ?? [];
+			if (tags.includes("SpellDamage")) ap++;
+			if (tags.includes("Damage")) ad++;
+		}
+		if (ap > ad) return "ap";
+		if (ad > ap) return "ad";
+		return "generic";
+	}
+
+	/**
+	 * Pick the most-played build entry matching a specific style.
+	 * Falls back to most-played overall if no matching entry found.
+	 */
+	private getBestSetForStyle(
+		entries: [string, number, number][] | undefined,
+		expectedLen: number,
+		style: "ap" | "ad",
+	): number[] {
+		if (!entries || entries.length === 0) return [];
+
+		const candidates = [...entries]
+			.filter(([, games]) => games >= 5)
+			.map(([ids, games]) => ({
+				items: ids.split("_").map(Number).filter((n) => !isNaN(n) && n > 0),
+				games,
+			}))
+			.filter((e) => e.items.length >= Math.max(expectedLen - 1, 4));
+
+		const matching = candidates
+			.filter((e) => this.classifyBuildStyle(e.items) === style)
+			.sort((a, b) => b.games - a.games);
+
+		if (matching.length > 0 && matching[0].items.length >= expectedLen) {
+			return matching[0].items;
+		}
+
+		// No style-specific entry — fall back to most-played
+		return this.getBestSet(entries, expectedLen);
+	}
+
+	/**
 	 * Extract the best full build from the `build-itemset` API data.
 	 *
 	 * Strategy:
 	 * 1. Full build (6 items with boots): pick from `itemBootSet6` by most played
+	 *    → when style is provided, prefer the most-played entry of that type
 	 *    → fallback to building slot-by-slot from `itemSet1..5` + boots
 	 * 2. Starting items: inferred (API doesn't provide them explicitly)
 	 */
-	private extractBuild(sets: Record<string, [string, number, number][]>): ItemBuild | null {
+	private extractBuild(sets: Record<string, [string, number, number][]>, style?: "ap" | "ad"): ItemBuild | null {
 		// ── Full build (6 items with boots) ──
-		let fullBuild = this.getBestSet(sets.itemBootSet6, 6);
+		let fullBuild = style
+			? this.getBestSetForStyle(sets.itemBootSet6, 6, style)
+			: this.getBestSet(sets.itemBootSet6, 6);
 
 		// Fallback: build slot-by-slot
 		if (fullBuild.length < 4) {

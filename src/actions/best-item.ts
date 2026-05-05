@@ -31,6 +31,7 @@ interface BestItemState {
 	currentBuild: ItemBuild | null;
 	currentChampion: string | null;
 	currentLane: string | null;
+	currentStyle: "ap" | "ad" | null;
 	browseIndex: number; // -1 = auto (next item)
 }
 
@@ -92,7 +93,7 @@ export class BestItem extends SingletonAction {
 	private getState(actionId: string): BestItemState {
 		let s = this.actionStates.get(actionId);
 		if (!s) {
-			s = { currentBuild: null, currentChampion: null, currentLane: null, browseIndex: -1 };
+			s = { currentBuild: null, currentChampion: null, currentLane: null, currentStyle: null, browseIndex: -1 };
 			this.actionStates.set(actionId, s);
 		}
 		return s;
@@ -182,17 +183,27 @@ export class BestItem extends SingletonAction {
 			return;
 		}
 
+		// Detect AP/AD style from items the player already owns, with rune fallback
+		const { fullRunes } = allData.activePlayer;
+		const detectedStyle = detectBuildStyle(
+			me.items,
+			fullRunes.primaryRuneTree.id,
+			fullRunes.secondaryRuneTree.id,
+		);
+
 		for (const a of this.actions) {
 			const state = this.getState(a.id);
 
-if (champName !== state.currentChampion || lane !== state.currentLane || (!state.currentBuild && !this.buildPromise)) {
+			const styleChanged = detectedStyle !== state.currentStyle;
+			if (champName !== state.currentChampion || lane !== state.currentLane || styleChanged || (!state.currentBuild && !this.buildPromise)) {
 				state.currentChampion = champName;
 				state.currentLane = lane;
+				state.currentStyle = detectedStyle;
 				state.currentBuild = null;
 				state.browseIndex = -1;
 
-				// Cooldown: skip refetch if we recently failed (60s)
-				if (Date.now() < this.buildFailedUntil) continue;
+				// Cooldown: skip refetch if we recently failed (60s) — but always retry on style change
+				if (!styleChanged && Date.now() < this.buildFailedUntil) continue;
 
 				if (!this.buildPromise) {
 					if (a.isDial()) {
@@ -202,7 +213,7 @@ if (champName !== state.currentChampion || lane !== state.currentLane || (!state
 					}
 
 					const alias = ItemBuilds.toAlias(champName);
-					this.buildPromise = itemBuilds.getBuild(alias, lane).catch((e) => {
+					this.buildPromise = itemBuilds.getBuild(alias, lane, detectedStyle ?? undefined).catch((e) => {
 						logger.error(`Failed to fetch build: ${e}`);
 						return null;
 					});
@@ -247,10 +258,12 @@ if (champName !== state.currentChampion || lane !== state.currentLane || (!state
 			let displaySlotLabel: string;
 			let isNextToBuy: boolean;
 
+			const styleLabel = state.currentStyle ? ` · ${state.currentStyle.toUpperCase()}` : "";
+
 			if (state.browseIndex >= 0 && state.browseIndex < build.length) {
 				// ── Browse mode: show the item at browseIndex ──
 				displayItemId = build[state.browseIndex];
-				displaySlotLabel = `Item ${state.browseIndex + 1}/${build.length}`;
+				displaySlotLabel = `Item ${state.browseIndex + 1}/${build.length}${styleLabel}`;
 				isNextToBuy = false;
 			} else {
 				// ── Auto mode: find next item to buy ──
@@ -275,7 +288,7 @@ if (champName !== state.currentChampion || lane !== state.currentLane || (!state
 				}
 
 				displayItemId = build[nextIdx];
-				displaySlotLabel = `NEXT (${nextIdx + 1}/${build.length})`;
+				displaySlotLabel = `NEXT (${nextIdx + 1}/${build.length})${styleLabel}`;
 				isNextToBuy = true;
 			}
 
@@ -364,6 +377,43 @@ if (champName !== state.currentChampion || lane !== state.currentLane || (!state
 }
 
 // ── Helpers ──
+
+/**
+ * Infer AP/AD build style from the player's current items and rune trees.
+ *
+ * Items take priority: count DDragon "SpellDamage" tags (AP) vs "Damage" tags (AD).
+ * Falls back to rune tree IDs when items don't give a clear signal
+ * (8200=Sorcery→AP, 8000=Precision/8400=Resolve→AD, Domination uses secondary tree).
+ */
+function detectBuildStyle(
+	playerItems: { itemID: number }[],
+	primaryTreeId: number,
+	secondaryTreeId: number,
+): "ap" | "ad" | null {
+	let ap = 0, ad = 0;
+	for (const item of playerItems) {
+		const tags = dataDragon.getItem(String(item.itemID))?.tags ?? [];
+		if (tags.includes("SpellDamage")) ap++;
+		if (tags.includes("Damage")) ad++;
+	}
+	if (ap > ad) return "ap";
+	if (ad > ap) return "ad";
+
+	// Item signal inconclusive — use rune trees
+	const SORCERY = 8200, PRECISION = 8000, RESOLVE = 8400, DOMINATION = 8100;
+	if (primaryTreeId === SORCERY) return "ap";
+	if (primaryTreeId === PRECISION || primaryTreeId === RESOLVE) return "ad";
+	// Domination primary: use secondary tree as tiebreaker
+	if (primaryTreeId === DOMINATION) {
+		if (secondaryTreeId === SORCERY) return "ap";
+		if (secondaryTreeId === PRECISION) return "ad";
+	}
+	// Inspiration primary: use secondary tree
+	if (secondaryTreeId === SORCERY) return "ap";
+	if (secondaryTreeId === PRECISION || secondaryTreeId === RESOLVE) return "ad";
+
+	return null;
+}
 
 function formatGold(gold: number): string {
 	if (gold >= 1000) return `${(gold / 1000).toFixed(1)}k`;
