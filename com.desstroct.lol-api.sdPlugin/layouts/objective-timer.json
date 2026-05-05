@@ -10,14 +10,14 @@
 		{
 			"key": "title",
 			"type": "text",
-			"rect": [48, 6, 148, 22],
+			"rect": [56, 6, 140, 22],
 			"font": { "size": 14, "weight": 700 },
 			"alignment": "left"
 		},
 		{
 			"key": "timer_text",
 			"type": "text",
-			"rect": [48, 28, 100, 22],
+			"rect": [56, 28, 92, 22],
 			"font": { "size": 18, "weight": 700 },
 			"alignment": "left",
 			"color": "#FFFFFF"
