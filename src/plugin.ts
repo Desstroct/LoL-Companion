@@ -64,6 +64,7 @@ import { RecallWindow } from "./actions/recall-window";
 import { SessionStats } from "./actions/session-stats";
 import { ObjectiveTimer } from "./actions/objective-timer";
 import { WaveClock } from "./actions/wave-clock";
+import { CsTracker } from "./actions/cs-tracker";
 import { lcuConnector } from "./services/lcu-connector";
 import { gameMode } from "./services/game-mode";
 import { dataDragon } from "./services/data-dragon";
@@ -146,6 +147,7 @@ streamDeck.actions.registerAction(new RecallWindow());
 streamDeck.actions.registerAction(new SessionStats());
 streamDeck.actions.registerAction(new ObjectiveTimer());
 streamDeck.actions.registerAction(new WaveClock());
+streamDeck.actions.registerAction(new CsTracker());
 
 // Connect to Stream Deck and initialize
 streamDeck.connect().then(() => {
