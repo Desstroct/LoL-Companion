@@ -131,7 +131,7 @@ export class CsTracker extends SingletonAction {
 		);
 		if (!me) return;
 
-		const myCs = me.scores.minionsKilled + me.scores.neutralMinionsKilled;
+		const myCs = me.scores.creepScore;
 		const myPosition = me.position; // "TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"
 		const gameTime = allData.gameData.gameTime;
 
@@ -159,7 +159,7 @@ export class CsTracker extends SingletonAction {
 			return;
 		}
 
-		const enemyCs = enemy.scores.minionsKilled + enemy.scores.neutralMinionsKilled;
+		const enemyCs = enemy.scores.creepScore;
 		const delta = myCs - enemyCs;
 		const goldDiff = Math.abs(delta) * GOLD_PER_CS;
 		const verdict = getVerdict(delta);
