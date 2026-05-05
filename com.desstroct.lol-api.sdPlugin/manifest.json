@@ -332,6 +332,31 @@
 					"TitleAlignment": "middle"
 				}
 			]
+		},
+		{
+			"Name": "Wave Clock",
+			"UUID": "com.desstroct.lol-api.wave-clock",
+			"Icon": "imgs/actions/objective-timer/icon",
+			"Tooltip": "Countdown to the next wave and cannon wave. Press key or dial to toggle Top/Mid/Bot. Auto-detects lane in game.",
+			"PropertyInspectorPath": "ui/wave-clock.html",
+			"Controllers": [
+				"Keypad",
+				"Encoder"
+			],
+			"Encoder": {
+				"layout": "layouts/wave-clock.json",
+				"TriggerDescription": {
+					"Rotate": "Change lane",
+					"Push": "Change lane",
+					"Touch": "Change lane"
+				}
+			},
+			"States": [
+				{
+					"Image": "imgs/actions/objective-timer/key",
+					"TitleAlignment": "middle"
+				}
+			]
 		}
 	],
 	"Category": "LoL Companion",

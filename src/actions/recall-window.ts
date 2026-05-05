@@ -11,10 +11,12 @@ import {
 	TouchTapEvent,
 } from "@elgato/streamdeck";
 import streamDeck from "@elgato/streamdeck";
+import { Buffer } from "node:buffer";
 import { gameClient } from "../services/game-client";
 import { gameMode } from "../services/game-mode";
 import { dataDragon } from "../services/data-dragon";
 import { itemBuilds, ItemBuilds } from "../services/item-builds";
+import { getItemIcon } from "../services/lol-icons";
 import type { GamePlayer, GameEvent } from "../types/lol";
 
 const logger = streamDeck.logger.createScope("RecallWindow");
@@ -104,12 +106,17 @@ interface RecallState {
 	buildChamp: string;
 	/** Guard flag to prevent concurrent build item loads */
 	buildItemsLoading: boolean;
+	/** Dial browse offset into upcoming breakpoints (0 = current target) */
+	browseOffset: number;
+	/** Item ID of the currently displayed target (for icon fetch) */
+	nextItemId: number | null;
+	/** Fetched icon data URI for the current target item */
+	nextItemIcon: string | null;
+	/** True when gold was already sufficient last tick (avoids re-fetching icon on every tick) */
+	wasGoldReady: boolean;
 }
 
-type RecallWindowSettings = {
-	/** Custom gold target (overrides auto-detection if set) */
-	goldTarget?: number;
-};
+type RecallWindowSettings = Record<string, never>;
 
 /**
  * Recall Window action — smart recall advisor.
@@ -154,19 +161,18 @@ export class RecallWindow extends SingletonAction<RecallWindowSettings> {
 		await this.updateAll();
 	}
 
-	/** Dial rotate: adjust gold target by ±50 */
+	/** Dial rotate: browse upcoming items in build path */
 	override async onDialRotate(ev: DialRotateEvent<RecallWindowSettings>): Promise<void> {
-		const settings = (await ev.action.getSettings()) as RecallWindowSettings;
-		const current = settings.goldTarget ?? 1100;
-		const newTarget = Math.max(100, current + ev.payload.ticks * 50);
-		await ev.action.setSettings({ ...settings, goldTarget: newTarget });
+		const state = this.getState(ev.action.id);
+		const total = state.componentBreakpoints.length;
+		if (total === 0) return;
+		state.browseOffset = ((state.browseOffset + ev.payload.ticks) % total + total) % total;
 		await this.updateAll();
 	}
 
-	/** Dial press: reset to auto target */
-	override async onDialUp(ev: DialUpEvent<RecallWindowSettings>): Promise<void> {
-		const settings = (await ev.action.getSettings()) as RecallWindowSettings;
-		await ev.action.setSettings({ ...settings, goldTarget: undefined });
+	/** Dial press: jump back to current target */
+	override async onDialUp(_ev: DialUpEvent<RecallWindowSettings>): Promise<void> {
+		for (const a of this.actions) this.getState(a.id).browseOffset = 0;
 		await this.updateAll();
 	}
 
@@ -203,6 +209,10 @@ export class RecallWindow extends SingletonAction<RecallWindowSettings> {
 				voidgrubKillCount: 0,
 				buildChamp: "",
 				buildItemsLoading: false,
+				browseOffset: 0,
+				nextItemId: null,
+				nextItemIcon: null,
+				wasGoldReady: false,
 			};
 			this.actionStates.set(actionId, s);
 		}
@@ -296,7 +306,6 @@ export class RecallWindow extends SingletonAction<RecallWindowSettings> {
 		const enemyLaner = this.findEnemyLaner(allData.allPlayers, myTeam, myPosition);
 
 		for (const a of this.actions) {
-			const settings = (await a.getSettings()) as RecallWindowSettings;
 			const state = this.getState(a.id);
 
 			state.currentGold = currentGold;
@@ -343,9 +352,15 @@ export class RecallWindow extends SingletonAction<RecallWindowSettings> {
 			this.updateGoldRate(state, currentGold, gameTime);
 
 			// Find next gold target (champion + build aware)
-			const { target, label } = this.findNextTarget(state, playerItemIds, settings);
+			const { target, label, itemId } = this.findNextTarget(state, playerItemIds);
 			state.targetGold = target;
 			state.targetLabel = label;
+
+			// Fetch item icon when target changes
+			if (itemId !== state.nextItemId) {
+				state.nextItemId = itemId;
+				state.nextItemIcon = itemId ? (await getItemIcon(itemId) ?? null) : null;
+			}
 
 			// Gold readiness
 			state.goldReady = currentGold >= target;
@@ -737,62 +752,48 @@ export class RecallWindow extends SingletonAction<RecallWindowSettings> {
 
 	// ── Target finding ──
 
-	/**
-	 * Find the next meaningful gold target.
-	 * Priority:
-	 * 1. Custom gold target from settings
-	 * 2. Next un-purchased component/item from build path
-	 * 3. Fallback defaults
-	 */
 	private findNextTarget(
 		state: RecallState,
 		playerItemIds: Set<number>,
-		settings: RecallWindowSettings,
-	): { target: number; label: string } {
-		// 1. Custom target
-		if (settings.goldTarget && settings.goldTarget > 0) {
-			return { target: settings.goldTarget, label: `${settings.goldTarget}g target` };
-		}
-
-		// 2. Component breakpoints — find smallest one above current gold
-		//    or the closest one we can actually afford if we have enough for something
+	): { target: number; label: string; itemId: number | null } {
 		if (state.componentBreakpoints.length > 0) {
-			// Filter out items the player already owns
 			const unbought = state.componentBreakpoints.filter((bp) => !playerItemIds.has(bp.itemId));
 
 			if (unbought.length > 0) {
-				// Find the cheapest component we can afford
+				// Browse mode: show the item at the browse offset
+				if (state.browseOffset > 0) {
+					const idx = Math.min(state.browseOffset, unbought.length - 1);
+					const bp = unbought[idx];
+					return { target: bp.gold, label: bp.label, itemId: bp.itemId };
+				}
+
+				// Normal mode: most expensive affordable item, or next saving target
 				const affordable = unbought.filter((bp) => state.currentGold >= bp.gold);
 				if (affordable.length > 0) {
-					// We can afford something — find the most expensive thing we can buy
-					const bestBuy = affordable[affordable.length - 1];
-					return { target: bestBuy.gold, label: bestBuy.label };
+					const best = affordable[affordable.length - 1];
+					return { target: best.gold, label: best.label, itemId: best.itemId };
 				}
-
-				// Find the next target we're saving toward
-				const nextTarget = unbought.find((bp) => bp.gold > state.currentGold);
-				if (nextTarget) {
-					return { target: nextTarget.gold, label: nextTarget.label };
-				}
+				const next = unbought.find((bp) => bp.gold > state.currentGold);
+				if (next) return { target: next.gold, label: next.label, itemId: next.itemId };
 			}
 		}
 
-		// 3. Fallback: simple thresholds
-		const fallbacks = [
+		// Build not loaded yet
+		if (state.buildItemsLoading || (state.champName && !state.buildChamp)) {
+			return { target: 0, label: "Loading build…", itemId: null };
+		}
+
+		// No build data — show plain gold thresholds as last resort
+		const fallbacks: { gold: number; label: string }[] = [
 			{ gold: 350, label: "Boots" },
 			{ gold: 875, label: "Component" },
-			{ gold: 1100, label: "Component+" },
-			{ gold: 1300, label: "Big Comp" },
+			{ gold: 1300, label: "Component+" },
 			{ gold: 2600, label: "Full Item" },
 		];
-
-		for (const bp of fallbacks) {
-			if (state.currentGold < bp.gold) {
-				return { target: bp.gold, label: bp.label };
-			}
-		}
-
-		return { target: state.currentGold, label: "Full buy" };
+		const next = fallbacks.find((bp) => state.currentGold < bp.gold);
+		return next
+			? { target: next.gold, label: next.label, itemId: null }
+			: { target: state.currentGold, label: "Full buy", itemId: null };
 	}
 
 	// ── Rendering ──
@@ -831,7 +832,7 @@ export class RecallWindow extends SingletonAction<RecallWindowSettings> {
 					info_text: vsLabel ? `${vsLabel}${timingNote}` : state.timing.reason || "Gold ready!",
 				});
 			} else {
-				const img = this.composeKeyImage(state);
+				const img = this.composeKeyImage(state, state.nextItemIcon);
 				if (img) await a.setImage(img);
 				await a.setTitle("");
 			}
@@ -846,7 +847,7 @@ export class RecallWindow extends SingletonAction<RecallWindowSettings> {
 					info_text: state.timing.reason,
 				});
 			} else {
-				const img = this.composeKeyImage(state);
+				const img = this.composeKeyImage(state, state.nextItemIcon);
 				if (img) await a.setImage(img);
 				await a.setTitle("");
 			}
@@ -866,7 +867,7 @@ export class RecallWindow extends SingletonAction<RecallWindowSettings> {
 					info_text: `${state.targetLabel}${etaStr ? ` · ${etaStr}` : ""}${timingInfo}`,
 				});
 			} else {
-				const img = this.composeKeyImage(state);
+				const img = this.composeKeyImage(state, state.nextItemIcon);
 				if (img) await a.setImage(img);
 				await a.setTitle("");
 			}
@@ -876,7 +877,7 @@ export class RecallWindow extends SingletonAction<RecallWindowSettings> {
 	/**
 	 * Compose an SVG key image with progress ring, gold info, timing, and matchup.
 	 */
-	private composeKeyImage(state: RecallState): string | null {
+	private composeKeyImage(state: RecallState, iconUri: string | null = null): string | null {
 		const S = 144;
 		const cx = S / 2;
 		const cy = 52;
@@ -933,7 +934,13 @@ export class RecallWindow extends SingletonAction<RecallWindowSettings> {
 			}
 		}
 
+		const innerR = r - strokeW - 2;
+		const iconOpacity = showRecall ? "0.35" : "0.2";
+
 		const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${S}" height="${S}">
+			<defs>
+				<clipPath id="ic"><circle cx="${cx}" cy="${cy}" r="${innerR}"/></clipPath>
+			</defs>
 			<rect width="${S}" height="${S}" rx="14" fill="${DARK_BLUE}"/>
 			<rect x="3" y="3" width="${S - 6}" height="${S - 6}" rx="12" fill="none" stroke="${GOLD}" stroke-width="1.5" opacity="0.3"/>
 
@@ -947,6 +954,10 @@ export class RecallWindow extends SingletonAction<RecallWindowSettings> {
 
 			${showRecall
 				? `<circle cx="${cx}" cy="${cy}" r="${r + 6}" fill="none" stroke="${GREEN}" stroke-width="2" opacity="0.3"/>`
+				: ""}
+
+			${iconUri
+				? `<image href="${iconUri}" x="${cx - innerR}" y="${cy - innerR}" width="${innerR * 2}" height="${innerR * 2}" clip-path="url(#ic)" preserveAspectRatio="xMidYMid slice" opacity="${iconOpacity}"/>`
 				: ""}
 
 			<!-- Status text inside ring -->
