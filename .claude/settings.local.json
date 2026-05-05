@@ -21,7 +21,10 @@
       "PowerShell(Get-Content \"$env:APPDATA\\\\Elgato\\\\StreamDeck\\\\logs\\\\StreamDeck.log\" | Select-String \"lol-api\" | Select-Object -Last 30)",
       "PowerShell(Get-ChildItem \"$env:APPDATA\\\\Elgato\\\\StreamDeck\\\\ProfilesV2\" | Format-Table Name, LastWriteTime; Write-Host \"---\"; Get-ChildItem \"$env:APPDATA\\\\Elgato\\\\StreamDeck\\\\ProfilesV2\\\\B48DF08E-8FC4-406D-B090-64DC734C30DD.sdProfile\\\\manifest.json\" | Select-Object -First 1 | ForEach-Object { $c = Get-Content $_.FullName -Raw | ConvertFrom-Json; Write-Host \"Device: $\\($c.Device.Model\\)\" })",
       "PowerShell(Get-ChildItem \"$env:APPDATA\\\\Elgato\\\\StreamDeck\\\\ProfilesV3\" -Recurse | Where-Object { -not $_.PSIsContainer } | Format-Table FullName, Length, LastWriteTime | Select-Object -First 30)",
-      "PowerShell(Get-ChildItem \"$env:APPDATA\\\\Elgato\\\\StreamDeck\\\\ProfilesV3\" -Recurse | Format-Table FullName, Length, LastWriteTime | Select-Object -First 30)"
+      "PowerShell(Get-ChildItem \"$env:APPDATA\\\\Elgato\\\\StreamDeck\\\\ProfilesV3\" -Recurse | Format-Table FullName, Length, LastWriteTime | Select-Object -First 30)",
+      "Bash(npm run *)",
+      "Bash(streamdeck restart *)",
+      "Bash(streamdeck pack *)"
     ]
   }
 }
