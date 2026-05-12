@@ -1,5 +1,6 @@
 import {
 	action,
+	DidReceiveSettingsEvent,
 	DialRotateEvent,
 	DialUpEvent,
 	KeyDownEvent,
@@ -29,6 +30,7 @@ interface SmartPickState {
 	lastHash: string;
 	lastPicks: { alias: string; name: string; score: number; details: string; winRateVs?: number; games?: number }[];
 	lastInfo: string;
+	autoSwitchedToCounter: boolean;
 }
 
 type SmartPickSettings = {
@@ -54,12 +56,27 @@ type SmartPickSettings = {
 export class SmartPick extends SingletonAction<SmartPickSettings> {
 	private pollInterval: ReturnType<typeof setInterval> | null = null;
 	private actionStates = new Map<string, SmartPickState>();
+	/** Persisted settings — per-action settings are broken, use global as backing store */
+	private cachedRole?: string;
+	private cachedDefaultMode?: PickMode;
 
-	override onWillAppear(ev: WillAppearEvent<SmartPickSettings>): void | Promise<void> {
+	override async onWillAppear(ev: WillAppearEvent<SmartPickSettings>): Promise<void> {
+		// Bootstrap cached settings: per-action first, global fallback
+		if (!this.cachedRole && !this.cachedDefaultMode) {
+			const { role, defaultMode } = ev.payload.settings;
+			if (role || defaultMode) {
+				this.cachedRole = role;
+				this.cachedDefaultMode = defaultMode;
+			} else {
+				const global = await streamDeck.settings.getGlobalSettings<{ smartPickRole?: string; smartPickDefaultMode?: PickMode }>();
+				this.cachedRole = global.smartPickRole;
+				this.cachedDefaultMode = global.smartPickDefaultMode;
+			}
+		}
+
 		this.startPolling();
-		const role = ev.payload.settings.role ?? "auto";
-		const roleLabel = role === "auto" ? "AUTO" : role.toUpperCase();
-		const mode = ev.payload.settings.defaultMode ?? "counter";
+		const roleLabel = (this.cachedRole && this.cachedRole !== "auto") ? this.cachedRole.toUpperCase() : "AUTO";
+		const mode = this.cachedDefaultMode ?? "counter";
 		if (ev.action.isDial()) {
 			this.getState(ev.action.id, mode);
 			return ev.action.setFeedback({
@@ -71,6 +88,17 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 			});
 		}
 		return ev.action.setTitle(`${mode === "counter" ? "Counter" : "Best"}\n${roleLabel}`);
+	}
+
+	override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<SmartPickSettings>): Promise<void> {
+		const { role, defaultMode } = ev.payload.settings;
+		if (role !== undefined) this.cachedRole = role;
+		if (defaultMode !== undefined) this.cachedDefaultMode = defaultMode;
+		// Persist to global so settings survive Stream Deck restarts
+		await streamDeck.settings.setGlobalSettings({
+			smartPickRole: this.cachedRole,
+			smartPickDefaultMode: this.cachedDefaultMode,
+		});
 	}
 
 	override onWillDisappear(ev: WillDisappearEvent<SmartPickSettings>): void | Promise<void> {
@@ -108,7 +136,7 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 	private getState(actionId: string, defaultMode: PickMode = "counter"): SmartPickState {
 		let s = this.actionStates.get(actionId);
 		if (!s) {
-			s = { mode: defaultMode, viewIndex: 0, lastHash: "", lastPicks: [], lastInfo: "" };
+			s = { mode: defaultMode, viewIndex: 0, lastHash: "", lastPicks: [], lastInfo: "", autoSwitchedToCounter: false };
 			this.actionStates.set(actionId, s);
 		}
 		return s;
@@ -126,11 +154,11 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 		const barColor = score >= 54 ? "#2ECC71" : score >= 50 ? "#F1C40F" : "#E74C3C";
 		const champIcon = await getChampionIcon(pick.alias);
 
-		const modeIndicator = state.mode === "counter" ? "⚔️" : "★";
+		const modeIndicator = state.mode === "counter" ? "x" : "*";
 		await a.setFeedback({
 			champ_icon: champIcon ?? "",
 			title: `${modeIndicator} ${state.lastInfo}`,
-			pick_name: `#${state.viewIndex + 1} ${pick.name}`,
+			pick_name: `#${state.viewIndex + 1} ${pick.name} ${getTier(score)}`,
 			pick_info: pick.details,
 			score_bar: { value: score, bar_fill_c: barColor },
 		});
@@ -139,7 +167,7 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 	private startPolling(): void {
 		if (this.pollInterval) return;
 		this.updateSmartPick().catch((e) => logger.error(`updateSmartPick error: ${e}`));
-		this.pollInterval = setInterval(() => this.updateSmartPick().catch((e) => logger.error(`updateSmartPick error: ${e}`)), 4000);
+		this.pollInterval = setInterval(() => this.updateSmartPick().catch((e) => logger.error(`updateSmartPick error: ${e}`)), 2000);
 	}
 
 	private stopPolling(): void {
@@ -190,12 +218,13 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 			for (const s of this.actionStates.values()) {
 				s.lastHash = "";
 				s.lastPicks = [];
+				s.autoSwitchedToCounter = false;
+				// Reset to default mode when leaving champ select
+				s.mode = this.cachedDefaultMode ?? "counter";
 			}
+			const roleLabel = (this.cachedRole && this.cachedRole !== "auto") ? this.cachedRole.toUpperCase() : "AUTO";
 			for (const a of this.actions) {
-				const settings = (await a.getSettings()) as SmartPickSettings;
-				const role = settings.role ?? "auto";
-				const roleLabel = role === "auto" ? "AUTO" : role.toUpperCase();
-				const state = this.getState(a.id, settings.defaultMode);
+				const state = this.getState(a.id, this.cachedDefaultMode);
 				const label = state.mode === "counter" ? "Counter" : "Best";
 				if (a.isDial()) {
 					await a.setFeedback({
@@ -223,13 +252,27 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 		const me = session.myTeam.find((p) => p.cellId === localCell);
 
 		for (const a of this.actions) {
-			const settings = (await a.getSettings()) as SmartPickSettings;
-			// Auto-detect role from champ select assigned position
-			const role = (settings.role && settings.role !== "auto" ? settings.role : null)
+			const role = (this.cachedRole && this.cachedRole !== "auto" ? this.cachedRole : null)
 				?? me?.assignedPosition
 				?? "top";
 			const lane = ChampionStats.toLolalyticsLane(role);
-			const state = this.getState(a.id, settings.defaultMode);
+			const state = this.getState(a.id, this.cachedDefaultMode);
+
+			// Auto-switch to counter when the enemy laner locks in
+			if (!state.autoSwitchedToCounter && state.mode === "best") {
+				const enemyResult = findEnemyLaner(session, role);
+				if (enemyResult) {
+					const enemyLocked = session.actions.flat().some(
+						(act) => !act.isAllyAction && act.type === "pick" && act.completed
+							&& act.championId === enemyResult.player.championId,
+					);
+					if (enemyLocked) {
+						state.mode = "counter";
+						state.autoSwitchedToCounter = true;
+						state.lastHash = "";
+					}
+				}
+			}
 
 			if (state.mode === "counter") {
 				await this.updateCounterMode(a, session, role, lane, state);
@@ -264,6 +307,12 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 		const enemyChamp = dataDragon.getChampionByKey(String(enemy.championId));
 		if (!enemyChamp) return;
 
+		// Check if the enemy has actually locked in, or is just hovering
+		const enemyIsLocked = session.actions.flat().some(
+			(act) => !act.isAllyAction && act.type === "pick" && act.completed && act.championId === enemy.championId,
+		);
+		const enemyLabel = enemyIsLocked ? enemyChamp.name : `${enemyChamp.name}?`;
+
 		const enemyAlias = ChampionStats.toLolalytics(enemyChamp.id);
 		const hash = `counter:${enemyAlias}`;
 
@@ -273,56 +322,57 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 		}
 
 		if (a.isDial()) {
-			await a.setFeedback({ title: `vs ${enemyChamp.name}`, pick_name: "Searching...", pick_info: "", champ_icon: "", score_bar: { value: 0 } });
+			await a.setFeedback({ title: `vs ${enemyLabel}`, pick_name: "Searching...", pick_info: "", champ_icon: "", score_bar: { value: 0 } });
 		} else {
-			await a.setTitle(`vs ${enemyChamp.name}\nSearching...`);
+			await a.setTitle(`vs ${enemyLabel}\nSearching...`);
 		}
 
 		try {
 			const allPicks = await championStats.getBestCounterpicks(enemyAlias, lane);
 
-			// Filter out banned and already-picked champions
 			const unavailable = getUnavailableAliases(session);
 			const picks = allPicks.filter((p) => !unavailable.has(p.alias));
 
 			state.lastPicks = picks.map((p) => {
-				const sampleNote = p.games < 100 ? " ⚠️" : "";
+				const tier = getTier(p.winRateVs);
+				const sampleNote = p.games < 100 ? " ⚠" : "";
 				const gamesStr = p.games >= 1000 ? `${(p.games / 1000).toFixed(1)}k` : String(p.games);
 				const delta = p.allWr ? p.winRateVs - p.allWr : null;
-				const deltaStr = delta !== null ? ` (Δ${delta >= 0 ? "+" : ""}${delta.toFixed(1)})` : "";
+				const deltaStr = delta !== null ? ` Δ${delta >= 0 ? "+" : ""}${delta.toFixed(1)}` : "";
 				return {
 					alias: p.alias,
 					name: p.name,
 					score: p.winRateVs,
 					winRateVs: p.winRateVs,
 					games: p.games,
-					details: `${p.winRateVs}% WR${deltaStr} · ${gamesStr}g${sampleNote}`,
+					details: `${tier} ${p.winRateVs}%${deltaStr} · ${gamesStr}g${sampleNote}`,
 				};
 			});
-			state.lastInfo = `vs ${enemyChamp.name}`;
+			state.lastInfo = `vs ${enemyLabel}`;
 			state.lastHash = hash;
 
 			prefetchChampionIcons(picks.slice(0, 5).map((p) => p.alias));
 
 			if (picks.length === 0) {
 				if (a.isDial()) {
-					await a.setFeedback({ title: `⚔️ vs ${enemyChamp.name}`, pick_name: "No data", pick_info: "", champ_icon: "", score_bar: { value: 0 } });
+					await a.setFeedback({ title: `vs ${enemyLabel}`, pick_name: "No data", pick_info: "", champ_icon: "", score_bar: { value: 0 } });
 				} else {
-					await a.setTitle(`vs ${enemyChamp.name}\nNo data`);
+					await a.setTitle(`vs ${enemyLabel}\nNo data`);
 				}
 			} else if (a.isDial()) {
 				state.viewIndex = 0;
 				await this.renderDialPick(a, state);
 			} else {
 				const best = picks[0];
+				const tier = getTier(best.winRateVs);
 				const bestIcon = await getChampionIcon(best.alias);
 				if (bestIcon) await a.setImage(bestIcon);
-				await a.setTitle(`Counter\n${best.name} ${best.winRateVs}%`);
+				await a.setTitle(`${tier} ${best.name}\n${best.winRateVs}% WR`);
 			}
 		} catch (e) {
 			logger.error(`Counter mode error: ${e}`);
 			if (a.isDial()) {
-				await a.setFeedback({ title: `vs ${enemyChamp.name}`, pick_name: "Error", pick_info: "", champ_icon: "", score_bar: { value: 0 } });
+				await a.setFeedback({ title: `vs ${enemyLabel}`, pick_name: "Error", pick_info: "", champ_icon: "", score_bar: { value: 0 } });
 			} else {
 				await a.setTitle(`Counter\nError`);
 			}
@@ -338,28 +388,37 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 	): Promise<void> {
 		if (!session) return;
 
-		const directEnemyAliases: string[] = [];
-		const allEnemyAliases: string[] = [];
+		// Only use locked enemy picks — hovering enemies cause noisy refetches and wrong results
+		const lockedEnemyIds = new Set(
+			session.actions.flat()
+				.filter((act) => !act.isAllyAction && act.type === "pick" && act.completed && act.championId > 0)
+				.map((act) => act.championId),
+		);
+
+		if (lockedEnemyIds.size === 0) {
+			if (a.isDial()) {
+				await a.setFeedback({ title: `★ Best · ${role.toUpperCase()}`, pick_name: "Waiting for locks...", pick_info: "", champ_icon: "", score_bar: { value: 0 } });
+			} else {
+				await a.setTitle(`Best\nWaiting...`);
+			}
+			return;
+		}
+
+		// Resolve aliases — prefer lane-matched enemy, fall back to all locked
 		const myLane = ChampionStats.toLolalyticsLane(role);
+		const matchupAliases: string[] = [];
+		const allLockedAliases: string[] = [];
 		for (const enemy of session.theirTeam) {
-			if (enemy.championId > 0) {
-				const champ = dataDragon.getChampionByKey(String(enemy.championId));
-				if (champ) {
-					const alias = ChampionStats.toLolalytics(champ.id);
-					allEnemyAliases.push(alias);
-					// Direct match: same assigned position
-					if (enemy.assignedPosition === role) {
-						directEnemyAliases.push(alias);
-					} else if (!enemy.assignedPosition || enemy.assignedPosition === "") {
-						// No position assigned yet — use tag-based lane inference
-						if (championMatchesLane(champ, myLane)) {
-							directEnemyAliases.push(alias);
-						}
-					}
-					// Skip enemies assigned to a different position — they aren't our laner
-				}
+			if (!lockedEnemyIds.has(enemy.championId)) continue;
+			const champ = dataDragon.getChampionByKey(String(enemy.championId));
+			if (!champ) continue;
+			const alias = ChampionStats.toLolalytics(champ.id);
+			allLockedAliases.push(alias);
+			if (enemy.assignedPosition === role || (!enemy.assignedPosition && championMatchesLane(champ, myLane))) {
+				matchupAliases.push(alias);
 			}
 		}
+		const enemyAliasesForMatchup = matchupAliases.length > 0 ? matchupAliases : allLockedAliases;
 
 		const allyChampionKeys: string[] = [];
 		for (const ally of session.myTeam) {
@@ -368,20 +427,8 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 			}
 		}
 
-		if (allEnemyAliases.length === 0) {
-			if (a.isDial()) {
-				await a.setFeedback({ title: `★ Best · ${role.toUpperCase()}`, pick_name: "No enemy yet", pick_info: "", champ_icon: "", score_bar: { value: 0 } });
-			} else {
-				await a.setTitle(`Best\nNo enemy`);
-			}
-			return;
-		}
-
-		const enemyAliasesForMatchup = directEnemyAliases.length > 0
-			? directEnemyAliases
-			: allEnemyAliases;
-
-		const hash = `best:${allEnemyAliases.sort().join(",")}|${allyChampionKeys.sort().join(",")}`;
+		// Hash on locked picks only — stable until someone new locks in
+		const hash = `best:${allLockedAliases.sort().join(",")}|${allyChampionKeys.sort().join(",")}`;
 		if (hash === state.lastHash) {
 			if (a.isDial()) await this.renderDialPick(a, state);
 			return;
@@ -400,14 +447,14 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 				allyChampionKeys.length > 0 ? allyChampionKeys : undefined,
 			);
 
-			// Filter out banned and already-picked champions
 			const unavailable = getUnavailableAliases(session);
 			const picks = allPicks.filter((p) => !unavailable.has(p.alias));
 
-			state.lastPicks = picks;
-			state.lastInfo = allyChampionKeys.length > 0
-				? `vs${enemyAliasesForMatchup.length} +syn${allyChampionKeys.length}`
-				: `vs${enemyAliasesForMatchup.length} · ${role.toUpperCase()}`;
+			state.lastPicks = picks.map((p) => ({
+				...p,
+				details: `${getTier(p.score)} ${p.details}`,
+			}));
+			state.lastInfo = `vs ${allLockedAliases.length} · ${role.toUpperCase()}`;
 			state.lastHash = hash;
 
 			prefetchChampionIcons(picks.slice(0, 5).map((p) => p.alias));
@@ -423,9 +470,10 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 				await this.renderDialPick(a, state);
 			} else {
 				const best = picks[0];
+				const tier = getTier(best.score);
 				const bestIcon = await getChampionIcon(best.alias);
 				if (bestIcon) await a.setImage(bestIcon);
-				await a.setTitle(`Best Pick\n${best.name} ${best.score}%`);
+				await a.setTitle(`${tier} ${best.name}\n${best.score}%`);
 			}
 		} catch (e) {
 			logger.error(`Best mode error: ${e}`);
@@ -437,4 +485,11 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 		}
 	}
 
+}
+
+function getTier(wr: number): string {
+	if (wr >= 54) return "[S]";
+	if (wr >= 52) return "[A]";
+	if (wr >= 50) return "[B]";
+	return "[C]";
 }
