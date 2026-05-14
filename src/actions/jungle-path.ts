@@ -299,7 +299,6 @@ const CHAMPION_PATHS: Record<string, ChampionPathInfo> = {
 	annie: { style: "ganker", paths: ["fullClearBlue", "threeCampBlue", "threeCampRed"], tip: "Stack stun passively on camps, Tibbers gank", skillOrder: "Q→W→E", startSkill: "Q" },
 	gangplank: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed"], tip: "Farm gold with Q, barrels for ganks", skillOrder: "Q→W→E", startSkill: "Q" },
 	urgot: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed", "fiveCampBlue"], tip: "Tanky shotgun clears, execute with R", skillOrder: "Q→W→E", startSkill: "Q" },
-	aurora2: { style: "flexible", paths: ["fullClearBlue", "fiveCampBlue", "threeCampBlue"], tip: "R-zoning, flexible clear", skillOrder: "Q→W→E", startSkill: "Q" },
 };
 
 // ── Jungle camp position context based on map side ──

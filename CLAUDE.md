@@ -34,25 +34,19 @@ cache/               # DiskCache runtime files (gitignored)
 
 | UUID suffix | File | Notes |
 |---|---|---|
-| `auto-rune` | auto-rune.ts | Multi-key: different roles. OTP-aware. |
-| `auto-accept` | auto-accept.ts | Polls ReadyCheck 1s |
-| `auto-pick` | auto-pick.ts | |
-| `best-item` | best-item.ts | Singleton buildPromise (class-level) |
-| `death-timer` | death-timer.ts | |
-| `duo-synergy` | duo-synergy.ts | |
-| `game-status` | game-status.ts | |
-| `jungle-path` | jungle-path.ts | |
-| `kda-tracker` | kda-tracker.ts | |
-| `lobby-level` | lobby-level.ts | |
-| `lobby-scanner` | lobby-scanner.ts | |
-| `lp-tracker` | lp-tracker.ts | |
-| `objective-timer` | objective-timer.ts | |
-| `otp` | otp.ts | Singleton exported as `otp`. Used by auto-rune, smart-pick, best-item |
-| `post-game` | post-game.ts | |
-| `session-stats` | session-stats.ts | |
-| `skill-order` | skill-order.ts | |
-| `smart-pick` | smart-pick.ts | OTP-aware |
-| `tft-comp` | tft-comp.ts | |
+| `auto-accept` | auto-accept.ts | Polls ReadyCheck 1s; never stops polling (runs off-page) |
+| `auto-rune` | auto-rune.ts | Multi-key: different roles |
+| `best-item` | best-item.ts | Singleton buildPromise (class-level); AP/AD style detection |
+| `death-timer` | death-timer.ts | Live Client only — no LCU guard needed |
+| `game-status` | game-status.ts | Press = open OP.GG profile; auto-detects region |
+| `jungle-path` | jungle-path.ts | CHAMPION_PATHS record; SVG key with camp dots |
+| `kda-tracker` | kda-tracker.ts | Live Client only |
+| `lobby-scanner` | lobby-scanner.ts | Key: champ icon + rank + WR. Dial: full ranked dashboard |
+| `lp-tracker` | lp-tracker.ts | Session delta persisted to disk (24h baseline) |
+| `objective-timer` | objective-timer.ts | Live Client only |
+| `session-stats` | session-stats.ts | Match history from LCU; streak + champ stats |
+| `skill-order` | skill-order.ts | Live Client + LCU fallback via isInGame() |
+| `smart-pick` | smart-pick.ts | Elo-aware; Lolalytics tier param |
 
 All UUIDs are `com.desstroct.lol-api.<suffix>`.
 
@@ -202,16 +196,6 @@ getProfileIcon(iconId)
 prefetchChampionIcons(aliases[]) / prefetchItemIcons(itemIds[]) / prefetchObjectiveIcons()
 ```
 
-### OTP singleton (`src/actions/otp.ts`)
-```ts
-otp.getCurrentOTP(): { alias: string; config: OTPChampionConfig } | null
-otp.getAllOTP(): Map<string, OTPChampionConfig>
-otp.addChampion(alias, config?): Promise<void>
-otp.removeChampion(alias): Promise<void>
-otp.updateChampionConfig(alias, config): Promise<void>
-// OTPChampionConfig: { enabled, autoRune, autoItem, autoSpell, counterMode, bestMode, preferredLane?, preferredRole? }
-```
-
 ## Key Types (`src/types/lol.ts`)
 
 ```ts
@@ -247,12 +231,6 @@ if (!lcuConnector.isConnected()) { /* show offline */ return; }
 if (gameMode.isTFT()) { /* show N/A */ return; }
 const phase = await lcuApi.getGameflowPhase();
 if (phase !== "ChampSelect") { /* reset + return */ }
-```
-
-**OTP check pattern** (in auto-apply guards):
-```ts
-const otpConfig = otp.getCurrentOTP();
-const shouldAutoApply = settings.autoApply && (!otpConfig || otpConfig.config.autoRune !== false);
 ```
 
 **Lolalytics alias**: always go through `ChampionStats.toLolalytics(champ.id)` or `ItemBuilds.toAlias(champName)`.

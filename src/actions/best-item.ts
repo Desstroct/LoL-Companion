@@ -181,7 +181,6 @@ export class BestItem extends SingletonAction {
 		if (!dataDragon.isReady()) return;
 
 		// ── Fetch build if not loaded yet (shared across instances — same champion) ──
-		const champAlias = ItemBuilds.toAlias(me.championName);
 		const champName = me.championName;
 		const lane = gameMode.isARAM() ? "aram" : ItemBuilds.toLolalyticsLane(me.position);
 
