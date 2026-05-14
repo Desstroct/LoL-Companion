@@ -517,9 +517,9 @@ function getTier(wr: number): string {
 /** Convert LCU rank tier to the Lolalytics tier URL parameter. */
 function lolalalyticsTier(lcuTier: string): string {
 	switch (lcuTier.toUpperCase()) {
-		case "IRON":
-		case "BRONZE":
-		case "SILVER":     return "silver_plus";
+		case "IRON":       return "iron";
+		case "BRONZE":     return "bronze";
+		case "SILVER":     return "silver";
 		case "GOLD":       return "gold_plus";
 		case "PLATINUM":   return "platinum_plus";
 		case "EMERALD":    return "emerald_plus";
@@ -534,7 +534,9 @@ function lolalalyticsTier(lcuTier: string): string {
 /** Short display label shown in pick_info so the player knows which elo data is used. */
 function tierDisplayLabel(tier: string): string {
 	const labels: Record<string, string> = {
-		silver_plus:   "S+",
+		iron:          "Iron",
+		bronze:        "Brnz",
+		silver:        "Silv",
 		gold_plus:     "G+",
 		platinum_plus: "P+",
 		emerald_plus:  "E+",
