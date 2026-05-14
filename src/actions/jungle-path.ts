@@ -37,7 +37,7 @@ const CAMP_CLEAR_TIMESTAMPS: Record<Camp, number> = {
 	blue: 105,    // ~1:45
 	gromp: 125,   // ~2:05
 	wolves: 145,  // ~2:25
-	raptors: 145, // ~2:25 (if started red side)
+	raptors: 155, // ~2:35
 	red: 165,     // ~2:45
 	krugs: 175,   // ~2:55
 	scuttle: 195, // ~3:15
@@ -56,6 +56,8 @@ interface JunglePathRoute {
 	description: string;
 	/** Camp sequence — same regardless of map side (the action flips labels contextually) */
 	camps: Camp[];
+	/** Message shown after the last camp is cleared */
+	postClear?: string;
 }
 
 /**
@@ -69,48 +71,56 @@ const PATHS: Record<string, JunglePathRoute> = {
 		shortName: "Full Blue",
 		description: "Optimal 6-camp clear starting blue side",
 		camps: ["blue", "gromp", "wolves", "raptors", "red", "krugs", "scuttle"],
+		postClear: "→ Gank or Drake",
 	},
 	fullClearRed: {
 		name: "Full Clear (Red start)",
 		shortName: "Full Red",
 		description: "Optimal 6-camp clear starting red side",
 		camps: ["red", "krugs", "raptors", "wolves", "blue", "gromp", "scuttle"],
+		postClear: "→ Gank or Drake",
 	},
 	threeCampBlue: {
 		name: "3-Camp Gank (Blue start)",
 		shortName: "3C Blue",
 		description: "Fast 3-camp into gank — Blue→Gromp→Red→Gank",
 		camps: ["blue", "gromp", "red", "gank"],
+		postClear: "→ Recall or Continue",
 	},
 	threeCampRed: {
 		name: "3-Camp Gank (Red start)",
 		shortName: "3C Red",
 		description: "Fast 3-camp into gank — Red→Blue→Gromp→Gank",
 		camps: ["red", "blue", "gromp", "gank"],
+		postClear: "→ Recall or Continue",
 	},
 	threeCampRedKrugs: {
 		name: "3-Camp Gank (Red+Krugs)",
 		shortName: "3C RedK",
 		description: "Red→Krugs→Raptors→Gank (bot-focused early)",
 		camps: ["red", "krugs", "raptors", "gank"],
+		postClear: "→ Recall or Bot lane",
 	},
 	fiveCampBlue: {
 		name: "5-Camp Skip Krugs",
 		shortName: "5C SkipK",
 		description: "Blue→Gromp→Wolves→Raptors→Red→Scuttle (skip krugs for tempo)",
 		camps: ["blue", "gromp", "wolves", "raptors", "red", "scuttle"],
+		postClear: "→ Gank or Drake",
 	},
 	fiveCampRed: {
 		name: "5-Camp Skip Gromp",
 		shortName: "5C SkipG",
 		description: "Red→Krugs→Raptors→Wolves→Blue→Scuttle (skip gromp for tempo)",
 		camps: ["red", "krugs", "raptors", "wolves", "blue", "scuttle"],
+		postClear: "→ Gank or Drake",
 	},
 	reverseFullBlue: {
 		name: "Reverse Full (Blue→Top)",
 		shortName: "Rev Blue",
 		description: "Blue→Wolves→Raptors→Red→Krugs→Scuttle (reverse for flex gank)",
 		camps: ["blue", "wolves", "raptors", "red", "krugs", "scuttle"],
+		postClear: "→ Gank or Drake",
 	},
 	// ── New routes ──
 	level2Gank: {
@@ -118,36 +128,42 @@ const PATHS: Record<string, JunglePathRoute> = {
 		shortName: "Lv2 Gank",
 		description: "Red→Gank at level 2 for early kill pressure",
 		camps: ["red", "gank"],
+		postClear: "→ Recall then Full Clear",
 	},
 	level2GankBlue: {
 		name: "Level 2 Cheese (Blue)",
 		shortName: "Lv2 Blue",
 		description: "Blue→Gank at level 2 (mid/top pressure)",
 		camps: ["blue", "gank"],
+		postClear: "→ Recall then Full Clear",
 	},
 	fourCampBlue: {
 		name: "4-Camp Blue → Crab",
 		shortName: "4C Blue",
 		description: "Blue→Gromp→Wolves→Red→Scuttle (contest scuttle early)",
 		camps: ["blue", "gromp", "wolves", "red", "scuttle"],
+		postClear: "→ Gank or Drake",
 	},
 	fourCampRed: {
 		name: "4-Camp Red → Crab",
 		shortName: "4C Red",
 		description: "Red→Raptors→Wolves→Blue→Scuttle (bot-side then crab)",
 		camps: ["red", "raptors", "wolves", "blue", "scuttle"],
+		postClear: "→ Gank or Drake",
 	},
 	invadeBlue: {
 		name: "Invade (Enemy Blue)",
 		shortName: "Inv Blue",
 		description: "Red→Enemy Blue→Enemy Gromp→Gank (steal their blue side)",
 		camps: ["red", "blue", "gromp", "gank"],
+		postClear: "→ Back or Counter-jungle",
 	},
 	invadeRed: {
 		name: "Invade (Enemy Red)",
 		shortName: "Inv Red",
 		description: "Blue→Enemy Red→Enemy Raptors→Gank (steal their red side)",
 		camps: ["blue", "red", "raptors", "gank"],
+		postClear: "→ Back or Counter-jungle",
 	},
 };
 
@@ -246,18 +262,44 @@ const CHAMPION_PATHS: Record<string, ChampionPathInfo> = {
 	jax: { style: "flexible", paths: ["fullClearBlue", "fullClearRed", "threeCampRed"], tip: "Scale hard, strong at 2 items", skillOrder: "E→Q→W", startSkill: "E" },
 	// ── Additional champions ──
 	zed: { style: "ganker", paths: ["threeCampRed", "fullClearRed", "threeCampBlue", "level2Gank"], tip: "Shadow combos, invade weak junglers", skillOrder: "Q→W→E", startSkill: "Q" },
-	talonjg: { style: "ganker", paths: ["threeCampRed", "threeCampBlue", "level2Gank"], tip: "Wall-hop cheese, early kill pressure", skillOrder: "Q→W→E", startSkill: "Q" },
-	nunuwillump: { style: "ganker", paths: ["threeCampBlue", "threeCampRed", "level2GankBlue", "fullClearBlue"], tip: "Snowball ganks from level 2-3", skillOrder: "Q→W→E", startSkill: "Q" },
 	drmundo: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed"], tip: "Tanky clears, scale with HP", skillOrder: "Q→W→E", startSkill: "Q" },
-	fiddlesticksjg: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed"], tip: "Multi-camp drain, fear R at 6", skillOrder: "W→E→Q", startSkill: "W" },
-	xinzhao2: { style: "ganker", paths: ["threeCampRed", "threeCampBlue", "level2Gank"], tip: "Strong level 2-3 all-in", skillOrder: "Q→W→E", startSkill: "Q" },
 	riven: { style: "ganker", paths: ["threeCampRed", "fullClearRed", "threeCampBlue"], tip: "Animation cancel clears, early aggression", skillOrder: "Q→W→E", startSkill: "Q" },
 	aatrox: { style: "ganker", paths: ["threeCampBlue", "fullClearBlue", "threeCampRed"], tip: "Q sweetspot clears, sustain heavy", skillOrder: "Q→E→W", startSkill: "Q" },
 	camille: { style: "ganker", paths: ["threeCampRed", "threeCampBlue", "fullClearRed"], tip: "E-hookshot ganks, strong skirmisher", skillOrder: "Q→W→E", startSkill: "Q" },
-	tham: { style: "ganker", paths: ["fullClearBlue", "threeCampBlue", "threeCampRed"], tip: "W-devour ganks, R for picks", skillOrder: "Q→W→E", startSkill: "Q" },
+	tahmkench: { style: "ganker", paths: ["fullClearBlue", "threeCampBlue", "threeCampRed"], tip: "W-devour ganks, R for picks", skillOrder: "Q→W→E", startSkill: "Q" },
 	monkeyking: { style: "ganker", paths: ["threeCampRed", "fullClearRed", "threeCampBlue"], tip: "Clone+E engage, strong level 2-3", skillOrder: "Q→E→W", startSkill: "Q" },
 	neeko: { style: "flexible", paths: ["fullClearBlue", "threeCampBlue", "fiveCampBlue"], tip: "Shapeshifter ganks, AoE R at 6", skillOrder: "Q→E→W", startSkill: "Q" },
 	ksante: { style: "flexible", paths: ["fullClearBlue", "fullClearRed", "threeCampRed"], tip: "Tank with all-in R, scale late", skillOrder: "Q→W→E", startSkill: "Q" },
+
+	// ── Extended roster ──
+	fizz: { style: "ganker", paths: ["threeCampRed", "threeCampBlue", "level2Gank"], tip: "E-dodge engage, kill threat at 6", skillOrder: "Q→W→E", startSkill: "Q" },
+	nautilus: { style: "ganker", paths: ["threeCampBlue", "threeCampRed", "fullClearBlue"], tip: "Hook ganks, massive CC chain", skillOrder: "Q→W→E", startSkill: "Q" },
+	sett: { style: "ganker", paths: ["threeCampRed", "fullClearRed", "threeCampBlue"], tip: "Strong early duelist, W shielded clears", skillOrder: "Q→W→E", startSkill: "Q" },
+	irelia: { style: "ganker", paths: ["threeCampRed", "fullClearRed", "threeCampBlue"], tip: "Stack passive on camps, mark-dive ganks", skillOrder: "Q→W→E", startSkill: "Q" },
+	katarina: { style: "ganker", paths: ["fullClearBlue", "fiveCampBlue", "threeCampBlue"], tip: "Reset-heavy AoE clear, look for multi-kills", skillOrder: "W→Q→E", startSkill: "W" },
+	twitch: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed", "fiveCampBlue"], tip: "Farm to items, stealth ganks with Q", skillOrder: "Q→W→E", startSkill: "Q" },
+	vayne: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed"], tip: "Scale hard, tumble-kite clears", skillOrder: "Q→W→E", startSkill: "Q" },
+	chogath: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed"], tip: "Feast stacks on camps, tank scaling", skillOrder: "Q→W→E", startSkill: "Q" },
+	malphite: { style: "ganker", paths: ["fullClearBlue", "threeCampBlue", "threeCampRed"], tip: "Slow-but-healthy clears, R-gank at 6", skillOrder: "W→Q→E", startSkill: "W" },
+	nasus: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed"], tip: "Stack Q on camps, scale to late game", skillOrder: "Q→W→E", startSkill: "Q" },
+	leona: { style: "ganker", paths: ["threeCampBlue", "threeCampRed", "fullClearBlue"], tip: "CC-heavy ganks, all-in with sunlight", skillOrder: "W→Q→E", startSkill: "W" },
+	alistar: { style: "ganker", paths: ["threeCampBlue", "threeCampRed"], tip: "W-Q combo ganks, unstoppable with R", skillOrder: "W→Q→E", startSkill: "W" },
+	blitzcrank: { style: "ganker", paths: ["threeCampBlue", "threeCampRed", "fullClearBlue"], tip: "Hook ganks from fog, one grab = kill", skillOrder: "Q→W→E", startSkill: "Q" },
+	lux: { style: "powerFarmer", paths: ["fullClearBlue", "fiveCampBlue", "threeCampBlue"], tip: "Snare ganks, nuke with R", skillOrder: "Q→E→W", startSkill: "Q" },
+	viktor: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed"], tip: "Slow early clear, snowball with items", skillOrder: "Q→W→E", startSkill: "Q" },
+	swain: { style: "ganker", paths: ["threeCampBlue", "fullClearBlue", "threeCampRed"], tip: "E-root ganks, drain tank at 6", skillOrder: "E→Q→W", startSkill: "E" },
+	rumble: { style: "powerFarmer", paths: ["fullClearBlue", "fiveCampBlue", "fullClearRed"], tip: "Overheat AoE clears, R for ganks", skillOrder: "Q→W→E", startSkill: "Q" },
+	teemo: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed"], tip: "Blind clears safely, shroom vision", skillOrder: "Q→E→W", startSkill: "Q" },
+	singed: { style: "invader", paths: ["invadeRed", "invadeBlue", "threeCampRed"], tip: "Run at enemies, proxy farm, fling into team", skillOrder: "Q→W→E", startSkill: "Q" },
+	garen: { style: "ganker", paths: ["threeCampRed", "fullClearRed", "threeCampBlue"], tip: "Silence-spin clears, execute with R", skillOrder: "Q→W→E", startSkill: "Q" },
+	darius: { style: "ganker", paths: ["threeCampRed", "threeCampBlue", "fullClearRed"], tip: "Bleed clears, dunk reset ganks", skillOrder: "Q→W→E", startSkill: "Q" },
+	fiora: { style: "invader", paths: ["threeCampRed", "fullClearRed", "threeCampBlue", "invadeBlue"], tip: "Parry camps, invade weak junglers", skillOrder: "Q→W→E", startSkill: "Q" },
+	yasuo: { style: "flexible", paths: ["fullClearBlue", "threeCampBlue", "fiveCampBlue"], tip: "Q-tornado clears, knockup chain with team", skillOrder: "Q→W→E", startSkill: "Q" },
+	ahri: { style: "ganker", paths: ["threeCampBlue", "fullClearBlue", "fiveCampBlue"], tip: "Charm ganks, R-dash engage", skillOrder: "Q→W→E", startSkill: "Q" },
+	annie: { style: "ganker", paths: ["fullClearBlue", "threeCampBlue", "threeCampRed"], tip: "Stack stun passively on camps, Tibbers gank", skillOrder: "Q→W→E", startSkill: "Q" },
+	gangplank: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed"], tip: "Farm gold with Q, barrels for ganks", skillOrder: "Q→W→E", startSkill: "Q" },
+	urgot: { style: "powerFarmer", paths: ["fullClearBlue", "fullClearRed", "fiveCampBlue"], tip: "Tanky shotgun clears, execute with R", skillOrder: "Q→W→E", startSkill: "Q" },
+	aurora2: { style: "flexible", paths: ["fullClearBlue", "fiveCampBlue", "threeCampBlue"], tip: "R-zoning, flexible clear", skillOrder: "Q→W→E", startSkill: "Q" },
 };
 
 // ── Jungle camp position context based on map side ──
@@ -274,6 +316,75 @@ function campContext(camp: Camp, side: "blue" | "red"): string {
 	return "Gank";
 }
 
+// ──────────── SVG key composer ────────────
+
+const CAMP_COLOR: Record<Camp, string> = {
+	blue: "#3498DB", gromp: "#2ECC71", wolves: "#95A5A6",
+	raptors: "#E67E22", red: "#E74C3C", krugs: "#CD853F",
+	scuttle: "#1ABC9C", gank: "#F1C40F",
+};
+
+function escapeXmlJgl(s: string): string {
+	return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function composeJungleKey(
+	campIcon: string | null,
+	campName: string,
+	stepNum: number,
+	camps: Camp[],
+	borderColor: string,
+	skillLine: string,
+	completed: boolean,
+	postClear: string,
+): string {
+	const totalSteps = camps.length;
+	const iconEl = campIcon
+		? `<image href="${campIcon}" x="32" y="6" width="80" height="80" />`
+		: `<rect x="32" y="6" width="80" height="80" fill="#1A2A3A" rx="6"/>`;
+
+	const dotSpacing = Math.min(20, 120 / Math.max(totalSteps, 1));
+	const dotsWidth = (totalSteps - 1) * dotSpacing;
+	const dotsStartX = (144 - dotsWidth) / 2;
+	const dots = camps.map((c, i) => {
+		const cx = dotsStartX + i * dotSpacing;
+		const isCurrent = !completed && i === stepNum - 1;
+		const isPast = completed || i < stepNum - 1;
+		const r = isCurrent ? 5 : 4;
+		const fill = isCurrent ? "#F1C40F" : isPast ? CAMP_COLOR[c] : "#333355";
+		const stroke = isCurrent ? "#FFFFFF" : "none";
+		return `<circle cx="${cx}" cy="118" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>`;
+	}).join("");
+
+	let mainText: string;
+	let subText: string;
+	if (completed) {
+		mainText = `<text x="72" y="100" fill="#2ECC71" font-size="11" font-weight="bold" text-anchor="middle" font-family="Arial">✓ Done</text>`;
+		subText = `<text x="72" y="112" fill="#AAAAAA" font-size="9" text-anchor="middle" font-family="Arial">${escapeXmlJgl(postClear)}</text>`;
+	} else {
+		const nameLabel = escapeXmlJgl(campName);
+		const stepLabel = `${stepNum}/${totalSteps}`;
+		mainText = `<text x="72" y="99" fill="#FFFFFF" font-size="10" font-weight="bold" text-anchor="middle" font-family="Arial">${nameLabel}</text>`;
+		subText = skillLine
+			? `<text x="72" y="110" fill="#F1C40F" font-size="9" text-anchor="middle" font-family="Arial">${escapeXmlJgl(skillLine)}</text>`
+			: `<text x="72" y="110" fill="#AAAAAA" font-size="9" text-anchor="middle" font-family="Arial">Step ${stepLabel}</text>`;
+	}
+
+	const borderGlow = completed
+		? `<rect x="2" y="2" width="140" height="140" rx="8" fill="none" stroke="#2ECC71" stroke-width="3" opacity="0.8"/>`
+		: `<rect x="2" y="2" width="140" height="140" rx="8" fill="none" stroke="${borderColor}" stroke-width="3" opacity="0.7"/>`;
+
+	const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144">
+<rect width="144" height="144" fill="#0A1428" rx="8"/>
+${borderGlow}
+${iconEl}
+${mainText}
+${subText}
+${dots}
+</svg>`;
+	return `data:image/svg+xml;base64,${btoa(svg)}`;
+}
+
 // ──────────── Settings ────────────
 type JunglePathSettings = {
 	/** Override side manually ("auto" | "blue" | "red") */
@@ -284,7 +395,7 @@ type JunglePathSettings = {
 @action({ UUID: "com.desstroct.lol-api.jungle-path" })
 export class JunglePath extends SingletonAction<JunglePathSettings> {
 	private pollInterval: ReturnType<typeof setInterval> | null = null;
-	private dialStates = new Map<string, { pathIndex: number; stepIndex: number; autoAdvance: boolean }>();
+	private dialStates = new Map<string, { pathIndex: number; stepIndex: number; autoAdvance: boolean; completed: boolean }>();
 
 	// Cached state
 	private currentChampAlias = "";
@@ -337,6 +448,8 @@ export class JunglePath extends SingletonAction<JunglePathSettings> {
 		if (this.currentPaths.length > 0) {
 			ds.pathIndex = (ds.pathIndex + 1) % this.currentPaths.length;
 			ds.stepIndex = 0;
+			ds.completed = false;
+			ds.autoAdvance = true;
 		}
 		await this.updateAll();
 	}
@@ -358,6 +471,8 @@ export class JunglePath extends SingletonAction<JunglePathSettings> {
 		if (this.currentPaths.length > 0) {
 			ds.pathIndex = (ds.pathIndex + 1) % this.currentPaths.length;
 			ds.stepIndex = 0;
+			ds.completed = false;
+			ds.autoAdvance = true;
 		}
 		await this.updateAll();
 	}
@@ -386,10 +501,10 @@ export class JunglePath extends SingletonAction<JunglePathSettings> {
 		this.dialStates.clear();
 	}
 
-	private getDialState(actionId: string): { pathIndex: number; stepIndex: number; autoAdvance: boolean } {
+	private getDialState(actionId: string): { pathIndex: number; stepIndex: number; autoAdvance: boolean; completed: boolean } {
 		let ds = this.dialStates.get(actionId);
 		if (!ds) {
-			ds = { pathIndex: 0, stepIndex: 0, autoAdvance: true };
+			ds = { pathIndex: 0, stepIndex: 0, autoAdvance: true, completed: false };
 			this.dialStates.set(actionId, ds);
 		}
 		return ds;
@@ -449,11 +564,24 @@ export class JunglePath extends SingletonAction<JunglePathSettings> {
 	/** Render the dial/encoder touchscreen */
 	private async renderDial(
 		a: any,
-		ds: { pathIndex: number; stepIndex: number; autoAdvance: boolean },
+		ds: { pathIndex: number; stepIndex: number; autoAdvance: boolean; completed: boolean },
 		path: JunglePathRoute,
 		side: "blue" | "red",
 	): Promise<void> {
 		if (!a.isDial()) return;
+
+		if (ds.completed) {
+			const champIcon = await this.getChampIcon();
+			const postClearMsg = path.postClear ?? "→ Gank or Drake";
+			await a.setFeedback({
+				champ_icon: champIcon ?? "",
+				title: `✓ ${path.shortName} Complete`,
+				path_name: postClearMsg,
+				camp_route: this.currentTip || "Press dial to switch path",
+				step_bar: { value: 100, bar_fill_c: "#2ECC71" },
+			});
+			return;
+		}
 
 		const camp = path.camps[ds.stepIndex];
 		const stepNum = ds.stepIndex + 1;
@@ -513,30 +641,33 @@ export class JunglePath extends SingletonAction<JunglePathSettings> {
 	/** Render the key (button) display */
 	private async renderKey(
 		a: any,
-		ds: { pathIndex: number; stepIndex: number; autoAdvance: boolean },
+		ds: { pathIndex: number; stepIndex: number; autoAdvance: boolean; completed: boolean },
 		path: JunglePathRoute,
 		side: "blue" | "red",
 	): Promise<void> {
 		const camp = path.camps[ds.stepIndex];
-
-		// Show camp icon on key (visually identifies where to go)
 		const campIcon = camp !== "gank" ? await getCampIcon(camp) : null;
 		const champIcon = await this.getChampIcon();
-		if (campIcon) {
-			await a.setImage(campIcon);
-		} else if (champIcon) {
-			await a.setImage(champIcon);
-		}
-
-		// Key title: path name, step, camp, and skill order on first camp
 		const stepNum = ds.stepIndex + 1;
-		const totalSteps = path.camps.length;
 		const campName = campContext(camp, side);
+		const postClearMsg = path.postClear ?? "→ Gank/Drake";
 		const skillLine = ds.stepIndex === 0 && this.currentStartSkill
-			? `\nStart ${this.currentStartSkill}`
+			? `Start ${this.currentStartSkill} · ${this.currentSkillOrder}`
 			: "";
+		const borderColor = ds.completed ? "#2ECC71" : CAMP_COLOR[camp] ?? "#2ECC71";
 
-		await a.setTitle(`${path.shortName} ${stepNum}/${totalSteps}\n→ ${campName}${skillLine}`);
+		const svgKey = composeJungleKey(
+			campIcon ?? champIcon,
+			campName,
+			stepNum,
+			path.camps,
+			borderColor,
+			skillLine,
+			ds.completed,
+			postClearMsg,
+		);
+		await a.setImage(svgKey);
+		await a.setTitle("");
 	}
 
 	/** Return a contextual bar color based on the camp type */
@@ -798,27 +929,27 @@ export class JunglePath extends SingletonAction<JunglePathSettings> {
 	 */
 	private autoAdvanceSteps(): void {
 		if (this.lastGameTime <= 0) return;
-		// Only auto-advance during the first ~4 minutes (early clear phase)
-		if (this.lastGameTime > 240) return;
 
 		for (const [, ds] of this.dialStates) {
-			if (!ds.autoAdvance) continue;
+			if (!ds.autoAdvance || ds.completed) continue;
 			const path = this.currentPaths[ds.pathIndex];
 			if (!path) continue;
 
-			// Find which camp we should be on based on game time
-			let newStep = 0;
+			let newStep = ds.stepIndex;
 			for (let i = 0; i < path.camps.length; i++) {
 				const campTime = CAMP_CLEAR_TIMESTAMPS[path.camps[i]];
 				if (this.lastGameTime >= campTime) {
-					newStep = Math.min(i + 1, path.camps.length - 1);
+					newStep = i + 1;
 				} else {
 					break;
 				}
 			}
 
-			// Only advance forward, never backwards
-			if (newStep > ds.stepIndex) {
+			if (newStep >= path.camps.length) {
+				// All camps cleared — mark complete
+				ds.completed = true;
+				ds.stepIndex = path.camps.length - 1;
+			} else if (newStep > ds.stepIndex) {
 				ds.stepIndex = newStep;
 			}
 		}
