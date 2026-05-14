@@ -59,6 +59,8 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 	/** Persisted settings — per-action settings are broken, use global as backing store */
 	private cachedRole?: string;
 	private cachedDefaultMode?: PickMode;
+	/** Player's rank tier converted to Lolalytics format — null = not yet fetched */
+	private playerTier: string | null = null;
 
 	override async onWillAppear(ev: WillAppearEvent<SmartPickSettings>): Promise<void> {
 		// Bootstrap cached settings: per-action first, global fallback
@@ -215,6 +217,7 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 
 		const phase = await lcuApi.getGameflowPhase();
 		if (phase !== "ChampSelect") {
+			this.playerTier = null; // reset so it's re-fetched next champ select
 			for (const s of this.actionStates.values()) {
 				s.lastHash = "";
 				s.lastPicks = [];
@@ -248,6 +251,18 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 			return;
 		}
 
+		// Fetch the player's rank once per champ select for elo-aware recommendations
+		if (this.playerTier === null) {
+			try {
+				const ranked = await lcuApi.getCurrentRankedStats();
+				const solo = ranked?.queueMap?.RANKED_SOLO_5x5;
+				this.playerTier = solo?.tier ? lolalalyticsTier(solo.tier) : "emerald_plus";
+				logger.info(`Smart Pick elo filter: ${solo?.tier ?? "unranked"} → ${this.playerTier}`);
+			} catch {
+				this.playerTier = "emerald_plus";
+			}
+		}
+
 		const localCell = session.localPlayerCellId;
 		const me = session.myTeam.find((p) => p.cellId === localCell);
 
@@ -275,9 +290,9 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 			}
 
 			if (state.mode === "counter") {
-				await this.updateCounterMode(a, session, role, lane, state);
+				await this.updateCounterMode(a, session, role, lane, state, this.playerTier ?? "emerald_plus");
 			} else {
-				await this.updateBestMode(a, session, role, lane, state);
+				await this.updateBestMode(a, session, role, lane, state, this.playerTier ?? "emerald_plus");
 			}
 		}
 	}
@@ -288,6 +303,7 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 		role: string,
 		lane: string,
 		state: SmartPickState,
+		tier: string,
 	): Promise<void> {
 		if (!session) return;
 
@@ -314,7 +330,7 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 		const enemyLabel = enemyIsLocked ? enemyChamp.name : `${enemyChamp.name}?`;
 
 		const enemyAlias = ChampionStats.toLolalytics(enemyChamp.id);
-		const hash = `counter:${enemyAlias}`;
+		const hash = `counter:${enemyAlias}:${tier}`;
 
 		if (hash === state.lastHash) {
 			if (a.isDial()) await this.renderDialPick(a, state);
@@ -328,13 +344,14 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 		}
 
 		try {
-			const allPicks = await championStats.getBestCounterpicks(enemyAlias, lane);
+			const allPicks = await championStats.getBestCounterpicks(enemyAlias, lane, tier);
 
 			const unavailable = getUnavailableAliases(session);
 			const picks = allPicks.filter((p) => !unavailable.has(p.alias));
 
+			const tierLabel = tierDisplayLabel(tier);
 			state.lastPicks = picks.map((p) => {
-				const tier = getTier(p.winRateVs);
+				const pickTier = getTier(p.winRateVs);
 				const sampleNote = p.games < 100 ? " ⚠" : "";
 				const gamesStr = p.games >= 1000 ? `${(p.games / 1000).toFixed(1)}k` : String(p.games);
 				const delta = p.allWr ? p.winRateVs - p.allWr : null;
@@ -345,7 +362,7 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 					score: p.winRateVs,
 					winRateVs: p.winRateVs,
 					games: p.games,
-					details: `${tier} ${p.winRateVs}%${deltaStr} · ${gamesStr}g${sampleNote}`,
+					details: `${pickTier} ${p.winRateVs}%${deltaStr} · ${gamesStr}g${sampleNote} · ${tierLabel}`,
 				};
 			});
 			state.lastInfo = `vs ${enemyLabel}`;
@@ -385,6 +402,7 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 		role: string,
 		lane: string,
 		state: SmartPickState,
+		tier: string,
 	): Promise<void> {
 		if (!session) return;
 
@@ -428,7 +446,7 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 		}
 
 		// Hash on locked picks only — stable until someone new locks in
-		const hash = `best:${allLockedAliases.sort().join(",")}|${allyChampionKeys.sort().join(",")}`;
+		const hash = `best:${allLockedAliases.sort().join(",")}|${allyChampionKeys.sort().join(",")}:${tier}`;
 		if (hash === state.lastHash) {
 			if (a.isDial()) await this.renderDialPick(a, state);
 			return;
@@ -445,14 +463,16 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 				enemyAliasesForMatchup,
 				lane,
 				allyChampionKeys.length > 0 ? allyChampionKeys : undefined,
+				tier,
 			);
 
 			const unavailable = getUnavailableAliases(session);
 			const picks = allPicks.filter((p) => !unavailable.has(p.alias));
 
+			const tierLabel = tierDisplayLabel(tier);
 			state.lastPicks = picks.map((p) => ({
 				...p,
-				details: `${getTier(p.score)} ${p.details}`,
+				details: `${getTier(p.score)} ${p.details} · ${tierLabel}`,
 			}));
 			state.lastInfo = `vs ${allLockedAliases.length} · ${role.toUpperCase()}`;
 			state.lastHash = hash;
@@ -492,4 +512,34 @@ function getTier(wr: number): string {
 	if (wr >= 52) return "[A]";
 	if (wr >= 50) return "[B]";
 	return "[C]";
+}
+
+/** Convert LCU rank tier to the Lolalytics tier URL parameter. */
+function lolalalyticsTier(lcuTier: string): string {
+	switch (lcuTier.toUpperCase()) {
+		case "IRON":
+		case "BRONZE":
+		case "SILVER":     return "silver_plus";
+		case "GOLD":       return "gold_plus";
+		case "PLATINUM":   return "platinum_plus";
+		case "EMERALD":    return "emerald_plus";
+		case "DIAMOND":    return "diamond_plus";
+		case "MASTER":
+		case "GRANDMASTER":
+		case "CHALLENGER": return "master_plus";
+		default:           return "emerald_plus";
+	}
+}
+
+/** Short display label shown in pick_info so the player knows which elo data is used. */
+function tierDisplayLabel(tier: string): string {
+	const labels: Record<string, string> = {
+		silver_plus:   "S+",
+		gold_plus:     "G+",
+		platinum_plus: "P+",
+		emerald_plus:  "E+",
+		diamond_plus:  "D+",
+		master_plus:   "M+",
+	};
+	return labels[tier] ?? "E+";
 }

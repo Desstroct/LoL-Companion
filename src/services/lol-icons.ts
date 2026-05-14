@@ -176,6 +176,29 @@ const DISPLAY_TO_SPELL_KEY: Record<string, string> = {
 	"Mark": "SummonerSnowball",
 };
 
+const SPELL_NUMERIC_ID_TO_KEY: Record<number, string> = {
+	1: "SummonerCleanse",
+	3: "SummonerExhaust",
+	4: "SummonerFlash",
+	6: "SummonerGhost",
+	7: "SummonerHeal",
+	11: "SummonerSmite",
+	12: "SummonerTeleport",
+	13: "SummonerMana",
+	14: "SummonerDot",
+	21: "SummonerBarrier",
+	32: "SummonerSnowball",
+};
+
+/**
+ * Get a summoner spell icon by its numeric game ID (e.g., 4 = Flash, 14 = Ignite).
+ */
+export async function getSpellIconById(id: number): Promise<string | null> {
+	const key = SPELL_NUMERIC_ID_TO_KEY[id];
+	if (!key) return null;
+	return getSpellIcon(key);
+}
+
 // ────────────────── Item icons ──────────────────
 
 /**

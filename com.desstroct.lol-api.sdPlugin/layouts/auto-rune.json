@@ -38,6 +38,16 @@
 			"value": 50,
 			"bar_fill_c": "#9B59B6",
 			"bar_bg_c": "#333333"
+		},
+		{
+			"key": "spell1_icon",
+			"type": "pixmap",
+			"rect": [4, 82, 34, 16]
+		},
+		{
+			"key": "spell2_icon",
+			"type": "pixmap",
+			"rect": [40, 82, 34, 16]
 		}
 	]
 }

@@ -6,6 +6,7 @@ import {
 	WillDisappearEvent,
 } from "@elgato/streamdeck";
 import streamDeck from "@elgato/streamdeck";
+import type { GamePlayer } from "../types/lol";
 import { gameClient } from "../services/game-client";
 import { gameMode } from "../services/game-mode";
 import { itemBuilds, ItemBuilds } from "../services/item-builds";
@@ -67,7 +68,10 @@ export class BestItem extends SingletonAction {
 
 	override onWillDisappear(ev: WillDisappearEvent): void | Promise<void> {
 		this.actionStates.delete(ev.action.id);
-		if (this.actions.length === 0) this.stopPolling();
+		if (this.actions.length === 0) {
+			this.stopPolling();
+			this.buildFailedUntil = 0;
+		}
 	}
 
 	override onDialRotate(ev: DialRotateEvent): void | Promise<void> {
@@ -100,8 +104,8 @@ export class BestItem extends SingletonAction {
 	}
 
 	private startPolling(): void {
-		if (this.pollInterval) return;
 		this.updateAll().catch((e) => logger.error(`updateAll error: ${e}`));
+		if (this.pollInterval) return;
 		this.pollInterval = setInterval(() => this.updateAll().catch((e) => logger.error(`updateAll error: ${e}`)), 2000);
 	}
 
@@ -172,6 +176,10 @@ export class BestItem extends SingletonAction {
 			return;
 		}
 
+		// DataDragon needed for alias lookup, patch version, and item names.
+		// On plugin restart it may still be initializing — skip until ready.
+		if (!dataDragon.isReady()) return;
+
 		// ── Fetch build if not loaded yet (shared across instances — same champion) ──
 		const champAlias = ItemBuilds.toAlias(me.championName);
 		const champName = me.championName;
@@ -191,25 +199,40 @@ export class BestItem extends SingletonAction {
 			fullRunes.secondaryRuneTree.id,
 		);
 
+		// Detect enemy team's damage type from their actual in-game items
+		const enemies = allData.allPlayers.filter(p => p.team !== me.team);
+		const enemyType = detectEnemyDamageType(enemies);
+
 		for (const a of this.actions) {
 			const state = this.getState(a.id);
 
+			const champChanged = champName !== state.currentChampion || lane !== state.currentLane;
 			const styleChanged = detectedStyle !== state.currentStyle;
-			if (champName !== state.currentChampion || lane !== state.currentLane || styleChanged || (!state.currentBuild && !this.buildPromise)) {
+			const needsFetch = champChanged || styleChanged || (!state.currentBuild && !this.buildPromise);
+
+			if (needsFetch) {
 				state.currentChampion = champName;
 				state.currentLane = lane;
 				state.currentStyle = detectedStyle;
-				state.currentBuild = null;
-				state.browseIndex = -1;
+				// Only hard-reset the build on a champion/lane change.
+				// On style change or missing build, keep the existing build visible while re-fetching.
+				if (champChanged) {
+					state.currentBuild = null;
+					state.browseIndex = -1;
+				}
 
-				// Cooldown: skip refetch if we recently failed (60s) — but always retry on style change
-				if (!styleChanged && Date.now() < this.buildFailedUntil) continue;
-
-				if (!this.buildPromise) {
-					if (a.isDial()) {
-						await a.setFeedback({ item_name: "Loading build...", cost_text: "", status_text: "" });
-					} else {
-						await a.setTitle("Best Item\nLoading...");
+				// Cooldown: skip refetch if we recently failed (15s) — but always retry on style change
+				if (!styleChanged && Date.now() < this.buildFailedUntil) {
+					if (!state.currentBuild) continue; // nothing to show — skip render too
+					// else: fall through to render the existing build
+				} else if (!this.buildPromise) {
+					// Only show "Loading..." when there is nothing to display yet
+					if (!state.currentBuild) {
+						if (a.isDial()) {
+							await a.setFeedback({ item_name: "Loading build...", cost_text: "", status_text: "" });
+						} else {
+							await a.setTitle("Best Item\nLoading...");
+						}
 					}
 
 					const alias = ItemBuilds.toAlias(champName);
@@ -219,31 +242,33 @@ export class BestItem extends SingletonAction {
 					});
 				}
 
-				try {
-					const build = await this.buildPromise;
+				if (this.buildPromise) {
+					try {
+						const build = await this.buildPromise;
 
-					// Distribute build to all action states
-					for (const s of this.actionStates.values()) {
-						if (s.currentChampion === champName && s.currentLane === lane) {
-							s.currentBuild = build;
-						}
-					}
-
-					// Prefetch all item icons so they're warm when user browses
-					if (build) {
-						prefetchItemIcons(build.fullBuild);
-					}
-
-					if (!build) {
-						this.buildFailedUntil = Date.now() + 60_000; // retry in 60s
-						if (a.isDial()) {
-							await a.setFeedback({ item_name: "No data", cost_text: "", status_text: "" });
+						if (build) {
+							// Distribute build and reset browse position
+							for (const s of this.actionStates.values()) {
+								if (s.currentChampion === champName && s.currentLane === lane) {
+									s.currentBuild = build;
+									s.browseIndex = -1;
+								}
+							}
+							prefetchItemIcons(build.fullBuild);
 						} else {
-							await a.setTitle("Best Item\nNo data");
+							this.buildFailedUntil = Date.now() + 15_000; // retry in 15s
+							// Only show "No data" if there is no fallback build to render
+							if (!state.currentBuild) {
+								if (a.isDial()) {
+									await a.setFeedback({ item_name: "No data", cost_text: "", status_text: "" });
+								} else {
+									await a.setTitle("Best Item\nNo data");
+								}
+							}
 						}
+					} finally {
+						this.buildPromise = null;
 					}
-				} finally {
-					this.buildPromise = null;
 				}
 			}
 
@@ -252,9 +277,16 @@ export class BestItem extends SingletonAction {
 			// ── Determine which item to display ──
 			const playerItemIds = new Set(me.items.map((i) => i.itemID));
 			const playerGold = allData.activePlayer.currentGold;
-			const build = state.currentBuild.fullBuild;
+
+			// Adapt boots to enemy damage type when player hasn't bought boots yet
+			const rawBuild = state.currentBuild.fullBuild;
+			const playerHasBoots = rawBuild.some(id => playerItemIds.has(id) && TIER2_BOOTS.has(id));
+			const build = (!playerHasBoots && enemyType)
+				? adaptBootsToEnemy(rawBuild, enemyType)
+				: rawBuild;
 
 			let displayItemId: number;
+			let displayItemIdx = 0;
 			let displaySlotLabel: string;
 			let isNextToBuy: boolean;
 
@@ -262,8 +294,9 @@ export class BestItem extends SingletonAction {
 
 			if (state.browseIndex >= 0 && state.browseIndex < build.length) {
 				// ── Browse mode: show the item at browseIndex ──
-				displayItemId = build[state.browseIndex];
-				displaySlotLabel = `Item ${state.browseIndex + 1}/${build.length}${styleLabel}`;
+				displayItemIdx = state.browseIndex;
+				displayItemId = build[displayItemIdx];
+				displaySlotLabel = `Item ${displayItemIdx + 1}/${build.length}${styleLabel}`;
 				isNextToBuy = false;
 			} else {
 				// ── Auto mode: find next item to buy ──
@@ -281,8 +314,8 @@ export class BestItem extends SingletonAction {
 							status_text: "Full build \u2713",
 						});
 					} else {
-						await a.setImage("");
-						await a.setTitle("Build\nComplete!");
+						await a.setImage(composeBuildCompleteKey(build.length));
+						await a.setTitle("");
 					}
 					continue;
 				}
@@ -298,7 +331,7 @@ export class BestItem extends SingletonAction {
 			const itemIcon = await getItemIcon(displayItemId);
 
 			const canAfford = playerGold >= itemCost;
-			const owned = this.isItemOwned(displayItemId, playerItemIds);
+			const owned = isItemOwned(displayItemId, playerItemIds);
 
 			// Gold progress towards item (0-100%)
 			const goldProgress = itemCost > 0
@@ -338,45 +371,50 @@ export class BestItem extends SingletonAction {
 					status_text: statusText,
 				});
 			} else {
-				if (itemIcon) await a.setImage(itemIcon);
-				const keyStatus = owned ? "\u2713" : canAfford && isNextToBuy ? "BUY" : `${formatGold(itemCost)}g`;
-				await a.setTitle(`${truncate(itemName, 12)}\n${keyStatus}`);
+				await a.setImage(composeItemKey(itemIcon, itemName, playerGold, itemCost, canAfford, isNextToBuy, owned, build, playerItemIds, displayItemIdx));
+				await a.setTitle("");
 			}
 		}
 	}
 
-	/**
-	 * Find the index of the next item in the build that the player doesn't own.
-	 * Returns -1 if all items are owned (build complete).
-	 */
 	private findNextItemIndex(build: number[], playerItemIds: Set<number>): number {
 		for (let i = 0; i < build.length; i++) {
-			if (!this.isItemOwned(build[i], playerItemIds)) {
-				return i;
-			}
+			if (!isItemOwned(build[i], playerItemIds)) return i;
 		}
 		return -1;
-	}
-
-	/**
-	 * Check if an item (or its equivalent) is owned.
-	 * Handles tier-2 boots substitution: any tier-2 boot fills the boots slot.
-	 */
-	private isItemOwned(itemId: number, playerItemIds: Set<number>): boolean {
-		if (playerItemIds.has(itemId)) return true;
-
-		// If the build item is tier-2 boots, check if player has ANY tier-2 boots
-		if (TIER2_BOOTS.has(itemId)) {
-			for (const bootId of TIER2_BOOTS) {
-				if (playerItemIds.has(bootId)) return true;
-			}
-		}
-
-		return false;
 	}
 }
 
 // ── Helpers ──
+
+/**
+ * Count AP vs AD items across the enemy team to detect their damage type.
+ * Requires at least 3 tagged items total before returning a signal.
+ */
+function detectEnemyDamageType(enemies: GamePlayer[]): "ap" | "ad" | null {
+	let ap = 0, ad = 0;
+	for (const enemy of enemies) {
+		for (const item of enemy.items) {
+			const tags = dataDragon.getItem(String(item.itemID))?.tags ?? [];
+			if (tags.includes("SpellDamage")) ap++;
+			if (tags.includes("Damage")) ad++;
+		}
+	}
+	const total = ap + ad;
+	if (total < 3) return null;
+	if (ap >= ad * 1.5) return "ap";
+	if (ad >= ap * 1.5) return "ad";
+	return null;
+}
+
+/** Swap the boots slot to counter the enemy's dominant damage type. */
+function adaptBootsToEnemy(fullBuild: number[], enemyType: "ap" | "ad"): number[] {
+	const adapted = [...fullBuild];
+	const bootsIdx = adapted.findIndex(id => TIER2_BOOTS.has(id));
+	if (bootsIdx === -1) return adapted;
+	adapted[bootsIdx] = enemyType === "ap" ? 3111 : 3047; // Mercury's Treads or Plated Steelcaps
+	return adapted;
+}
 
 /**
  * Infer AP/AD build style from the player's current items and rune trees.
@@ -414,6 +452,150 @@ function detectBuildStyle(
 
 	return null;
 }
+
+function isItemOwned(itemId: number, playerItemIds: Set<number>): boolean {
+	if (playerItemIds.has(itemId)) return true;
+	if (TIER2_BOOTS.has(itemId)) {
+		for (const bootId of TIER2_BOOTS) {
+			if (playerItemIds.has(bootId)) return true;
+		}
+	}
+	return false;
+}
+
+function escapeXml(str: string): string {
+	return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function composeItemKey(
+	itemIcon: string | null,
+	itemName: string,
+	playerGold: number,
+	itemCost: number,
+	canAfford: boolean,
+	isNextToBuy: boolean,
+	owned: boolean,
+	build: number[],
+	playerItemIds: Set<number>,
+	currentIdx: number,
+): string {
+	const S = 144;
+	const cr = 12;
+	const GREEN = '#2ECC71';
+	const GOLD_C = '#C89B3C';
+
+	let borderColor: string;
+	let glowColor = '';
+	if (owned) {
+		borderColor = GREEN;
+	} else if (canAfford && isNextToBuy) {
+		borderColor = GREEN;
+		glowColor = GREEN;
+	} else if (isNextToBuy) {
+		const progress = itemCost > 0 ? playerGold / itemCost : 0;
+		borderColor = progress >= 0.75 ? GOLD_C : '#555555';
+	} else {
+		borderColor = '#333333';
+	}
+
+	let statusText: string;
+	let statusColor: string;
+	if (owned) {
+		statusText = 'Owned \u2713';
+		statusColor = GREEN;
+	} else if (canAfford && isNextToBuy) {
+		statusText = 'BUY NOW!';
+		statusColor = GREEN;
+	} else if (isNextToBuy) {
+		statusText = `Need ${formatGold(itemCost - playerGold)}g`;
+		statusColor = GOLD_C;
+	} else {
+		statusText = `${formatGold(itemCost)}g`;
+		statusColor = '#AAAAAA';
+	}
+
+	const glowSvg = glowColor
+		? `<defs><radialGradient id="gl" cx="50%" cy="40%" r="60%">
+			<stop offset="0%" stop-color="${glowColor}" stop-opacity="0.3"/>
+			<stop offset="100%" stop-color="${glowColor}" stop-opacity="0"/>
+		   </radialGradient></defs>
+		   <rect x="4" y="4" width="${S - 8}" height="${S - 8}" rx="8" fill="url(#gl)"/>`
+		: '';
+
+	const iconSvg = itemIcon
+		? `<clipPath id="ic"><rect x="28" y="6" width="88" height="86" rx="8"/></clipPath>
+		   <image href="${itemIcon}" x="28" y="6" width="88" height="86" clip-path="url(#ic)"/>`
+		: `<rect x="28" y="6" width="88" height="86" rx="8" fill="#1a2a3a"/>
+		   <text x="72" y="57" font-size="32" text-anchor="middle" font-family="sans-serif" fill="#444">?</text>`;
+
+	const dotCount = Math.min(build.length, 6);
+	const dotR = 4;
+	const spacing = 14;
+	const totalW = (dotCount - 1) * spacing + dotR * 2;
+	const startX = Math.round((S - totalW) / 2) + dotR;
+	const dotY = 122;
+
+	let dots = '';
+	for (let i = 0; i < dotCount; i++) {
+		const cx = startX + i * spacing;
+		const slotOwned = isItemOwned(build[i], playerItemIds);
+		const isCurrent = i === currentIdx;
+		if (slotOwned) {
+			dots += `<circle cx="${cx}" cy="${dotY}" r="${dotR}" fill="${GREEN}"/>`;
+		} else if (isCurrent) {
+			dots += `<circle cx="${cx}" cy="${dotY}" r="${dotR + 1}" fill="${GOLD_C}"/>`;
+		} else {
+			dots += `<circle cx="${cx}" cy="${dotY}" r="${dotR}" fill="none" stroke="#555555" stroke-width="1.5"/>`;
+		}
+	}
+
+	const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${S}" height="${S}">
+		<rect width="${S}" height="${S}" rx="${cr}" fill="#0A1428"/>
+		${glowSvg}
+		${iconSvg}
+		<rect x="3" y="3" width="${S - 6}" height="${S - 6}" rx="${cr - 2}" fill="none" stroke="${borderColor}" stroke-width="3"/>
+		<text x="${S / 2}" y="106" font-size="11" fill="white" text-anchor="middle" font-family="sans-serif">${escapeXml(truncate(itemName, 14))}</text>
+		${dots}
+		<text x="${S / 2}" y="139" font-size="10" fill="${statusColor}" text-anchor="middle" font-family="sans-serif">${escapeXml(statusText)}</text>
+	</svg>`;
+
+	return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+}
+
+function composeBuildCompleteKey(buildLength: number): string {
+	const S = 144;
+	const cr = 12;
+	const GREEN = '#2ECC71';
+	const GOLD_C = '#C89B3C';
+
+	const dotCount = Math.min(buildLength, 6);
+	const dotR = 4;
+	const spacing = 14;
+	const totalW = (dotCount - 1) * spacing + dotR * 2;
+	const startX = Math.round((S - totalW) / 2) + dotR;
+	const dotY = 122;
+	let dots = '';
+	for (let i = 0; i < dotCount; i++) {
+		dots += `<circle cx="${startX + i * spacing}" cy="${dotY}" r="${dotR}" fill="${GREEN}"/>`;
+	}
+
+	const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${S}" height="${S}">
+		<rect width="${S}" height="${S}" rx="${cr}" fill="#0A1428"/>
+		<defs><radialGradient id="gl" cx="50%" cy="50%" r="55%">
+			<stop offset="0%" stop-color="${GREEN}" stop-opacity="0.25"/>
+			<stop offset="100%" stop-color="${GREEN}" stop-opacity="0"/>
+		</radialGradient></defs>
+		<rect x="4" y="4" width="${S - 8}" height="${S - 8}" rx="8" fill="url(#gl)"/>
+		<rect x="3" y="3" width="${S - 6}" height="${S - 6}" rx="${cr - 2}" fill="none" stroke="${GREEN}" stroke-width="3"/>
+		<text x="${S / 2}" y="64" font-size="48" text-anchor="middle" font-family="sans-serif" fill="${GREEN}">✓</text>
+		<text x="${S / 2}" y="92" font-size="14" fill="white" text-anchor="middle" font-family="sans-serif">Build</text>
+		<text x="${S / 2}" y="108" font-size="14" fill="${GOLD_C}" text-anchor="middle" font-family="sans-serif">Complete!</text>
+		${dots}
+	</svg>`;
+
+	return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+}
+
 
 function formatGold(gold: number): string {
 	if (gold >= 1000) return `${(gold / 1000).toFixed(1)}k`;

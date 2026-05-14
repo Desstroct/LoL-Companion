@@ -5,7 +5,7 @@ import {
 	KeyDownEvent,
 	SingletonAction,
 	TouchTapEvent,
-	WillAppearEvent,
+	WillAppearEvent,	
 	WillDisappearEvent,
 	type DialAction,
 	type KeyAction,
@@ -22,7 +22,7 @@ import { runeData, RunePageData } from "../services/rune-data";
 import { ChampionStats } from "../services/champion-stats";
 import { lolaBuild, type SummonerSpellCombo } from "../services/lolalytics-build";
 import { findEnemyLaner } from "../services/champ-select-utils";
-import { getRuneIcon } from "../services/lol-icons";
+import { getRuneIcon, getSpellIconById } from "../services/lol-icons";
 
 const logger = streamDeck.logger.createScope("AutoRune");
 
@@ -198,7 +198,7 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 			s = {
 				lastChampKey: "", lastRunes: [], selectedIndex: 0, applied: false,
 				spells: [], spellsApplied: false,
-				lastEnemyKey: "", vsChampName: "",
+				lastEnemyKey: "", vsChampName: "", hoveredEnemyName: "",
 				runeFetchFailedUntil: 0,
 			};
 			this.actionStates.set(actionId, s);
@@ -262,6 +262,7 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 				s.spellsApplied = false;
 				s.lastEnemyKey = "";
 				s.vsChampName = "";
+				s.hoveredEnemyName = "";
 			}
 			if (hadState) {
 				for (const a of this.actions) {
@@ -319,10 +320,23 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 			const enemyInfo = (s.matchup !== false && !gameMode.isARAM())
 				? findEnemyLaner(session, myPosition)
 				: null;
-			const enemyKey = enemyInfo?.alias ?? "";
+
+			// Only trigger matchup fetch once enemy laner has locked their pick
+			const isEnemyLocked = enemyInfo
+				? session.actions.flat().some(
+					(act) => act.actorCellId === enemyInfo.player.cellId
+						&& act.type === "pick"
+						&& act.completed
+						&& act.championId > 0,
+				  )
+				: false;
+			const lockedEnemyAlias = isEnemyLocked ? enemyInfo!.alias : "";
+
+			// Always update hover display — no re-fetch, just for the "?" preview
+			state.hoveredEnemyName = enemyInfo?.name ?? "";
 
 			const champChanged = champKey !== state.lastChampKey;
-			const enemyChanged = enemyKey !== state.lastEnemyKey;
+			const enemyChanged = lockedEnemyAlias !== state.lastEnemyKey;
 			// Retry once the cooldown expires if we still have no rune data
 			const shouldRetry = state.lastRunes.length === 0 && Date.now() >= state.runeFetchFailedUntil && state.lastChampKey !== "";
 
@@ -346,20 +360,23 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 				state.runeFetchFailedUntil = 0;
 			}
 
-			// Track enemy changes
+			// Track enemy lock changes (hover changes don't trigger re-fetch)
 			if (enemyChanged) {
-				state.lastEnemyKey = enemyKey;
-				state.vsChampName = enemyInfo?.name ?? "";
-				// If enemy changed but champ didn't, reset applied state so we can re-apply matchup runes
-				if (!champChanged && enemyKey) {
+				state.lastEnemyKey = lockedEnemyAlias;
+				state.vsChampName = isEnemyLocked ? (enemyInfo?.name ?? "") : "";
+				// Reset applied state so matchup runes get re-applied when enemy locks
+				if (!champChanged && lockedEnemyAlias) {
 					state.applied = false;
 					state.spellsApplied = false;
 					state.selectedIndex = 0;
 				}
 			}
 
-			// Show loading state
-			const vsLabel = state.vsChampName ? ` vs ${state.vsChampName}` : "";
+			// Show loading state — include hover name with "?" if enemy isn't locked yet
+			const loadingVsName = state.vsChampName || state.hoveredEnemyName;
+			const vsLabel = loadingVsName
+				? ` vs ${loadingVsName}${state.vsChampName ? "" : "?"}`
+				: "";
 			if (a.isDial()) {
 				await a.setFeedback({
 					title: `${champ.name}${vsLabel}`,
@@ -374,8 +391,8 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 			// Cooldown: back off 30s after a failed fetch instead of hammering every 3s
 			if (Date.now() < state.runeFetchFailedUntil) continue;
 
-			// Fetch runes — matchup-specific if enemy is detected
-			const vsAlias = enemyKey || undefined;
+			// Fetch runes — matchup-specific only when enemy laner is locked
+			const vsAlias = lockedEnemyAlias || undefined;
 
 			try {
 				const runes = await runeData.getRecommendedRunes(champAlias, lane, vsAlias);
@@ -455,23 +472,36 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 			: rune.winRate >= 54 ? "#2ECC71"
 			: rune.winRate >= 50 ? "#F1C40F"
 			: "#E74C3C";
-		const vsTag = state.vsChampName ? ` vs ${state.vsChampName}` : "";
+		// Locked enemy = matchup runes active; hovering enemy = preview with "?"
+		const isMatchupActive = !!state.vsChampName;
+		const displayVsName = state.vsChampName || state.hoveredEnemyName;
+		const hoverSuffix = !isMatchupActive && displayVsName ? "?" : "";
 
 		// Get the keystone icon for the detected rune
 		const keystoneId = rune.selectedPerkIds[0];
 		const keystoneImg = await getKeystoneImage(keystoneId);
 
+		const spellIds = state.spells[0]?.ids ?? [];
+		const [spell1Icon, spell2Icon] = await Promise.all([
+			spellIds[0] ? getSpellIconById(spellIds[0]) : Promise.resolve(null),
+			spellIds[1] ? getSpellIconById(spellIds[1]) : Promise.resolve(null),
+		]);
+
 		const shortChamp = champName.length > 10 ? champName.slice(0, 9) + "…" : champName;
-		const shortVs = state.vsChampName
-			? (state.vsChampName.length > 8 ? ` v ${state.vsChampName.slice(0, 7)}…` : ` v ${state.vsChampName}`)
+		const shortVs = displayVsName
+			? (displayVsName.length > 8
+				? ` v ${displayVsName.slice(0, 7)}…${hoverSuffix}`
+				: ` v ${displayVsName}${hoverSuffix}`)
 			: "";
 		if (a.isDial()) {
 			await a.setFeedback({
 				keystone_icon: keystoneImg ?? "",
 				title: `${shortChamp}${shortVs} · ${label}${appliedMark}`,
 				rune_name: rune.keystoneName,
-				rune_info: `${rune.winRate}% WR · ${gamesStr} games · ${mode}${vsTag ? " (matchup)" : ""}`,
+				rune_info: `${rune.winRate}% WR · ${gamesStr} games · ${mode}${isMatchupActive ? " (matchup)" : ""}`,
 				wr_bar: { value: rune.winRate, bar_fill_c: barColor },
+				spell1_icon: spell1Icon ?? "",
+				spell2_icon: spell2Icon ?? "",
 			});
 		} else {
 			// Set key image: primary keystone + secondary tree badge, green border when applied
@@ -483,8 +513,8 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 			}
 			await a.setTitle(
 				state.applied
-					? `${champName}${appliedMark}${vsTag ? `\nvs ${state.vsChampName}` : ""}`
-					: `${champName}${vsTag ? `\nvs ${state.vsChampName}` : `\n${mode}`}`,
+					? `${champName}${appliedMark}${displayVsName ? `\nvs ${displayVsName}` : ""}`
+					: `${champName}${displayVsName ? `\nvs ${displayVsName}${hoverSuffix}` : `\n${mode}`}`,
 			);
 		}
 	}
@@ -607,10 +637,12 @@ interface AutoRuneState {
 	spells: SummonerSpellCombo[];
 	/** Whether summoner spells have been applied */
 	spellsApplied: boolean;
-	/** Lolalytics alias of the last detected enemy laner (for matchup tracking) */
+	/** Lolalytics alias of the last *locked* enemy laner (drives matchup fetch) */
 	lastEnemyKey: string;
-	/** Display name of the enemy laner */
+	/** Display name of the locked enemy laner (used in matchup rune label) */
 	vsChampName: string;
+	/** Display name of the currently hovered enemy laner (no re-fetch, "?" indicator) */
+	hoveredEnemyName: string;
 	/** Don't retry rune fetch before this timestamp (ms) — backoff after failure */
 	runeFetchFailedUntil: number;
 }

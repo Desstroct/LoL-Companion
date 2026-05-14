@@ -89,8 +89,8 @@ export class ChampionStats {
 	 * Get best picks against a given champion for a lane.
 	 * Returns sorted by win rate descending (highest WR first).
 	 */
-	async getBestCounterpicks(enemyAlias: string, lane: string): Promise<MatchupData[]> {
-		const matchups = await this.getMatchups(enemyAlias, lane);
+	async getBestCounterpicks(enemyAlias: string, lane: string, tier = "emerald_plus"): Promise<MatchupData[]> {
+		const matchups = await this.getMatchups(enemyAlias, lane, tier);
 		// Invert logic: we want champions that beat the enemy
 		// If Aatrox vs Singed = 43.3% WR, then Singed vs Aatrox = ~56.7%
 		return matchups
@@ -115,6 +115,7 @@ export class ChampionStats {
 		enemyAliases: string[],
 		lane: string,
 		allyChampionKeys?: string[],
+		tier = "emerald_plus",
 	): Promise<{ alias: string; name: string; score: number; details: string }[]> {
 		if (enemyAliases.length === 0) return [];
 
@@ -123,7 +124,7 @@ export class ChampionStats {
 
 		// Fetch all enemy matchup pages in parallel
 		const allCounters = await Promise.all(
-			enemyAliases.map((enemy) => this.getBestCounterpicks(enemy, lane)),
+			enemyAliases.map((enemy) => this.getBestCounterpicks(enemy, lane, tier)),
 		);
 
 		for (const counters of allCounters) {
@@ -267,8 +268,8 @@ export class ChampionStats {
 	 * @param championAlias - Lolalytics champion alias (lowercase, e.g. "aatrox")
 	 * @param lane - Lolalytics lane string (e.g. "top", "middle", "support")
 	 */
-	private async getMatchups(championAlias: string, lane: string): Promise<MatchupData[]> {
-		const key = `${championAlias}:${lane}`;
+	private async getMatchups(championAlias: string, lane: string, tier = "emerald_plus"): Promise<MatchupData[]> {
+		const key = `${championAlias}:${lane}:${tier}`;
 		const cached = await this.cache.get(key);
 
 		if (cached) {
@@ -289,7 +290,7 @@ export class ChampionStats {
 		const patchesToTry = [currentPatch, "30"];
 
 		for (const patch of patchesToTry) {
-			const url = `${LOLALYTICS_API}/mega/?ep=counter&p=d&v=1&patch=${patch}&c=${championAlias}&lane=${lane}&tier=emerald_plus&queue=ranked&region=all`;
+			const url = `${LOLALYTICS_API}/mega/?ep=counter&p=d&v=1&patch=${patch}&c=${championAlias}&lane=${lane}&tier=${tier}&queue=ranked&region=all`;
 
 			try {
 				logger.debug(`Fetching matchups: ${url}`);
@@ -353,7 +354,7 @@ export class ChampionStats {
 			for (const patch of patchesToTry) {
 				// Brief delay between fallback attempts to avoid hammering a failing API
 				await new Promise((r) => setTimeout(r, 1000));
-				const fallbackUrl = `${LOLALYTICS_API}/mega/?ep=counter&p=d&v=1&patch=${patch}&c=${championAlias}&lane=default&tier=emerald_plus&queue=ranked&region=all`;
+				const fallbackUrl = `${LOLALYTICS_API}/mega/?ep=counter&p=d&v=1&patch=${patch}&c=${championAlias}&lane=default&tier=${tier}&queue=ranked&region=all`;
 				try {
 					logger.debug(`Trying default lane fallback for ${championAlias} (patch=${patch})`);
 					const response = await throttledFetch(fallbackUrl, { signal: AbortSignal.timeout(10_000) });

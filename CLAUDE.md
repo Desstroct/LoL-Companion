@@ -49,7 +49,6 @@ cache/               # DiskCache runtime files (gitignored)
 | `objective-timer` | objective-timer.ts | |
 | `otp` | otp.ts | Singleton exported as `otp`. Used by auto-rune, smart-pick, best-item |
 | `post-game` | post-game.ts | |
-| `recall-window` | recall-window.ts | Uses gameClient + itemBuilds |
 | `session-stats` | session-stats.ts | |
 | `skill-order` | skill-order.ts | |
 | `smart-pick` | smart-pick.ts | OTP-aware |
@@ -290,13 +289,9 @@ Mode label in title: `settings.autoApply === false ? "Manual" : "Auto"`
 ## File helpers (present in multiple actions)
 
 ```ts
-// best-item.ts and recall-window.ts (different thresholds — do not merge)
-formatGold(gold): string   // best-item: >= 1000 → "1.5k" | recall-window: >= 10000 → "10.0k"
-truncate(str, max): string // both: slice at max-1 + "…"
-
-// recall-window.ts only
-formatTime(seconds): string  // "m:ss"
-escapeXml(str): string
+// best-item.ts
+formatGold(gold): string   // >= 1000 → "1.5k"
+truncate(str, max): string // slice at max-1 + "…"
 ```
 
 ## What NOT to do (Vanguard compliance)

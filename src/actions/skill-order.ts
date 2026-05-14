@@ -14,6 +14,7 @@ import streamDeck from "@elgato/streamdeck";
 import { lcuConnector } from "../services/lcu-connector";
 import { lcuApi } from "../services/lcu-api";
 import { gameMode } from "../services/game-mode";
+import { gameClient } from "../services/game-client";
 import { dataDragon } from "../services/data-dragon";
 import { ChampionStats } from "../services/champion-stats";
 import { lolaBuild, type SkillPriorityData, type SkillOrderData } from "../services/lolalytics-build";
@@ -44,6 +45,8 @@ interface SkillOrderState {
 	selectedIndex: number;
 	/** Whether showing full level-by-level order (true) or just priority (false) */
 	detailView: boolean;
+	/** Current champion level from Live Client API (0 = not in game) */
+	currentLevel: number;
 }
 
 type SkillOrderSettings = {
@@ -118,6 +121,7 @@ export class SkillOrder extends SingletonAction<SkillOrderSettings> {
 				fullOrder: [],
 				selectedIndex: 0,
 				detailView: false,
+				currentLevel: 0,
 			};
 			this.actionStates.set(actionId, s);
 		}
@@ -162,6 +166,7 @@ export class SkillOrder extends SingletonAction<SkillOrderSettings> {
 						state.priority = [];
 						state.fullOrder = [];
 						state.selectedIndex = 0;
+						state.currentLevel = 0;
 						if (a.isDial()) {
 							await a.setFeedback({
 								title: "Skill Order",
@@ -175,8 +180,21 @@ export class SkillOrder extends SingletonAction<SkillOrderSettings> {
 						}
 					}
 				}
+			} else {
+				// In-game: poll current level to highlight next skill to take
+				try {
+					const activePlayer = await gameClient.getActivePlayer();
+					if (activePlayer) {
+						for (const a of this.actions) {
+							const state = this.getState(a.id);
+							if (state.fullOrder.length > 0 && activePlayer.level !== state.currentLevel) {
+								state.currentLevel = activePlayer.level;
+								await this.renderAction(a, state);
+							}
+						}
+					}
+				} catch { /* Live Client not available yet */ }
 			}
-			// If keepData is true, just leave the current display as-is
 			return;
 		}
 
@@ -289,8 +307,8 @@ export class SkillOrder extends SingletonAction<SkillOrderSettings> {
 				wr_bar: { value: prio.winRate, bar_fill_c: barColor },
 			});
 		} else {
-			// Compose SVG key image showing skill priority
-			const img = this.composeSkillImage(prio, state.detailView ? state.fullOrder[state.selectedIndex] : null);
+			const orderData = state.fullOrder[state.selectedIndex] ?? null;
+			const img = this.composeSkillImage(prio, state.detailView ? orderData : null, state.currentLevel, orderData);
 			if (img) {
 				await a.setImage(img);
 			}
@@ -320,6 +338,8 @@ export class SkillOrder extends SingletonAction<SkillOrderSettings> {
 	private composeSkillImage(
 		prio: SkillPriorityData,
 		fullOrder?: SkillOrderData | null,
+		currentLevel = 0,
+		levelOrder?: SkillOrderData | null,
 	): string | null {
 		const S = 144;
 		const cr = 14;
@@ -369,8 +389,18 @@ export class SkillOrder extends SingletonAction<SkillOrderSettings> {
 				}
 			}
 
+			// Highlight next skill column
+			if (currentLevel > 0 && currentLevel < 15) {
+				const nextX = startX + currentLevel * (cellW + colGap);
+				grid += `<rect x="${nextX}" y="${startY - 8}" width="${cellW}" height="${4 * (cellH + rowGap) + 6}" rx="1" fill="#FFD700" opacity="0.18"/>`;
+				grid += `<line x1="${nextX}" y1="${startY - 8}" x2="${nextX + cellW}" y2="${startY - 8}" stroke="#FFD700" stroke-width="1.5" opacity="0.7"/>`;
+			}
+
 			// Win rate at bottom
-			grid += `<text x="${S / 2}" y="${startY + 4 * (cellH + rowGap) + 16}" font-size="11" fill="${GOLD}" text-anchor="middle" font-family="sans-serif">${fullOrder.winRate}% WR</text>`;
+			const nextSkillLabel = currentLevel > 0 && currentLevel < 15
+				? `Lv${currentLevel} → ${SKILL_LETTER[parseInt(digits[currentLevel])] ?? "?"}`
+				: `${fullOrder.winRate}% WR`;
+			grid += `<text x="${S / 2}" y="${startY + 4 * (cellH + rowGap) + 16}" font-size="11" fill="${GOLD}" text-anchor="middle" font-family="sans-serif">${nextSkillLabel}</text>`;
 
 			content = grid;
 		} else {
@@ -382,10 +412,17 @@ export class SkillOrder extends SingletonAction<SkillOrderSettings> {
 				})
 				.join(`<tspan fill="#888"> › </tspan>`);
 
+			const nextSkill = currentLevel > 0 && currentLevel < 15 && levelOrder
+				? SKILL_LETTER[parseInt(String(levelOrder.sequence)[currentLevel])] ?? null
+				: null;
+			const bottomLine = nextSkill
+				? `<text x="${S / 2}" y="98" font-size="11" fill="${GOLD}" text-anchor="middle" font-family="sans-serif">Lv${currentLevel} → take ${nextSkill}</text>`
+				: `<text x="${S / 2}" y="98" font-size="11" fill="#888" text-anchor="middle" font-family="sans-serif">${prio.pickRate}% Pick Rate</text>`;
+
 			content = `
 				<text x="${S / 2}" y="52" font-size="28" text-anchor="middle" font-family="sans-serif">${orderStr}</text>
 				<text x="${S / 2}" y="78" font-size="13" fill="${GOLD}" text-anchor="middle" font-family="sans-serif">${prio.winRate}% WR</text>
-				<text x="${S / 2}" y="98" font-size="11" fill="#888" text-anchor="middle" font-family="sans-serif">${prio.pickRate}% Pick Rate</text>
+				${bottomLine}
 			`;
 		}
 

@@ -40,6 +40,16 @@ const ATAKHAN_SPAWN_TIME = 20 * 60;
 // Dragon types that count for soul
 const ELEMENTAL_DRAKES = new Set(["Fire", "Earth", "Water", "Air", "Hextech", "Chemtech"]);
 
+/** mapTerrain (from gameData) → DragonType (from kill events) */
+const TERRAIN_TO_DRAKE: Record<string, string> = {
+	Infernal:  "Fire",
+	Ocean:     "Water",
+	Mountain:  "Earth",
+	Cloud:     "Air",
+	Hextech:   "Hextech",
+	Chemtech:  "Chemtech",
+};
+
 type ObjectiveType = "dragon" | "baron" | "herald" | "atakhan";
 
 interface ObjectiveState {
@@ -47,8 +57,10 @@ interface ObjectiveState {
 	viewIndex: number;
 	/** Number of dragons killed so far (both teams) */
 	dragonCount: number;
-	/** Last dragon type killed */
+	/** Last dragon type killed (event DragonType value, e.g. "Fire") */
 	lastDragonType: string;
+	/** Current map terrain from gameData (e.g. "Infernal", "Ocean") — tracks active drake type */
+	currentMapTerrain: string;
 	/** Whether Elder Dragon phase has started (after soul) */
 	isElderPhase: boolean;
 	/** Spawn time of each objective (0 = not yet spawned, >0 = spawn timestamp) */
@@ -103,6 +115,7 @@ export class ObjectiveTimer extends SingletonAction<ObjectiveTimerSettings> {
 				viewIndex: 0,
 				dragonCount: 0,
 				lastDragonType: "",
+				currentMapTerrain: "",
 				isElderPhase: false,
 				dragonSpawnAt: DRAGON_FIRST_SPAWN,
 				baronSpawnAt: BARON_SPAWN_TIME,
@@ -121,6 +134,7 @@ export class ObjectiveTimer extends SingletonAction<ObjectiveTimerSettings> {
 	private resetState(s: ObjectiveState): void {
 		s.dragonCount = 0;
 		s.lastDragonType = "";
+		s.currentMapTerrain = "";
 		s.isElderPhase = false;
 		s.dragonSpawnAt = DRAGON_FIRST_SPAWN;
 		s.baronSpawnAt = BARON_SPAWN_TIME;
@@ -187,7 +201,7 @@ export class ObjectiveTimer extends SingletonAction<ObjectiveTimerSettings> {
 				if (a.isDial()) {
 					await a.setFeedback({ obj_icon: "", title: "Objectives", timer_text: "N/A TFT", next_text: "", timer_bar: { value: 0 } });
 				} else {
-					await a.setTitle("Obj\nN/A TFT");
+					await a.setImage(""); await a.setTitle("Obj\nN/A TFT");
 				}
 			}
 			return;
@@ -200,7 +214,7 @@ export class ObjectiveTimer extends SingletonAction<ObjectiveTimerSettings> {
 				if (a.isDial()) {
 					await a.setFeedback({ obj_icon: "", title: "Objective Timer", timer_text: "No game", next_text: "", timer_bar: { value: 0 } });
 				} else {
-					await a.setTitle("Obj\nNo game");
+					await a.setImage(""); await a.setTitle("Obj\nNo game");
 				}
 			}
 			return;
@@ -223,6 +237,7 @@ export class ObjectiveTimer extends SingletonAction<ObjectiveTimerSettings> {
 				this.resetState(state);
 			}
 			state.lastGameTime = gameTime;
+			state.currentMapTerrain = allData.gameData.mapTerrain ?? "";
 
 			// Process new events
 			this.processEvents(state, events, gameTime);
@@ -295,7 +310,10 @@ export class ObjectiveTimer extends SingletonAction<ObjectiveTimerSettings> {
 				const spawnAt = state.dragonSpawnAt;
 				const remaining = spawnAt - gameTime;
 				const respawnDuration = state.isElderPhase ? ELDER_RESPAWN : DRAGON_RESPAWN;
-				const drakeKey = state.isElderPhase ? "Elder" : state.lastDragonType;
+				// mapTerrain ("Infernal", "Ocean"…) is the most accurate signal for the
+				// currently alive drake; fall back to last killed type when terrain is unknown
+				const terrainDrake = TERRAIN_TO_DRAKE[state.currentMapTerrain] ?? "";
+				const drakeKey = state.isElderPhase ? "Elder" : (terrainDrake || state.lastDragonType);
 				const typeLabel = drakeKey || "Drake";
 				const emoji = DRAKE_EMOJI[drakeKey] ?? "🐉";
 				const iconKey = drakeKey ? `dragon:${drakeKey}` : "dragon:Fire";
@@ -508,19 +526,16 @@ export class ObjectiveTimer extends SingletonAction<ObjectiveTimerSettings> {
 	private async renderKey(a: KeyAction<ObjectiveTimerSettings>, state: ObjectiveState, gameTime: number): Promise<void> {
 		const urgent = this.getMostUrgent(state, gameTime);
 		const info = this.getObjectiveInfo(urgent, state, gameTime);
+		const iconDataUri = await this.fetchObjIcon(state, info.iconKey);
+
+		await a.setImage(iconDataUri ?? "");
 
 		if (info.countdown > 0) {
-			await a.setTitle(`${info.emoji}\n${this.formatTime(info.countdown)}`);
+			await a.setTitle(this.formatTime(info.countdown));
 		} else if (info.barPct > 0) {
-			await a.setTitle(`${info.emoji}\nUP!`);
+			await a.setTitle("UP!");
 		} else {
-			// Show game time until first objective
-			const dragonInfo = this.getObjectiveInfo("dragon", state, gameTime);
-			if (dragonInfo.countdown > 0) {
-				await a.setTitle(`🐉 ${this.formatTime(dragonInfo.countdown)}\n👾 ${this.formatTime(BARON_SPAWN_TIME - gameTime > 0 ? BARON_SPAWN_TIME - gameTime : 0)}`);
-			} else {
-				await a.setTitle("Obj\nTimer");
-			}
+			await a.setTitle("—");
 		}
 	}
 }
