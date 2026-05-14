@@ -259,31 +259,6 @@
 			]
 		},
 		{
-			"Name": "Recall Window",
-			"UUID": "com.desstroct.lol-api.recall-window",
-			"Icon": "imgs/actions/recall-window/icon",
-			"Tooltip": "Shows when to recall based on gold and item breakpoints. Displays RECALL NOW when you can afford your next item, or a countdown with gold progress.",
-			"PropertyInspectorPath": "ui/recall-window.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "layouts/recall-window.json",
-				"TriggerDescription": {
-					"Rotate": "Adjust gold target",
-					"Push": "Reset target",
-					"Touch": "Refresh"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/recall-window/key",
-					"TitleAlignment": "middle"
-				}
-			]
-		},
-		{
 			"Name": "Session Stats",
 			"UUID": "com.desstroct.lol-api.session-stats",
 			"Icon": "imgs/actions/session-stats/icon",
@@ -332,61 +307,12 @@
 					"TitleAlignment": "middle"
 				}
 			]
-		},
-		{
-			"Name": "CS Tracker",
-			"UUID": "com.desstroct.lol-api.cs-tracker",
-			"Icon": "imgs/actions/kda-tracker/icon",
-			"Tooltip": "Shows your CS vs the enemy laner in real-time. Displays CS delta, gold difference, and advantage verdict.",
-			"PropertyInspectorPath": "ui/cs-tracker.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "layouts/cs-tracker.json",
-				"TriggerDescription": {
-					"Push": "Refresh",
-					"Touch": "Refresh"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/kda-tracker/key",
-					"TitleAlignment": "middle"
-				}
-			]
-		},
-		{
-			"Name": "Wave Clock",
-			"UUID": "com.desstroct.lol-api.wave-clock",
-			"Icon": "imgs/actions/objective-timer/icon",
-			"Tooltip": "Countdown to the next wave and cannon wave. Press key or dial to toggle Top/Mid/Bot. Auto-detects lane in game.",
-			"PropertyInspectorPath": "ui/wave-clock.html",
-			"Controllers": [
-				"Keypad",
-				"Encoder"
-			],
-			"Encoder": {
-				"layout": "layouts/wave-clock.json",
-				"TriggerDescription": {
-					"Rotate": "Change lane",
-					"Push": "Change lane",
-					"Touch": "Change lane"
-				}
-			},
-			"States": [
-				{
-					"Image": "imgs/actions/objective-timer/key",
-					"TitleAlignment": "middle"
-				}
-			]
 		}
 	],
 	"Category": "LoL Companion",
 	"CategoryIcon": "imgs/plugin/category-icon",
 	"CodePath": "bin/plugin.js",
-	"Description": "League of Legends companion for Stream Deck. Monitor your game status, track your rank and LP gains, and get real-time stats on your keys and dials.\n\nFeatures:\n• Game Status — See your current client state (Lobby, Queue, Champion Select, In Game)\n• LP Tracker — Track your rank, LP, win rate, and session gains across Solo/Duo and Flex\n• Auto Accept — Automatically accept the match ready check\n• Lobby Scanner — View player ranks and win rates during Champion Select\n• Smart Pick — Get data-driven champion recommendations and counter picks (auto-detect role)\n• Auto Rune — Automatically import optimal rune pages and summoner spells when you lock in a champion\n• Skill Order — Shows the recommended skill max order during Champion Select\n• KDA Tracker — Live K/D/A, CS/min, and gold display during games\n• Best Item — See your recommended next item purchase based on champion and gold\n• Death Timer — Respawn countdown on your Stream Deck\n• Jungle Path — Recommended jungle clear paths for your champion\n• Recall Window — Shows when to recall based on gold and item breakpoints\n• Session Stats — Track wins, losses, LP delta, and streaks across your gaming session\n• Objective Timer — Dragon, Baron, and Rift Herald respawn countdown timers during games\n\nSupports Stream Deck keys and dials (SD+). Requires the League of Legends client to be running. Data sourced from the official Riot Live Client API and public champion statistics.",
+	"Description": "League of Legends companion for Stream Deck. Monitor your game status, track your rank and LP gains, and get real-time stats on your keys and dials.\n\nFeatures:\n• Game Status — See your current client state (Lobby, Queue, Champion Select, In Game)\n• LP Tracker — Track your rank, LP, win rate, and session gains across Solo/Duo and Flex\n• Auto Accept — Automatically accept the match ready check\n• Lobby Scanner — View player ranks and win rates during Champion Select\n• Smart Pick — Get data-driven champion recommendations and counter picks (auto-detect role)\n• Auto Rune — Automatically import optimal rune pages and summoner spells when you lock in a champion\n• Skill Order — Shows the recommended skill max order during Champion Select\n• KDA Tracker — Live K/D/A, CS/min, and gold display during games\n• Best Item — See your recommended next item purchase based on champion and gold\n• Death Timer — Respawn countdown on your Stream Deck\n• Jungle Path — Recommended jungle clear paths for your champion\n• Session Stats — Track wins, losses, LP delta, and streaks across your gaming session\n• Objective Timer — Dragon, Baron, and Rift Herald respawn countdown timers during games\n\nSupports Stream Deck keys and dials (SD+). Requires the League of Legends client to be running. Data sourced from the official Riot Live Client API and public champion statistics.",
 	"URL": "https://github.com/Desstroct/LoL-Companion",
 	"Icon": "imgs/plugin/marketplace",
 	"SDKVersion": 3,
