@@ -153,8 +153,12 @@ export class SkillOrder extends SingletonAction<SkillOrderSettings> {
 
 		// Keep skill order visible during loading screen and in-game so players
 		// can reference it. Only reset when back in lobby/menus.
+		// Fall back to Live Client when LCU drops mid-game so the display isn't cleared.
 		const inGamePhases = ["ChampSelect", "GameStart", "InProgress", "WaitingForStats", "Reconnect"];
-		const keepData = phase !== null && inGamePhases.includes(phase);
+		let keepData = phase !== null && inGamePhases.includes(phase);
+		if (!keepData && phase === null) {
+			try { keepData = await gameClient.isInGame(); } catch { /* Live Client unavailable */ }
+		}
 
 		if (phase !== "ChampSelect") {
 			if (!keepData) {

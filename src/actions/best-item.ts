@@ -192,7 +192,9 @@ export class BestItem extends SingletonAction {
 		}
 
 		// Detect AP/AD style from items the player already owns, with rune fallback
-		const { fullRunes } = allData.activePlayer;
+		// activePlayer may be null briefly during game startup — skip until it's ready
+		const fullRunes = allData.activePlayer?.fullRunes;
+		if (!fullRunes) return;
 		const detectedStyle = detectBuildStyle(
 			me.items,
 			fullRunes.primaryRuneTree.id,

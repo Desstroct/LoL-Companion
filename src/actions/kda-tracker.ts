@@ -100,7 +100,7 @@ export class KdaTracker extends SingletonAction {
 		}
 
 		const { kills, deaths, assists, creepScore, wardScore } = me.scores;
-		const gameTimeMinutes = allData.gameData.gameTime / 60;
+		const gameTimeMinutes = (allData.gameData?.gameTime ?? 0) / 60;
 
 		// Fetch champion icon for display (championName may be undefined during loading)
 		const champIcon = me.championName
@@ -115,7 +115,7 @@ export class KdaTracker extends SingletonAction {
 			? (creepScore / gameTimeMinutes).toFixed(1)
 			: "—";
 
-		const gold = allData.activePlayer.currentGold;
+		const gold = allData.activePlayer?.currentGold ?? 0;
 		const goldStr = gold >= 1000 ? `${(gold / 1000).toFixed(1)}k` : `${gold}`;
 
 		// Kill participation: (K+A) / team total kills

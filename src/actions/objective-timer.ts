@@ -220,7 +220,7 @@ export class ObjectiveTimer extends SingletonAction<ObjectiveTimerSettings> {
 			return;
 		}
 
-		const gameTime = allData.gameData.gameTime;
+		const gameTime = allData.gameData?.gameTime ?? 0;
 		const events = allData.events?.Events ?? [];
 
 		// Prefetch all objective icons on first game detection
@@ -237,7 +237,7 @@ export class ObjectiveTimer extends SingletonAction<ObjectiveTimerSettings> {
 				this.resetState(state);
 			}
 			state.lastGameTime = gameTime;
-			state.currentMapTerrain = allData.gameData.mapTerrain ?? "";
+			state.currentMapTerrain = allData.gameData?.mapTerrain ?? "";
 
 			// Process new events
 			this.processEvents(state, events, gameTime);
