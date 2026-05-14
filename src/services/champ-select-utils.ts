@@ -11,11 +11,15 @@ type TeamMember = ChampSelectSession["theirTeam"][0];
  * Uses 3 strategies in order:
  * 1. Direct assignedPosition match (ranked draft — most reliable)
  * 2. Score-based inference from champion tags, skipping already-assigned enemies
- * 3. If only one enemy has picked, use them (early draft)
+ * 3. If only one enemy has picked, use them (early draft) — skipped in strict mode
+ *
+ * @param strict - When true, skip Strategy 3. Use for counter-pick logic where
+ *                 a wrong enemy causes bad recommendations. Default false.
  */
 export function findEnemyLaner(
 	session: ChampSelectSession,
 	myPosition: string,
+	strict = false,
 ): { player: TeamMember; alias: string; name: string } | null {
 	if (!myPosition) return null;
 
@@ -53,12 +57,15 @@ export function findEnemyLaner(
 
 	if (bestResult) return bestResult;
 
-	// Strategy 3: If only one enemy has picked so far, use them (early draft)
-	const pickedEnemies = session.theirTeam.filter((p) => p.championId > 0);
-	if (pickedEnemies.length === 1) {
-		const champ = dataDragon.getChampionByKey(String(pickedEnemies[0].championId));
-		if (champ) {
-			return { player: pickedEnemies[0], alias: ChampionStats.toLolalytics(champ.id), name: champ.name };
+	// Strategy 3: If only one enemy has picked so far, use them (early draft).
+	// Skipped in strict mode — single-picker fallback can return the wrong lane opponent.
+	if (!strict) {
+		const pickedEnemies = session.theirTeam.filter((p) => p.championId > 0);
+		if (pickedEnemies.length === 1) {
+			const champ = dataDragon.getChampionByKey(String(pickedEnemies[0].championId));
+			if (champ) {
+				return { player: pickedEnemies[0], alias: ChampionStats.toLolalytics(champ.id), name: champ.name };
+			}
 		}
 	}
 

@@ -273,13 +273,14 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 			const lane = ChampionStats.toLolalyticsLane(role);
 			const state = this.getState(a.id, this.cachedDefaultMode);
 
-			// Auto-switch to counter when the enemy laner locks in
+			// Auto-switch to counter when the enemy laner locks in.
+			// Use strict=true so we don't switch based on the first random enemy locker.
 			if (!state.autoSwitchedToCounter && state.mode === "best") {
-				const enemyResult = findEnemyLaner(session, role);
+				const enemyResult = findEnemyLaner(session, role, true);
 				if (enemyResult) {
 					const enemyLocked = session.actions.flat().some(
-						(act) => !act.isAllyAction && act.type === "pick" && act.completed
-							&& act.championId === enemyResult.player.championId,
+						(act) => act.actorCellId === enemyResult.player.cellId
+							&& act.type === "pick" && act.completed,
 					);
 					if (enemyLocked) {
 						state.mode = "counter";
@@ -307,8 +308,8 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 	): Promise<void> {
 		if (!session) return;
 
-		// Find enemy laner using smart heuristics
-		const enemyResult = findEnemyLaner(session, role);
+		// Use strict mode — no Strategy 3 fallback that returns the wrong role
+		const enemyResult = findEnemyLaner(session, role, true);
 		const enemy = enemyResult?.player ?? null;
 
 		if (!enemy) {
@@ -323,14 +324,14 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 		const enemyChamp = dataDragon.getChampionByKey(String(enemy.championId));
 		if (!enemyChamp) return;
 
-		// Check if the enemy has actually locked in, or is just hovering
+		// Check if the enemy has actually locked in using their cell ID (same approach as auto-rune)
 		const enemyIsLocked = session.actions.flat().some(
-			(act) => !act.isAllyAction && act.type === "pick" && act.completed && act.championId === enemy.championId,
+			(act) => act.actorCellId === enemy.cellId && act.type === "pick" && act.completed,
 		);
 		const enemyLabel = enemyIsLocked ? enemyChamp.name : `${enemyChamp.name}?`;
 
 		const enemyAlias = ChampionStats.toLolalytics(enemyChamp.id);
-		const hash = `counter:${enemyAlias}:${tier}`;
+		const hash = `counter:${enemyAlias}:${lane}:${tier}`;
 
 		if (hash === state.lastHash) {
 			if (a.isDial()) await this.renderDialPick(a, state);
