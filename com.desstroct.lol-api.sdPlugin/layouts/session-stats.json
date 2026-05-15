@@ -45,6 +45,14 @@
 			"value": 50,
 			"bar_fill_c": "#2ECC71",
 			"bar_bg_c": "#333333"
+		},
+		{
+			"key": "champ_text",
+			"type": "text",
+			"rect": [82, 72, 118, 16],
+			"font": { "size": 11 },
+			"alignment": "left",
+			"color": "#AAAAAA"
 		}
 	]
 }

@@ -260,13 +260,14 @@ export class LpTracker extends SingletonAction<LpTrackerSettings> {
 
 			// Calculate session LP delta using absolute LP for accurate cross-tier tracking
 			let deltaStr = "";
+			let deltaColor = "#888888";
 			if (state.trackingStarted) {
 				const currentAbsLp = tierToAbsoluteLp(tier, div, lp);
 				const startAbsLp = tierToAbsoluteLp(state.sessionStartTier, state.sessionStartDiv, state.sessionStartLp);
 				const diff = currentAbsLp - startAbsLp;
-				if (diff > 0) deltaStr = `+${diff} LP`;
-				else if (diff < 0) deltaStr = `${diff} LP`;
-				else deltaStr = "±0 LP";
+				if (diff > 0) { deltaStr = `+${diff} LP`; deltaColor = "#2ECC71"; }
+				else if (diff < 0) { deltaStr = `${diff} LP`; deltaColor = "#E74C3C"; }
+				else { deltaStr = "±0 LP"; }
 			}
 
 			// Dedup: avoid flickering by skipping if nothing changed
@@ -285,7 +286,7 @@ export class LpTracker extends SingletonAction<LpTrackerSettings> {
 					lp_text: `${lp} LP`,
 					winrate_text: `${wins}W ${losses}L (${winRate}%)`,
 					lp_bar: { value: lpBarValue, bar_fill_c: tierColor },
-					delta_text: deltaStr,
+					delta_text: { value: deltaStr, color: deltaColor },
 					queue_text: qLabel,
 				});
 			} else {

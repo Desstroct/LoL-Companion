@@ -270,19 +270,21 @@ export class SessionStats extends SingletonAction<SessionStatsSettings> {
 
 			const rankIcon = await getRankedEmblemIcon(entry.tier);
 
+			const streakColor = streak > 0 ? GREEN : streak < 0 ? RED : "#888888";
 			if (a.isDial()) {
 				await a.setFeedback({
 					title: `${qLabel} · ${tierLabel} ${entry.division}`,
 					record_text: totalGames > 0
-						? `${sessionWins}W ${sessionLosses}L (${sessionWR}%)${champLine ? ` · ${champLine}` : ""}`
+						? `${sessionWins}W ${sessionLosses}L (${sessionWR}%)`
 						: "No games yet",
 					lp_text: lpStr,
-					streak_text: streakStr,
+					streak_text: { value: streakStr, color: streakColor },
 					winrate_bar: {
 						value: totalGames > 0 ? sessionWR : 50,
 						bar_fill_c: totalGames > 0 ? (sessionWR >= 50 ? GREEN : RED) : "#555",
 					},
 					rank_icon: rankIcon ?? "",
+					champ_text: champLine,
 				});
 			} else {
 				if (rankIcon) await a.setImage(rankIcon);

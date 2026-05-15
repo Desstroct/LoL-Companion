@@ -34,8 +34,8 @@
 			"key": "score_bar",
 			"type": "bar",
 			"rect": [82, 74, 108, 16],
-			"range": { "min": 0, "max": 100 },
-			"value": 0,
+			"range": { "min": 45, "max": 65 },
+			"value": 50,
 			"bar_fill_c": "#2ECC71",
 			"bar_bg_c": "#333333"
 		}

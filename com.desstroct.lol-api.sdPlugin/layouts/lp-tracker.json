@@ -27,12 +27,11 @@
 			"type": "text",
 			"rect": [142, 22, 58, 20],
 			"font": { "size": 12, "weight": 600 },
-			"alignment": "right",
-			"color": "#2ECC71"
+			"alignment": "right"
 		},
 		{
 			"key": "lp_bar",
-			"type": "bar",
+			"type": "gbar",
 			"rect": [82, 44, 108, 10],
 			"range": { "min": 0, "max": 100 },
 			"value": 0,
