@@ -16,22 +16,17 @@
             <option value="utility">Support</option>
         </sdpi-select>
     </sdpi-item>
-    <sdpi-item label="Default Mode">
-        <sdpi-select setting="defaultMode">
-            <option value="counter">Counter (vs lane opponent)</option>
-            <option value="best">Best (all enemies + synergy)</option>
-        </sdpi-select>
-    </sdpi-item>
     <sdpi-item label="Info">
         <details>
             <summary>How it works</summary>
             <p style="font-size: 11px; color: #999; padding: 8px;">
-                <strong>Counter mode:</strong> Finds the best counter picks against your lane opponent.<br><br>
-                <strong>Best mode:</strong> Considers all visible enemy picks + ally synergy to suggest optimal picks.<br><br>
+                Combines <strong>counter strength</strong> vs your lane opponent with <strong>ally synergy</strong> to suggest the best picks for your team.<br><br>
+                <strong>⚔️ vs [enemy]</strong> — Lane opponent identified; picks scored against them + your allies.<br>
+                <strong>★ vs N enemies</strong> — No lane opponent yet; scored against all locked enemies + allies.<br><br>
+                Picks update automatically as allies and enemies lock in.<br><br>
                 <strong>Controls:</strong><br>
-                • Press key/dial to toggle between modes<br>
                 • Rotate dial to scroll through suggestions<br>
-                • Touch to refresh data<br><br>
+                • Press key/dial or touch to refresh<br><br>
                 Data from Lolalytics.
             </p>
         </details>
