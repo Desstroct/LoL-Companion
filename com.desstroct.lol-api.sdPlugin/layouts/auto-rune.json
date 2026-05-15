@@ -5,7 +5,7 @@
 		{
 			"key": "keystone_icon",
 			"type": "pixmap",
-			"rect": [4, 10, 72, 72]
+			"rect": [4, 6, 72, 66]
 		},
 		{
 			"key": "title",
@@ -42,12 +42,12 @@
 		{
 			"key": "spell1_icon",
 			"type": "pixmap",
-			"rect": [4, 82, 34, 16]
+			"rect": [20, 74, 22, 22]
 		},
 		{
 			"key": "spell2_icon",
 			"type": "pixmap",
-			"rect": [40, 82, 34, 16]
+			"rect": [44, 74, 22, 22]
 		}
 	]
 }
