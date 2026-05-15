@@ -176,7 +176,9 @@ throttledFetch(url, options?: { signal?, headers? }): Promise<Response>
 
 ### champ-select-utils (`src/services/champ-select-utils.ts`)
 ```ts
-findEnemyLaner(session, myPosition): { player, alias, name } | null
+findEnemyLaner(session, myPosition, strict=false): { player, alias, name } | null
+// strict=true disables Strategy 3 (single-picker fallback) — use in smart-pick/counter
+// contexts where a wrong-role enemy causes bad recommendations. auto-rune uses default false.
 championMatchesLane(champ: { tags: string[] }, lane: string): boolean
 getUnavailableAliases(session): Set<string>
 ```
@@ -195,6 +197,59 @@ getRankedEmblemIcon(tier)
 getProfileIcon(iconId)
 prefetchChampionIcons(aliases[]) / prefetchItemIcons(itemIds[]) / prefetchObjectiveIcons()
 ```
+
+## Dial Layout System
+
+Layout JSON files live in `com.desstroct.lol-api.sdPlugin/layouts/`. Each action that supports `Encoder` declares one in `manifest.json` under `"Encoder": { "layout": "layouts/<name>.json" }`.
+
+**Canvas**: 200×100 px. Left panel convention: pixmap icon at `[4, 4-10, 72, 72-80]`. Right panel: text/bar items starting at x=82.
+
+**Element types**:
+
+- `pixmap` — image. **Must use square `rect` for square source images** (DDragon icons: champ, item, spell, rank emblems are all square). A non-square rect stretches the image.
+- `text` — label. `font: { size, weight }`, `alignment: "left"|"center"|"right"`, `color: "#hex"`.
+- `bar` — flat progress bar. Properties: `range: {min,max}`, `value`, `bar_fill_c`, `bar_bg_c`.
+- `gbar` — same as `bar` but adds a triangle indicator at the current position. Prefer gbar for 0-100 gauges (LP, gold progress). Needs same height as bar or slightly taller.
+
+**Updating elements via `setFeedback()`**:
+```ts
+// Text — value only (uses layout color):
+await a.setFeedback({ my_text: "Hello" });
+
+// Text — override color dynamically:
+await a.setFeedback({ my_text: { value: "+18 LP", color: "#2ECC71" } });
+
+// Bar — override fill color dynamically:
+await a.setFeedback({ my_bar: { value: 75, bar_fill_c: "#E74C3C" } });
+
+// Pixmap — send data URI or empty string to clear:
+await a.setFeedback({ my_icon: dataUri ?? "" });
+```
+
+**Current layout inventory** (key elements per action):
+
+| Layout | Left pixmap | Notable right elements |
+| --- | --- | --- |
+| `auto-rune` | `keystone_icon` 72×66 | `title`, `rune_name`, `rune_info`, `wr_bar`(bar); `spell1_icon`/`spell2_icon` 22×22 below keystone |
+| `best-item` | `item_icon` 72×72 | `title`(gold), `item_name`, `cost_text`, `gold_bar`(gbar), `status_text` |
+| `death-timer` | `champ_icon` 72×72 | `status_text`, `timer_text`, `respawn_bar`(bar) |
+| `jungle-path` | `map_icon` pixmap | `title`, `camp_list` text, `progress_bar` |
+| `kda-tracker` | `champ_icon` 72×72 | `kda_line`, `cs_line`, `gold_text`(gold), `kda_bar`(bar), `ratio_text` |
+| `lobby-scanner` | `champ_icon` 72×72 | `title`(blue), `champion`, `rank`, `wr_text`, `wr_bar`(bar) |
+| `lp-tracker` | `rank_icon` 72×72 | `rank_text`, `lp_text`(gold), `delta_text`(dynamic color), `lp_bar`(gbar), `winrate_text`, `queue_text` |
+| `objective-timer` | `obj_icon` 48×48 | `title`, `timer_text`, `next_text`, `timer_bar`(bar) |
+| `session-stats` | `rank_icon` 72×72 | `title`, `record_text`, `lp_text`(gold), `streak_text`(dynamic color), `winrate_bar`(bar), `champ_text` |
+| `skill-order` | — | SVG grid key; dial shows skill sequence |
+| `smart-pick` | `champ_icon` 72×72 | `title`(red), `pick_name`, `pick_info`, `score_bar`(bar, range 45-65) |
+
+**Dynamic color patterns already in use**:
+
+- `delta_text` in lp-tracker: green (+LP), red (−LP), gray (±0)
+- `streak_text` in session-stats: green (win streak), red (loss streak)
+- `kda_bar` in kda-tracker: green (≥3.0 KDA), yellow (≥1.5), red (<1.5)
+- `score_bar` in smart-pick: green (≥54% WR), yellow (≥50%), red (<50%)
+- `timer_bar` in objective-timer: per-objective color from `getObjectiveInfo()`
+- `respawn_bar` in death-timer: red (dead), green (alive/respawned)
 
 ## Key Types (`src/types/lol.ts`)
 
