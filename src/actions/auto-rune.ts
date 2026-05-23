@@ -20,11 +20,38 @@ import { gameMode } from "../services/game-mode";
 import { dataDragon } from "../services/data-dragon";
 import { runeData, RunePageData } from "../services/rune-data";
 import { ChampionStats } from "../services/champion-stats";
-import { lolaBuild, type SummonerSpellCombo } from "../services/lolalytics-build";
 import { findEnemyLaner } from "../services/champ-select-utils";
 import { getRuneIcon, getSpellIconById } from "../services/lol-icons";
 
 const logger = streamDeck.logger.createScope("AutoRune");
+
+// ─── Summoner spell types & defaults ───
+// (Previously imported from lolalytics-build.ts, now local since SSR is blocked by Cloudflare)
+
+export interface SummonerSpellCombo {
+	ids: number[];
+	winRate: number;
+	pickRate: number;
+	games: number;
+	source: "most_common" | "highest_wr";
+	/** True when using lane-based defaults (no API data available) */
+	isDefault?: boolean;
+}
+
+/** Well-known default summoner spells per lane when API data is unavailable. */
+function getDefaultSpells(lane: string): SummonerSpellCombo {
+	const FLASH = 4, IGNITE = 14, TELEPORT = 12, HEAL = 7, SMITE = 11, SNOWBALL = 32, EXHAUST = 3;
+	const defaults: Record<string, [number, number]> = {
+		jungle:  [SMITE, FLASH],
+		support: [FLASH, EXHAUST],
+		bottom:  [FLASH, HEAL],
+		middle:  [FLASH, IGNITE],
+		top:     [FLASH, TELEPORT],
+		aram:    [FLASH, SNOWBALL],
+	};
+	const ids = defaults[lane] ?? [FLASH, IGNITE];
+	return { ids, winRate: 0, pickRate: 0, games: 0, source: "most_common", isDefault: true };
+}
 
 // ─── Image caches ───
 const PLUGIN_DIR = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -407,15 +434,10 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 					state.lastRunes = runes;
 				}
 
-				// Also fetch summoner spell data (matchup-specific if available)
-				try {
-					const buildData = await lolaBuild.getBuildData(champAlias, lane, vsAlias);
-					if (buildData && buildData.summonerSpells.length > 0) {
-						state.spells = buildData.summonerSpells;
-						logger.info(`Spells for ${champ.name} ${lane}${vsAlias ? ` vs ${state.vsChampName}` : ""}: ${state.spells[0].ids.join("+")} (${state.spells[0].winRate}%)`);
-					}
-				} catch (e) {
-					logger.warn(`Failed to fetch spells for ${champ.name}: ${e}`);
+				// Use lane-based default spells (Lolalytics SSR endpoint is blocked by Cloudflare)
+				if (state.spells.length === 0) {
+					state.spells = [getDefaultSpells(lane)];
+					logger.info(`Default spells for ${champ.name} ${lane}: ${state.spells[0].ids.join("+")}`);
 				}
 
 				if (state.lastRunes.length > 0) {
@@ -611,7 +633,7 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 					const spellOk = await lcuApi.setSummonerSpells(bestSpells.ids[0], bestSpells.ids[1]);
 					if (spellOk) {
 						state.spellsApplied = true;
-						logger.info(`Applied summoner spells: ${bestSpells.ids.join("+")} (${bestSpells.winRate}% WR)`);
+						logger.info(`Applied summoner spells: ${bestSpells.ids.join("+")}${bestSpells.isDefault ? " (lane default)" : ` (${bestSpells.winRate}% WR)`}`);
 					} else {
 						logger.warn("setSummonerSpells returned false");
 					}

@@ -134,29 +134,19 @@ itemBuilds.getBuild(alias, lane): Promise<ItemBuildData | null>
 itemBuilds.flushCache(): Promise<void>
 ```
 
-### lolaBuild (`src/services/lolalytics-build.ts`)
-```ts
-// Main SSR parser — returns runes, spells, skills in one call
-lolaBuild.getBuildData(alias, lane, vsAlias?): Promise<BuildPageData | null>
-lolaBuild.flushCache(): Promise<void>
-
-// BuildPageData shape:
-{
-  runes: RunePageData[]
-  summonerSpells: SummonerSpellCombo[]
-  skillPriority: SkillPriorityData[]
-  skillOrder: SkillOrderData[]
-}
-```
-
 ### runeData (`src/services/rune-data.ts`)
 ```ts
 runeData.getRecommendedRunes(alias, lane, vsAlias?): Promise<RunePageData[]>
 runeData.flushCache(): Promise<void>
 // Returns up to 2 RunePageData: source="most_common" | "highest_wr"
+// Uses Lolalytics JSON API (`ep=rune`). vsAlias kept for cache key but API returns generic runes only.
 // Known keystones (patch 26.09): 8005 8008 8010 8021 8112 8124 8128 9923
 //   8214 8229 8230(Stormraider's) 8992(DeathfireTouch) 8437 8439 8465 8351 8360 8369
 ```
+
+> **Removed service (2026-05-23):** `lolalytics-build.ts` (SSR/Qwik parser) — Lolalytics added
+> Cloudflare JS challenge protection, blocking non-browser requests. Recoverable from git history.
+> AutoRune now uses lane-based default spells. SkillOrder shows "Unavailable" until a new data source is found.
 
 ### DiskCache (`src/services/disk-cache.ts`)
 ```ts
@@ -301,7 +291,7 @@ const isLocked = session.actions.flat().some(
 );
 ```
 
-**Flush on shutdown** (`plugin.ts`): `SIGTERM/SIGINT/SIGHUP/beforeExit` → `flushCaches()` for all 5 services that have caches.
+**Flush on shutdown** (`plugin.ts`): `SIGTERM/SIGINT/SIGHUP/beforeExit` → `flushCaches()` for all 3 services that have caches (championStats, itemBuilds, runeData).
 
 **EPIPE guard** (`plugin.ts`): stdout/stderr `error` events swallow `EPIPE`/`ERR_STREAM_DESTROYED`.
 

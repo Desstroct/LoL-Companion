@@ -17,9 +17,27 @@ import { gameMode } from "../services/game-mode";
 import { gameClient } from "../services/game-client";
 import { dataDragon } from "../services/data-dragon";
 import { ChampionStats } from "../services/champion-stats";
-import { lolaBuild, type SkillPriorityData, type SkillOrderData } from "../services/lolalytics-build";
-
 const logger = streamDeck.logger.createScope("SkillOrder");
+
+// ─── Types (previously from lolalytics-build.ts, inlined since SSR source is blocked) ───
+
+interface SkillPriorityData {
+	/** e.g. "QEW" */
+	order: string;
+	winRate: number;
+	pickRate: number;
+	games: number;
+	source: "most_common" | "highest_wr";
+}
+
+interface SkillOrderData {
+	/** 15-digit sequence, each digit = skill (1=Q, 2=W, 3=E, 4=R) */
+	sequence: number;
+	winRate: number;
+	pickRate: number;
+	games: number;
+	source: "most_common" | "highest_wr";
+}
 
 // Skill digit → letter
 const SKILL_LETTER = ["", "Q", "W", "E", "R"];
@@ -213,8 +231,6 @@ export class SkillOrder extends SingletonAction<SkillOrderSettings> {
 		const champ = dataDragon.getChampionByKey(champKey);
 		if (!champ) return;
 
-		const champAlias = ChampionStats.toLolalytics(champ.id);
-
 		for (const a of this.actions) {
 			const s = (await a.getSettings()) as SkillOrderSettings;
 			const state = this.getState(a.id);
@@ -246,28 +262,22 @@ export class SkillOrder extends SingletonAction<SkillOrderSettings> {
 						(s.role && s.role !== "auto" ? s.role : null) ?? me.assignedPosition ?? "top",
 				  );
 
-			try {
-				const buildData = await lolaBuild.getBuildData(champAlias, lane);
-				if (buildData) {
-					state.priority = buildData.skillPriority;
-					state.fullOrder = buildData.skillOrder;
-					if (state.priority.length > 0) {
-						logger.info(`Skills for ${champ.name} ${lane}: ${state.priority[0].order} (${state.priority[0].winRate}% WR)`);
-					}
-				}
-				await this.renderAction(a, state);
-			} catch (e) {
-				logger.error(`Failed to get skill data: ${e}`);
-				if (a.isDial()) {
-					await a.setFeedback({
-						title: champ.name,
-						skill_order: "Error",
-						skill_info: "",
-						wr_bar: { value: 0 },
-					});
-				} else {
-					await a.setTitle(`${champ.name}\nNo data`);
-				}
+			// Skill order data source (Lolalytics SSR) is currently blocked by Cloudflare.
+			// TODO: Re-enable when a working API endpoint for skill data is found.
+			logger.warn(`Skill order data unavailable for ${champ.name} ${lane} — Lolalytics SSR blocked by Cloudflare`);
+			state.priority = [];
+			state.fullOrder = [];
+
+			if (a.isDial()) {
+				await a.setFeedback({
+					title: champ.name,
+					skill_order: "Unavailable",
+					skill_info: "Data source offline",
+					wr_bar: { value: 0 },
+				});
+			} else {
+				await a.setImage(this.composeUnavailableImage(champ.name));
+				await a.setTitle("");
 			}
 		}
 	}
@@ -438,5 +448,20 @@ export class SkillOrder extends SingletonAction<SkillOrderSettings> {
 
 		const b64 = Buffer.from(svg).toString("base64");
 		return `data:image/svg+xml;base64,${b64}`;
+	}
+
+	/** Compose a key image showing that skill data is unavailable. */
+	private composeUnavailableImage(champName: string): string {
+		const S = 144;
+		const cr = 14;
+		const shortName = champName.length > 12 ? champName.slice(0, 11) + "…" : champName;
+		const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${S}" height="${S}">
+			<rect width="${S}" height="${S}" rx="${cr}" fill="${DARK_BLUE}"/>
+			<rect x="3" y="3" width="${S - 6}" height="${S - 6}" rx="${cr - 1}" fill="none" stroke="#555" stroke-width="1.5" opacity="0.4"/>
+			<text x="${S / 2}" y="48" font-size="13" fill="#888" text-anchor="middle" font-family="sans-serif">${shortName}</text>
+			<text x="${S / 2}" y="74" font-size="14" fill="#E74C3C" text-anchor="middle" font-family="sans-serif">Skill Order</text>
+			<text x="${S / 2}" y="98" font-size="11" fill="#666" text-anchor="middle" font-family="sans-serif">Unavailable</text>
+		</svg>`;
+		return `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
 	}
 }

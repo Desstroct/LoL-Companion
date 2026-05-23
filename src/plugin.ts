@@ -67,7 +67,6 @@ import { gameMode } from "./services/game-mode";
 import { dataDragon } from "./services/data-dragon";
 import { championStats } from "./services/champion-stats";
 import { itemBuilds } from "./services/item-builds";
-import { lolaBuild } from "./services/lolalytics-build";
 import { runeData } from "./services/rune-data";
 
 streamDeck.logger.setLevel("info");
@@ -90,7 +89,6 @@ async function flushCaches() {
 		await Promise.allSettled([
 			championStats.flushCache(),
 			itemBuilds.flushCache(),
-			lolaBuild.flushCache(),
 			runeData.flushCache(),
 		]);
 	} catch { /* swallow */ }

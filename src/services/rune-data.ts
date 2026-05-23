@@ -1,7 +1,6 @@
 import streamDeck from "@elgato/streamdeck";
 import { dataDragon } from "./data-dragon";
 import { throttledFetch } from "./lolalytics-throttle";
-import { lolaBuild } from "./lolalytics-build";
 import { DiskCache } from "./disk-cache";
 
 const logger = streamDeck.logger.createScope("RuneData");
@@ -69,10 +68,11 @@ export interface RunePageData {
 }
 
 /**
- * Fetches recommended rune pages from Lolalytics.
+ * Fetches recommended rune pages from Lolalytics JSON API (`ep=rune` endpoint).
  *
- * Primary strategy: parse the build page SSR (Qwik) data.
- * Fallback: try the JSON API endpoint (may be deprecated).
+ * Note: The SSR build page parser was removed because Lolalytics added
+ * Cloudflare JS challenge protection that blocks non-browser requests.
+ * The JSON API does not support matchup-specific runes (vs parameter is ignored).
  */
 export class RuneData {
 	private readonly CACHE_TTL = 30 * 60 * 1000; // 30 min
@@ -81,7 +81,7 @@ export class RuneData {
 	/**
 	 * Get recommended rune pages for a champion + lane.
 	 * Returns up to 2 pages: most common and highest win rate.
-	 * @param vsChampionAlias  Lolalytics alias of the enemy champion for matchup-specific runes.
+	 * @param vsChampionAlias  Kept for cache key separation but the JSON API returns generic runes only.
 	 */
 	async getRecommendedRunes(championAlias: string, lane: string, vsChampionAlias?: string): Promise<RunePageData[]> {
 		const key = vsChampionAlias
@@ -93,24 +93,12 @@ export class RuneData {
 			return cached.data;
 		}
 
-		// Primary: SSR build page parser (reliable)
-		try {
-			const buildData = await lolaBuild.getBuildData(championAlias, lane, vsChampionAlias);
-			if (buildData && buildData.runes.length > 0) {
-				logger.info(
-					`Parsed ${buildData.runes.length} rune page(s) via SSR for ${championAlias} ${lane}: ` +
-						buildData.runes.map((d) => `${d.source} ${d.keystoneName} ${d.winRate}%`).join(", "),
-				);
-				await this.cache.set(key, buildData.runes);
-				return buildData.runes;
-			}
-		} catch (e) {
-			logger.warn(`SSR rune fetch failed for ${championAlias} ${lane}: ${e}`);
+		// JSON API is the only working source (SSR is blocked by Cloudflare)
+		const data = await this.fetchFromApi(championAlias, lane);
+		if (data.length > 0) {
+			await this.cache.set(key, data);
 		}
-
-		// Fallback: JSON API (may be deprecated)
-		const fallbackEntry = await this.cache.getRaw(key);
-		return this.fetchFromApi(championAlias, lane, fallbackEntry?.data ?? []);
+		return data;
 	}
 
 	/** Flush cache to disk (call on shutdown). */
@@ -119,9 +107,9 @@ export class RuneData {
 	}
 
 	/**
-	 * Legacy JSON API fetch (fallback if SSR parsing fails).
+	 * Fetch rune pages from the Lolalytics JSON API (`ep=rune`).
 	 */
-	private async fetchFromApi(championAlias: string, lane: string, fallback: RunePageData[]): Promise<RunePageData[]> {
+	private async fetchFromApi(championAlias: string, lane: string): Promise<RunePageData[]> {
 		const ddVersion = dataDragon.getVersion();
 		const patchParts = ddVersion.split(".");
 		const patch = `${patchParts[0]}.${patchParts[1]}`;
@@ -131,36 +119,36 @@ export class RuneData {
 		const url = `${LOLALYTICS_API}/mega/?ep=rune&v=1&patch=${patch}&c=${championAlias}&lane=${apiLane}&tier=emerald_plus${queueParam}&region=all`;
 
 		try {
-			logger.debug(`Fetching runes (API fallback): ${url}`);
+			logger.debug(`Fetching runes: ${url}`);
 
 			const response = await throttledFetch(url, { signal: AbortSignal.timeout(10_000) });
 			if (!response.ok) {
 				logger.warn(`Lolalytics API returned ${response.status} for rune data`);
-				return fallback;
+				return [];
 			}
 
 			const json = (await response.json()) as RuneApiResponse;
 
 			if (!json?.summary?.runes) {
 				logger.warn(`Invalid rune API response for ${championAlias} ${lane}`);
-				return fallback;
+				return [];
 			}
 
 			const data = this.parseApiRunes(json.summary.runes);
 
 			if (data.length > 0) {
 				logger.info(
-					`Parsed ${data.length} rune page(s) via API for ${championAlias} ${lane}: ` +
+					`Parsed ${data.length} rune page(s) for ${championAlias} ${lane}: ` +
 						data.map((d) => `${d.source} ${d.keystoneName} ${d.winRate}%`).join(", "),
 				);
 				return data;
 			}
 
-			logger.warn(`No rune data found via API for ${championAlias} ${lane}`);
-			return fallback;
+			logger.warn(`No rune data found for ${championAlias} ${lane}`);
+			return [];
 		} catch (e) {
-			logger.error(`API rune fetch failed for ${championAlias} ${lane}: ${e}`);
-			return fallback;
+			logger.error(`Rune fetch failed for ${championAlias} ${lane}: ${e}`);
+			return [];
 		}
 	}
 
