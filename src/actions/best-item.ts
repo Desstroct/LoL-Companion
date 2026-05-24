@@ -97,7 +97,7 @@ export class BestItem extends SingletonAction {
 	private getState(actionId: string): BestItemState {
 		let s = this.actionStates.get(actionId);
 		if (!s) {
-			s = { currentBuild: null, currentChampion: null, currentLane: null, currentStyle: null, browseIndex: -1 };
+			s = { currentBuild: null, currentChampion: null, currentLane: null, currentStyle: null, browseIndex: 0 };
 			this.actionStates.set(actionId, s);
 		}
 		return s;
@@ -140,7 +140,7 @@ export class BestItem extends SingletonAction {
 					s.currentChampion = null;
 					s.currentLane = null;
 					s.currentBuild = null;
-					s.browseIndex = -1;
+					s.browseIndex = 0;
 				}
 			}
 
@@ -219,7 +219,8 @@ export class BestItem extends SingletonAction {
 				// On style change or missing build, keep the existing build visible while re-fetching.
 				if (champChanged) {
 					state.currentBuild = null;
-					state.browseIndex = -1;
+					// Support always starts on auto (next item) — starter is always the same
+					state.browseIndex = lane === "support" ? -1 : 0;
 				}
 
 				// Cooldown: skip refetch if we recently failed (15s) — but always retry on style change
@@ -248,11 +249,11 @@ export class BestItem extends SingletonAction {
 						const build = await this.buildPromise;
 
 						if (build) {
-							// Distribute build and reset browse position
+							// Distribute build — start on starting items (except support)
 							for (const s of this.actionStates.values()) {
 								if (s.currentChampion === champName && s.currentLane === lane) {
 									s.currentBuild = build;
-									s.browseIndex = -1;
+									s.browseIndex = lane === "support" ? -1 : 0;
 								}
 							}
 							prefetchItemIcons([...build.startingItems, ...build.fullBuild]);
@@ -289,6 +290,16 @@ export class BestItem extends SingletonAction {
 			const styleLabel = state.currentStyle ? ` · ${state.currentStyle.toUpperCase()}` : "";
 
 			// ── Starting items view (slot 0) ──
+			// Auto-transition: once the player owns any starting or build item,
+			// switch to auto mode (next item to buy)
+			if (state.browseIndex === 0) {
+				const hasAnyItem = me.items.length > 0 && me.items.some(i => i.itemID !== 0);
+				if (hasAnyItem) {
+					state.browseIndex = -1; // Switch to auto mode
+					// Fall through to auto mode rendering below
+				}
+			}
+
 			if (state.browseIndex === 0) {
 				const startItems = state.currentBuild.startingItems;
 				if (startItems.length > 0) {

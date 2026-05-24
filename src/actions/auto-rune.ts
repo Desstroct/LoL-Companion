@@ -629,16 +629,25 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 			// Apply summoner spells if enabled (defaults to true)
 			if (settings.autoSpells !== false && state.spells.length > 0 && !state.spellsApplied) {
 				const bestSpells = state.spells[0];
-				try {
-					const spellOk = await lcuApi.setSummonerSpells(bestSpells.ids[0], bestSpells.ids[1]);
-					if (spellOk) {
-						state.spellsApplied = true;
-						logger.info(`Applied summoner spells: ${bestSpells.ids.join("+")}${bestSpells.isDefault ? " (lane default)" : ` (${bestSpells.winRate}% WR)`}`);
-					} else {
-						logger.warn("setSummonerSpells returned false");
+				if (bestSpells.isDefault) {
+					// Lane-based defaults are too generic to auto-apply:
+					// they often match what the client already sets, and for champions
+					// with non-standard spells (Ghost on Darius/Garen/Nasus, etc.)
+					// they would overwrite the player's preferred choice.
+					state.spellsApplied = true;
+					logger.debug(`Skipping default spell apply (${bestSpells.ids.join("+")}) — no champion-specific data available`);
+				} else {
+					try {
+						const spellOk = await lcuApi.setSummonerSpells(bestSpells.ids[0], bestSpells.ids[1]);
+						if (spellOk) {
+							state.spellsApplied = true;
+							logger.info(`Applied summoner spells: ${bestSpells.ids.join("+")} (${bestSpells.winRate}% WR)`);
+						} else {
+							logger.warn("setSummonerSpells returned false");
+						}
+					} catch (e) {
+						logger.warn(`Failed to set summoner spells: ${e}`);
 					}
-				} catch (e) {
-					logger.warn(`Failed to set summoner spells: ${e}`);
 				}
 			}
 

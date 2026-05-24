@@ -87,7 +87,7 @@ export class ItemBuilds {
 					continue;
 				}
 
-				const build = this.extractBuild(json.itemSets, style);
+				const build = this.extractBuild(json.itemSets, style, lane);
 
 				if (!build || build.fullBuild.length === 0) {
 					logger.warn(`Parsed no build data for ${championAlias} ${lane} (attempt ${attempt + 1})`);
@@ -168,9 +168,9 @@ export class ItemBuilds {
 	 * 1. Full build (6 items with boots): pick from `itemBootSet6` by most played
 	 *    → when style is provided, prefer the most-played entry of that type
 	 *    → fallback to building slot-by-slot from `itemSet1..5` + boots
-	 * 2. Starting items: inferred (API doesn't provide them explicitly)
+	 * 2. Starting items: inferred from build path + lane (API doesn't provide them explicitly)
 	 */
-	private extractBuild(sets: Record<string, [string, number, number][]>, style?: "ap" | "ad"): ItemBuild | null {
+	private extractBuild(sets: Record<string, [string, number, number][]>, style?: "ap" | "ad", lane?: string): ItemBuild | null {
 		// ── Full build (6 items with boots) ──
 		let fullBuild = style
 			? this.getBestSetForStyle(sets.itemBootSet6, 6, style)
@@ -183,19 +183,29 @@ export class ItemBuilds {
 
 		if (fullBuild.length === 0) return null;
 
-		// ── Starting items: infer from startSet or first item in build ──
-		const startingItems = this.extractStartingItems(sets, fullBuild);
+		// ── Starting items: infer from build path + lane ──
+		const startingItems = this.extractStartingItems(sets, fullBuild, lane);
 
 		return { startingItems, fullBuild };
 	}
 
 	/**
 	 * Extract starting items from API data.
-	 * Uses startSet if available, otherwise infers from the first build item.
+	 * Uses startSet if available, otherwise infers from lane + build path.
+	 *
+	 * Logic priority:
+	 * 1. API startSet (if Lolalytics ever exposes it)
+	 * 2. Jungle lane → jungle pet + HP pot
+	 * 3. Support lane → Spellthief's (AP) or Relic Shield (tank/AD)
+	 * 4. Tear build detection → Tear + 2 HP pots
+	 * 5. Dark Seal detection → Dark Seal + HP pot
+	 * 6. Item tag-based inference (AP → Doran's Ring, tank → Doran's Shield)
+	 * 7. Lane-based default (bottom → Blade, middle → Ring/Blade, top → Blade/Shield)
 	 */
 	private extractStartingItems(
 		sets: Record<string, [string, number, number][]>,
 		fullBuild: number[],
+		lane?: string,
 	): number[] {
 		// Try startSet from API (if Lolalytics provides it)
 		if (sets.startSet) {
@@ -203,35 +213,78 @@ export class ItemBuilds {
 			if (best.length > 0) return best;
 		}
 
-		// Infer from first item in build: pick a matching Doran's / support / jungle start
+		// ── Jungle lane: always jungle pet + HP pot ──
+		if (lane === "jungle") {
+			return [1103, 2003]; // Jungle pet + HP pot
+		}
+
+		// ── Support lane: starter is always the same, not very useful to show ──
+		// Keep a basic fallback if the user manually scrolls to slot 0
+		if (lane === "support") {
+			return [3850, 2003]; // Spellthief's Edge + HP pot (generic)
+		}
+
+		// ── Tear build detection ──
+		// If the build contains any Tear upgrade, start with Tear + 2 HP pots
+		const TEAR_UPGRADES = new Set([
+			3003, // Archangel's Staff
+			3004, // Manamune
+			3040, // Seraph's Embrace
+			3042, // Muramana
+			3119, // Winter's Approach
+			3121, // Fimbulwinter
+		]);
+		if (fullBuild.some(id => TEAR_UPGRADES.has(id))) {
+			return [3070, 2003, 2003]; // Tear of the Goddess + 2 HP pots
+		}
+
+		// ── Dark Seal detection ──
+		// If the build is AP and includes Mejai's (3041), start with Dark Seal
+		if (fullBuild.some(id => id === 3041)) {
+			return [1082, 2003]; // Dark Seal + HP pot
+		}
+
+		// ── Infer from first item in build ──
 		const firstItem = fullBuild[0];
 		if (firstItem) {
 			const cost = dataDragon.getItemCost(firstItem);
 			// If first item is cheap enough to be a starting item itself
-			if (cost > 0 && cost <= 500) return [firstItem, 2003]; // item + HP pot
+			if (cost > 0 && cost <= 500) return [firstItem, 2003];
 
-			// Infer by item tags / common starter associations
-			const name = dataDragon.getItemName(firstItem)?.toLowerCase() ?? "";
-			// Jungle items
-			if (this.isJungleItem(firstItem)) return [1103, 2003]; // Jungle pet + HP pot
-			// AP-oriented builds
-			if (name.includes("rod") || name.includes("luden") || name.includes("liandry") ||
-				name.includes("everfrost") || name.includes("malignance") || name.includes("stormsurge")) {
+			// Jungle items in build (shouldn't reach here if lane=jungle, but safety net)
+			if (this.isJungleItem(firstItem)) return [1103, 2003];
+
+			// Classify by item tags
+			const buildStyle = this.classifyBuildStyle(fullBuild);
+			if (buildStyle === "ap") {
 				return [1056, 2003]; // Doran's Ring + HP pot
-			}
-			// Tank / bruiser
-			if (name.includes("sunfire") || name.includes("heartsteel") || name.includes("hollow") ||
-				name.includes("iceborn") || name.includes("jak'sho") || name.includes("unending")) {
-				return [1054, 2003]; // Doran's Shield + HP pot
-			}
-			// Support
-			if (name.includes("shurelya") || name.includes("moonstone") || name.includes("redemption") ||
-				name.includes("echoes") || name.includes("dream maker") || name.includes("celestial")) {
-				return [3850, 2003]; // Spellthief's + HP pot
 			}
 		}
 
-		// Default: Doran's Blade + HP pot (most common for AD)
+		// ── Lane-based defaults ──
+		if (lane === "bottom" || lane === "adc") {
+			return [1055, 2003]; // Doran's Blade + HP pot
+		}
+		if (lane === "middle") {
+			// Middle can be AP or AD — check build style
+			const buildStyle = this.classifyBuildStyle(fullBuild);
+			if (buildStyle === "ap") return [1056, 2003]; // Doran's Ring + HP pot
+			return [1055, 2003]; // Doran's Blade + HP pot
+		}
+		if (lane === "top") {
+			// Top lane: check if tank/bruiser
+			const buildStyle = this.classifyBuildStyle(fullBuild);
+			if (buildStyle === "ap") return [1056, 2003]; // Doran's Ring + HP pot
+			// Check if tank build (has tank items)
+			const hasTankItems = fullBuild.some(id => {
+				const tags = dataDragon.getItem(String(id))?.tags ?? [];
+				return tags.includes("Health") && tags.includes("Armor");
+			});
+			if (hasTankItems) return [1054, 2003]; // Doran's Shield + HP pot
+			return [1055, 2003]; // Doran's Blade + HP pot
+		}
+
+		// ── Fallback: Doran's Blade + HP pot ──
 		return [1055, 2003];
 	}
 

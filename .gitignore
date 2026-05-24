@@ -17,6 +17,8 @@ scripts/find-*
 
 # Project notes (personal)
 CONTEXT.md
+CLAUDE.md
+.claude/
 
 # Private folder (release notes, internal docs)
 private/

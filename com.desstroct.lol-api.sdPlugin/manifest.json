@@ -308,6 +308,32 @@
 				}
 			]
 		}
+		,
+		{
+			"Name": "OTP",
+			"UUID": "com.desstroct.lol-api.otp",
+			"Icon": "imgs/actions/otp/icon",
+			"Tooltip": "One Trick Pony mode — shows best bans against your main champion's counters and matchup info vs enemy laner during champion select.",
+			"PropertyInspectorPath": "ui/otp.html",
+			"Controllers": [
+				"Keypad",
+				"Encoder"
+			],
+			"Encoder": {
+				"layout": "layouts/otp.json",
+				"TriggerDescription": {
+					"Rotate": "Cycle bans",
+					"Push": "Refresh",
+					"Touch": "Refresh"
+				}
+			},
+			"States": [
+				{
+					"Image": "imgs/actions/otp/key",
+					"TitleAlignment": "middle"
+				}
+			]
+		}
 	],
 	"Category": "LoL Companion",
 	"CategoryIcon": "imgs/plugin/category-icon",

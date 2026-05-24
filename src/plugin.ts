@@ -62,6 +62,7 @@ import { JunglePath } from "./actions/jungle-path";
 import { SkillOrder } from "./actions/skill-order";
 import { SessionStats } from "./actions/session-stats";
 import { ObjectiveTimer } from "./actions/objective-timer";
+import { OTP } from "./actions/otp";
 import { lcuConnector } from "./services/lcu-connector";
 import { gameMode } from "./services/game-mode";
 import { dataDragon } from "./services/data-dragon";
@@ -140,6 +141,7 @@ streamDeck.actions.registerAction(new JunglePath());
 streamDeck.actions.registerAction(new SkillOrder());
 streamDeck.actions.registerAction(new SessionStats());
 streamDeck.actions.registerAction(new ObjectiveTimer());
+streamDeck.actions.registerAction(new OTP());
 
 // Connect to Stream Deck and initialize
 streamDeck.connect().then(() => {
