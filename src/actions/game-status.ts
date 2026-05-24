@@ -11,12 +11,13 @@ import { lcuConnector } from "../services/lcu-connector";
 import { lcuApi } from "../services/lcu-api";
 import { gameClient } from "../services/game-client";
 import { gameMode } from "../services/game-mode";
+import { getRankedEmblemIcon } from "../services/lol-icons";
 import type { GameflowPhase } from "../types/lol";
 
 const logger = streamDeck.logger.createScope("GameStatus");
 
 const PHASE_DISPLAY: Record<string, { label: string }> = {
-	None: { label: "Status\nOffline" },
+	None: { label: "LoL\nOnline" },
 	Lobby: { label: "Status\nLobby" },
 	Matchmaking: { label: "Status\nQueue..." },
 	ReadyCheck: { label: "MATCH\nFOUND" },
@@ -62,16 +63,46 @@ const REGION_TO_OPGG: Record<string, string> = {
 	ME: "me",
 };
 
+/** Tier short names for display on key */
+const TIER_SHORT: Record<string, string> = {
+	IRON: "Iron",
+	BRONZE: "Bronze",
+	SILVER: "Silver",
+	GOLD: "Gold",
+	PLATINUM: "Plat",
+	EMERALD: "Emerald",
+	DIAMOND: "Dia",
+	MASTER: "Master",
+	GRANDMASTER: "GM",
+	CHALLENGER: "Chall",
+};
+
 /**
  * Game Status action — shows the current LoL client state on a Stream Deck key.
- * Displays: Offline / Lobby / Queue / Champ Select / In Game / etc.
+ * When idle (connected, not in game): shows rank + LP with ranked emblem icon.
+ * When in game flow: shows phase (Queue, Champ Select, In Game, etc.).
+ * When disconnected: shows "Offline".
  * Press to open OP.GG profile of current summoner.
  */
 @action({ UUID: "com.desstroct.lol-api.game-status" })
 export class GameStatus extends SingletonAction<GameStatusSettings> {
 	private pollInterval: ReturnType<typeof setInterval> | null = null;
-	private currentPhase: GameflowPhase = "None";
+	private currentPhase: GameflowPhase | "__disconnected" = "None";
 	private detectedRegion: string | null = null;
+
+	/** Cached rank data to avoid fetching every 2s tick */
+	private cachedRank: {
+		tier: string; division: string; lp: number;
+		wins: number; losses: number; wr: number;
+		timestamp: number;
+	} | null = null;
+	private readonly RANK_CACHE_TTL = 60_000; // 1 minute
+
+	/** Track whether we set a custom image (ranked emblem) so we can clear it */
+	private hasCustomImage = false;
+	private lastEmblemTier = "";
+	/** Prevent redundant re-renders when rank hasn't changed */
+	private lastRankRender = "";
 
 	override onWillAppear(ev: WillAppearEvent<GameStatusSettings>): void | Promise<void> {
 		this.startPolling();
@@ -131,11 +162,37 @@ export class GameStatus extends SingletonAction<GameStatusSettings> {
 	}
 
 	private async updateStatus(): Promise<void> {
-		let phase: GameflowPhase = "None";
-
-		if (lcuConnector.isConnected()) {
-			phase = await lcuApi.getGameflowPhase();
+		// ── Disconnected ──
+		if (!lcuConnector.isConnected()) {
+			if (this.currentPhase !== "__disconnected") {
+				this.currentPhase = "__disconnected";
+				this.lastRankRender = "";
+				for (const a of this.actions) {
+					if (this.hasCustomImage) await a.setImage("");
+					await a.setTitle("LoL\nOffline");
+				}
+				this.hasCustomImage = false;
+			}
+			return;
 		}
+
+		const phase = await lcuApi.getGameflowPhase();
+
+		// ── Idle / Lobby → show rank + LP ──
+		if (phase === "None" || phase === "Lobby") {
+			await this.showRankDisplay(phase);
+			this.currentPhase = phase;
+			return;
+		}
+
+		// ── Active game flow ──
+		// Clear ranked emblem if we had one
+		if (this.hasCustomImage) {
+			for (const a of this.actions) await a.setImage("");
+			this.hasCustomImage = false;
+			this.lastEmblemTier = "";
+		}
+		this.lastRankRender = "";
 
 		// If LCU says InProgress, double check with Game Client
 		// Skip for TFT — the Live Client Data API doesn't serve TFT data
@@ -143,7 +200,7 @@ export class GameStatus extends SingletonAction<GameStatusSettings> {
 		if (phase === "InProgress" && !gameMode.isTFT()) {
 			const inGame = await gameClient.isInGame();
 			if (!inGame) {
-				phase = "GameStart"; // Game is loading
+				// still loading
 			} else {
 				gameTimeSec = await gameClient.getGameTime();
 			}
@@ -172,6 +229,71 @@ export class GameStatus extends SingletonAction<GameStatusSettings> {
 			// Update all visible instances of this action
 			for (const a of this.actions) {
 				await a.setTitle(label);
+			}
+		}
+	}
+
+	/**
+	 * Show rank + LP when idle. Fetches ranked stats periodically,
+	 * displays tier emblem as key image and rank info as title.
+	 */
+	private async showRankDisplay(phase: GameflowPhase): Promise<void> {
+		const now = Date.now();
+
+		// Refresh rank data periodically
+		if (!this.cachedRank || now - this.cachedRank.timestamp > this.RANK_CACHE_TTL) {
+			const ranked = await lcuApi.getCurrentRankedStats();
+			const solo = ranked?.queueMap?.RANKED_SOLO_5x5;
+			if (solo && solo.tier && solo.tier !== "NONE") {
+				const total = (solo.wins ?? 0) + (solo.losses ?? 0);
+				this.cachedRank = {
+					tier: solo.tier,
+					division: solo.division ?? "",
+					lp: solo.leaguePoints ?? 0,
+					wins: solo.wins ?? 0,
+					losses: solo.losses ?? 0,
+					wr: total > 0 ? Math.round((solo.wins / total) * 100) : 0,
+					timestamp: now,
+				};
+			} else {
+				this.cachedRank = { tier: "", division: "", lp: 0, wins: 0, losses: 0, wr: 0, timestamp: now };
+			}
+		}
+
+		const { tier, division, lp, wr } = this.cachedRank;
+
+		if (tier) {
+			const tierName = TIER_SHORT[tier] ?? tier;
+			const renderKey = `${tier}:${division}:${lp}:${phase}`;
+
+			if (renderKey !== this.lastRankRender) {
+				this.lastRankRender = renderKey;
+				const title = phase === "Lobby"
+					? `Lobby\n${tierName} ${division} ${lp}LP`
+					: `${tierName} ${division}\n${lp} LP · ${wr}%`;
+
+				for (const a of this.actions) await a.setTitle(title);
+			}
+
+			// Set ranked emblem icon (only fetch when tier changes)
+			if (tier !== this.lastEmblemTier) {
+				const emblem = await getRankedEmblemIcon(tier);
+				if (emblem) {
+					for (const a of this.actions) await a.setImage(emblem);
+					this.hasCustomImage = true;
+				}
+				this.lastEmblemTier = tier;
+			}
+		} else {
+			// Unranked
+			const renderKey = `unranked:${phase}`;
+			if (renderKey !== this.lastRankRender) {
+				this.lastRankRender = renderKey;
+				const label = phase === "Lobby" ? "Lobby\nUnranked" : "LoL\nOnline";
+				for (const a of this.actions) {
+					if (this.hasCustomImage) { await a.setImage(""); this.hasCustomImage = false; this.lastEmblemTier = ""; }
+					await a.setTitle(label);
+				}
 			}
 		}
 	}

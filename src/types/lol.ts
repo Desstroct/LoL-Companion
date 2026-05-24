@@ -41,6 +41,17 @@ export interface LcuRankedStats {
 	queueMap: Record<string, LcuRankedEntry>;
 }
 
+// ---- LCU API: Champion Mastery ----
+
+export interface LcuChampionMastery {
+	championId: number;
+	championLevel: number;
+	championPoints: number;
+	lastPlayTime: number;
+	championPointsSinceLastLevel: number;
+	championPointsUntilNextLevel: number;
+}
+
 // ---- LCU API: Perks / Rune Pages ----
 
 export interface LcuRunePage {

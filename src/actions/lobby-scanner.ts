@@ -19,6 +19,13 @@ import { getChampionIconByKey } from "../services/lol-icons";
 
 const logger = streamDeck.logger.createScope("LobbyScan");
 
+/** Format mastery points: 142381 → "142K", 1523456 → "1.5M" */
+function formatMastery(points: number): string {
+	if (points >= 1_000_000) return `${(points / 1_000_000).toFixed(1)}M`;
+	if (points >= 1_000) return `${Math.round(points / 1_000)}K`;
+	return String(points);
+}
+
 const POSITIONS: Record<string, string> = {
 	top: "TOP",
 	jungle: "JGL",
@@ -211,9 +218,11 @@ export class LobbyScannerAction extends SingletonAction<LobbyScannerSettings> {
 			actionSlots.push({ action: a, slot, isDial });
 		}
 
-		// ---- Collect unique champion keys & puuids to fetch in parallel ----
+		// ---- Collect unique champion keys, puuids & summonerIds to fetch in parallel ----
 		const champKeysNeeded = new Set<string>();
 		const puuidsNeeded = new Set<string>();
+		/** summonerId → championId they picked (for per-champ mastery lookup) */
+		const summonerChampMap = new Map<number, number>();
 		const slotPlayers: Map<number, (typeof session.myTeam)[0] | undefined> = new Map();
 
 		for (const { slot } of actionSlots) {
@@ -229,19 +238,46 @@ export class LobbyScannerAction extends SingletonAction<LobbyScannerSettings> {
 				: player.championPickIntent > 0 ? String(player.championPickIntent) : null;
 			if (champKey) champKeysNeeded.add(champKey);
 			if (player.puuid && player.puuid !== "") puuidsNeeded.add(player.puuid);
+			if (player.summonerId > 0) {
+				summonerChampMap.set(player.summonerId, player.championId > 0 ? player.championId : 0);
+			}
 		}
 
-		// Parallel fetch: champion icons + ranked stats
-		const [iconResults, rankedResults] = await Promise.all([
+		// Parallel fetch: champion icons + ranked stats + mastery data
+		const [iconResults, rankedResults, masteryResults] = await Promise.all([
 			Promise.all(
 				[...champKeysNeeded].map(async (key) => [key, await getChampionIconByKey(key)] as const),
 			),
 			Promise.all(
 				[...puuidsNeeded].map(async (puuid) => [puuid, await lcuApi.getRankedStats(puuid)] as const),
 			),
+			Promise.all(
+				[...summonerChampMap.entries()].map(async ([sid, champId]) => {
+					const [top, champ] = await Promise.all([
+						lcuApi.getTopChampionMastery(sid, 3),
+						champId > 0 ? lcuApi.getChampionMasteryById(sid, champId) : Promise.resolve(null),
+					]);
+					return [sid, { top, champ }] as const;
+				}),
+			),
 		]);
 		const iconMap = new Map(iconResults);
 		const rankedMap = new Map(rankedResults);
+		const masteryMap = new Map(masteryResults);
+
+		// Fetch icons for top-mastery champions (many will already be cached)
+		const topChampKeys = new Set<string>();
+		for (const [, data] of masteryMap) {
+			for (const m of data.top) topChampKeys.add(String(m.championId));
+		}
+		// Remove keys we already fetched
+		for (const key of champKeysNeeded) topChampKeys.delete(key);
+		if (topChampKeys.size > 0) {
+			const topIconResults = await Promise.all(
+				[...topChampKeys].map(async (key) => [key, await getChampionIconByKey(key)] as const),
+			);
+			for (const [key, icon] of topIconResults) iconMap.set(key, icon);
+		}
 
 		// ---- Render all actions from pre-fetched data ----
 		for (const { action: a, slot } of actionSlots) {
@@ -333,24 +369,43 @@ export class LobbyScannerAction extends SingletonAction<LobbyScannerSettings> {
 				}
 			}
 
+			// ── Mastery data ──
+			const mastery = player.summonerId > 0 ? masteryMap.get(player.summonerId) : undefined;
+			const champMastery = mastery?.champ ?? null;
+			const topChamps = mastery?.top ?? [];
+			const masteryStr = champMastery
+				? `${formatMastery(champMastery.championPoints)} pts · Lv.${champMastery.championLevel}`
+				: "";
+
 			if (a.isDial()) {
 				const barColor = isPrevSeason ? "#888888"
 					: wrPct >= 55 ? "#2ECC71" : wrPct >= 50 ? "#F1C40F" : wrPct > 0 ? "#E74C3C" : "#666666";
 				const wrLabel = isPrevSeason ? "prev season"
 					: wrPct > 0 ? `${wrPct}% WR · ${totalGames}g` : "";
+
+				// Top 3 mastery champion icons
+				const m1 = topChamps[0] ? iconMap.get(String(topChamps[0].championId)) ?? "" : "";
+				const m2 = topChamps[1] ? iconMap.get(String(topChamps[1].championId)) ?? "" : "";
+				const m3 = topChamps[2] ? iconMap.get(String(topChamps[2].championId)) ?? "" : "";
+
 				await a.setFeedback({
 					champ_icon: champIcon ?? "",
+					m1_icon: m1,
+					m2_icon: m2,
+					m3_icon: m3,
 					title: `${pos} · ${teamLabel} ${slotLabel}`,
 					champion: champName,
 					rank: rankStr || "Unranked",
 					wr_text: wrLabel,
+					mastery_text: masteryStr,
 					wr_bar: { value: wrPct || 50, bar_fill_c: barColor },
 				});
 			} else {
 				if (champIcon) await a.setImage(champIcon);
+				const masteryLine = champMastery ? ` ${formatMastery(champMastery.championPoints)}` : "";
 				const title = rankStr
-					? `${champName}\n${rankStr}${isPrevSeason ? "" : ` ${wrPct}%`}${totalGames > 0 && !isPrevSeason ? `\n${totalGames}g` : ""}`
-					: `${pos}\n${champName}`;
+					? `${champName}\n${rankStr}${isPrevSeason ? "" : ` ${wrPct}%`}${masteryLine}\n${totalGames > 0 && !isPrevSeason ? `${totalGames}g` : ""}`
+					: `${pos}\n${champName}${masteryLine}`;
 				await a.setTitle(title);
 			}
 		}

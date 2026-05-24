@@ -4,6 +4,7 @@ import { lcuConnector } from "./lcu-connector";
 import type {
 	GameflowPhase,
 	LcuChampSelectSession,
+	LcuChampionMastery,
 	LcuRankedStats,
 	LcuRunePage,
 	LcuSummoner,
@@ -221,6 +222,28 @@ export class LcuApi {
 	 */
 	async getCurrentRankedStats(): Promise<LcuRankedStats | null> {
 		return this.get<LcuRankedStats>("/lol-ranked/v1/current-ranked-stats");
+	}
+
+	// ---- Champion Mastery ----
+
+	/**
+	 * Get mastery data for a specific champion for a player.
+	 */
+	async getChampionMasteryById(summonerId: number, championId: number): Promise<LcuChampionMastery | null> {
+		if (summonerId <= 0 || championId <= 0) return null;
+		return this.get<LcuChampionMastery>(
+			`/lol-collections/v1/inventories/${summonerId}/champion-mastery/${championId}`,
+		);
+	}
+
+	/**
+	 * Get top N champions by mastery points for a player.
+	 */
+	async getTopChampionMastery(summonerId: number, count = 3): Promise<LcuChampionMastery[]> {
+		if (summonerId <= 0) return [];
+		return (await this.get<LcuChampionMastery[]>(
+			`/lol-collections/v1/inventories/${summonerId}/champion-mastery/top?count=${count}`,
+		)) ?? [];
 	}
 
 	// ---- HTTP helpers for PUT / DELETE ----
