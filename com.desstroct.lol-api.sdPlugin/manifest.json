@@ -113,7 +113,7 @@
 			"Name": "Smart Pick",
 			"UUID": "com.desstroct.lol-api.smart-pick",
 			"Icon": "imgs/actions/counterpick/icon",
-			"Tooltip": "Suggests counter picks or best overall picks. Press to toggle mode. Dial: rotate to scroll picks, press to toggle counter/best mode.",
+			"Tooltip": "Suggests the best champion to play based on counter strength vs your lane opponent and ally synergy. Dial: rotate to scroll picks, press/touch to refresh.",
 			"PropertyInspectorPath": "ui/smart-pick.html",
 			"Controllers": [
 				"Keypad",
@@ -123,7 +123,7 @@
 				"layout": "layouts/smart-pick.json",
 				"TriggerDescription": {
 					"Rotate": "Scroll picks",
-					"Push": "Toggle mode",
+					"Push": "Refresh",
 					"Touch": "Refresh"
 				}
 			},
@@ -314,6 +314,7 @@
 	"CodePath": "bin/plugin.js",
 	"Description": "League of Legends companion for Stream Deck. Monitor your game status, track your rank and LP gains, and get real-time stats on your keys and dials.\n\nFeatures:\n• Game Status — See your current client state (Lobby, Queue, Champion Select, In Game)\n• LP Tracker — Track your rank, LP, win rate, and session gains across Solo/Duo and Flex\n• Auto Accept — Automatically accept the match ready check\n• Lobby Scanner — View player ranks and win rates during Champion Select\n• Smart Pick — Get data-driven champion recommendations and counter picks (auto-detect role)\n• Auto Rune — Automatically import optimal rune pages and summoner spells when you lock in a champion\n• Skill Order — Shows the recommended skill max order during Champion Select\n• KDA Tracker — Live K/D/A, CS/min, and gold display during games\n• Best Item — See your recommended next item purchase based on champion and gold\n• Death Timer — Respawn countdown on your Stream Deck\n• Jungle Path — Recommended jungle clear paths for your champion\n• Session Stats — Track wins, losses, LP delta, and streaks across your gaming session\n• Objective Timer — Dragon, Baron, and Rift Herald respawn countdown timers during games\n\nSupports Stream Deck keys and dials (SD+). Requires the League of Legends client to be running. Data sourced from the official Riot Live Client API and public champion statistics.",
 	"URL": "https://github.com/Desstroct/LoL-Companion",
+	"SupportURL": "https://github.com/Desstroct/LoL-Companion",
 	"Icon": "imgs/plugin/marketplace",
 	"SDKVersion": 3,
 	"Software": {

@@ -223,7 +223,7 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 				const ranked = await lcuApi.getCurrentRankedStats();
 				const solo = ranked?.queueMap?.RANKED_SOLO_5x5;
 				this.playerTier = solo?.tier ? lolalalyticsTier(solo.tier) : "emerald_plus";
-				logger.info(`Smart Pick elo filter: ${solo?.tier ?? "unranked"} → ${this.playerTier}`);
+				logger.info(`Smart Pick elo filter: ${solo?.tier ?? "unranked"} -> ${this.playerTier}`);
 			} catch {
 				this.playerTier = "emerald_plus";
 			}
@@ -250,6 +250,9 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 		state: SmartPickState,
 		tier: string,
 	): Promise<void> {
+		const roleLabel = role.toUpperCase();
+		const titleStr = `Smart · ${roleLabel}`;
+
 		// Ally keys for synergy scoring — update as more allies lock in
 		const allyChampionKeys = session.myTeam
 			.filter((p) => p.championId > 0 && p.cellId !== session.localPlayerCellId)
@@ -259,14 +262,9 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 		const enemyResult = findEnemyLaner(session, role, true);
 
 		let enemyAliases: string[];
-		let titleStr: string;
 
 		if (enemyResult) {
-			const isLocked = session.actions.flat().some(
-				(act) => act.actorCellId === enemyResult.player.cellId && act.type === "pick" && act.completed,
-			);
 			enemyAliases = [enemyResult.alias];
-			titleStr = `⚔️ vs ${isLocked ? enemyResult.name : `${enemyResult.name}?`}`;
 		} else {
 			// Strategy 2: fall back to all locked enemies until the lane opponent is identified
 			const enemyCellIds = new Set(session.theirTeam.map((p) => p.cellId));
@@ -277,7 +275,7 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 
 			if (lockedEnemyChamps.length === 0) {
 				if (a.isDial()) {
-					await a.setFeedback({ title: `Smart · ${role.toUpperCase()}`, pick_name: "Waiting for picks...", pick_info: "", champ_icon: "", score_bar: { value: 0 } });
+					await a.setFeedback({ title: titleStr, pick_name: "Waiting for picks...", pick_info: "", champ_icon: "", score_bar: { value: 0 } });
 				} else {
 					await a.setTitle(`Smart\nWaiting...`);
 				}
@@ -285,7 +283,6 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 			}
 
 			enemyAliases = lockedEnemyChamps.map((c) => ChampionStats.toLolalytics(c.id));
-			titleStr = `★ vs ${lockedEnemyChamps.length} enemies`;
 		}
 
 		// Hash covers enemies + ally composition + tier — refetch whenever any changes
@@ -316,7 +313,7 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 			const tierLabel = tierDisplayLabel(tier);
 			state.lastPicks = picks.map((p) => ({
 				...p,
-				details: `${getTier(p.score)} ${p.details} · ${tierLabel}`,
+				details: `${p.details} · ${tierLabel}`,
 			}));
 			state.lastInfo = titleStr;
 			state.lastHash = hash;

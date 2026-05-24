@@ -2,8 +2,18 @@
 <html>
 <head>
     <meta charset="utf-8" />
-    <title>Skill Order Settings</title>
+    <title>Skill Order</title>
     <script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
+    <style>
+        .tips-card { margin: 12px 0 4px; border-radius: 4px; overflow: hidden; border: 1px solid #333; }
+        .tips-card__header { background: #1c1c2e; padding: 6px 12px; font-size: 9px; font-weight: 800; letter-spacing: 1.2px; color: #C89B3C; text-transform: uppercase; }
+        .tips-card__body { padding: 8px 12px 6px; background: #1a1a1a; }
+        .tips-desc { font-size: 11px; color: #888; margin: 0 0 8px; line-height: 1.5; }
+        .tip-row { display: flex; gap: 8px; padding: 2px 0; }
+        .tip-row__label { flex-shrink: 0; width: 76px; font-size: 10px; font-weight: 700; color: #C89B3C; opacity: 0.85; }
+        .tip-row__text { font-size: 11px; color: #aaa; line-height: 1.4; }
+        .tips-card__footer { padding: 5px 12px; font-size: 10px; color: #555; background: #161616; border-top: 1px solid #2e2e2e; }
+    </style>
 </head>
 <body>
     <sdpi-item label="Your Role">
@@ -16,16 +26,28 @@
             <option value="utility">Support</option>
         </sdpi-select>
     </sdpi-item>
-    <sdpi-item label="Info">
-        <details>
-            <summary>How it works</summary>
-            <p style="font-size: 11px; color: #999; padding: 8px;">
-                During Champion Select, fetches the optimal skill max order from Lolalytics for your locked champion.<br><br>
-                <b>Key:</b> Press to toggle between priority view (Q > E > W) and level-by-level grid.<br>
-                <b>Dial rotate:</b> Switch between "Most Common" and "Highest WR" skill orders.<br>
-                <b>Dial press:</b> Toggle detail view.
-            </p>
-        </details>
-    </sdpi-item>
+    <div class="tips-card">
+        <div class="tips-card__header">⚡ Quick Tips</div>
+        <div class="tips-card__body">
+            <p class="tips-desc">Fetches optimal skill max order and level-by-level skill priority from Lolalytics. Updates when you lock in your champion.</p>
+            <div class="tip-row">
+                <span class="tip-row__label">Key press</span>
+                <span class="tip-row__text">Toggle priority view ↔ level-by-level grid</span>
+            </div>
+            <div class="tip-row">
+                <span class="tip-row__label">Dial rotate</span>
+                <span class="tip-row__text">Switch Most Common ↔ Highest WR order</span>
+            </div>
+            <div class="tip-row">
+                <span class="tip-row__label">Dial press</span>
+                <span class="tip-row__text">Toggle detail view</span>
+            </div>
+            <div class="tip-row">
+                <span class="tip-row__label">Highlight</span>
+                <span class="tip-row__text">Next skill to level at your current level</span>
+            </div>
+        </div>
+        <div class="tips-card__footer">📡 Lolalytics · League Client API</div>
+    </div>
 </body>
 </html>

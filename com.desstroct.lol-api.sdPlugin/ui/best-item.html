@@ -2,26 +2,46 @@
 <html>
 <head>
     <meta charset="utf-8" />
-    <title>Best Item Settings</title>
+    <title>Best Item</title>
     <script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
+    <style>
+        .tips-card { margin: 12px 0 4px; border-radius: 4px; overflow: hidden; border: 1px solid #333; }
+        .tips-card__header { background: #1c1c2e; padding: 6px 12px; font-size: 9px; font-weight: 800; letter-spacing: 1.2px; color: #C89B3C; text-transform: uppercase; }
+        .tips-card__body { padding: 8px 12px 6px; background: #1a1a1a; }
+        .tips-desc { font-size: 11px; color: #888; margin: 0 0 8px; line-height: 1.5; }
+        .tip-row { display: flex; gap: 8px; padding: 2px 0; }
+        .tip-row__label { flex-shrink: 0; width: 76px; font-size: 10px; font-weight: 700; color: #C89B3C; opacity: 0.85; }
+        .tip-row__text { font-size: 11px; color: #aaa; line-height: 1.4; }
+        .tips-card__footer { padding: 5px 12px; font-size: 10px; color: #555; background: #161616; border-top: 1px solid #2e2e2e; }
+    </style>
 </head>
 <body>
-    <sdpi-item label="Info">
-        <details>
-            <summary>How it works</summary>
-            <p style="font-size: 11px; color: #999; padding: 8px;">
-                Recommends the next item to buy based on your champion, lane,
-                and current items. Build data is fetched from Lolalytics (highest win rate build).
-                <br><br>
-                <strong>Key:</strong> Shows next item icon, name, and cost.<br>
-                <strong>Dial:</strong> Rotate to browse the full 6-item build.
-                Shows item cost, your gold, and a progress bar.
-                "BUY NOW!" appears when you can afford the next item.
-                <br><br>
-                Champion and lane are auto-detected from the live game.
-                Updates every 2 seconds during a game.
-            </p>
-        </details>
-    </sdpi-item>
+    <div class="tips-card">
+        <div class="tips-card__header">⚡ Quick Tips</div>
+        <div class="tips-card__body">
+            <p class="tips-desc">Recommends the best item build for your champion and lane. Adapts to your build style (AP/AD) and enemy damage type for boots.</p>
+            <div class="tip-row">
+                <span class="tip-row__label">Key</span>
+                <span class="tip-row__text">Next item to buy — icon, name, cost</span>
+            </div>
+            <div class="tip-row">
+                <span class="tip-row__label">Dial slot 0</span>
+                <span class="tip-row__text">Starting items (Doran's + potions)</span>
+            </div>
+            <div class="tip-row">
+                <span class="tip-row__label">Dial 1–6</span>
+                <span class="tip-row__text">Full build in order — components shown</span>
+            </div>
+            <div class="tip-row">
+                <span class="tip-row__label">BUY NOW!</span>
+                <span class="tip-row__text">You can afford the next item</span>
+            </div>
+            <div class="tip-row">
+                <span class="tip-row__label">Auto mode</span>
+                <span class="tip-row__text">Press dial or leave on slot −1 to reset</span>
+            </div>
+        </div>
+        <div class="tips-card__footer">📡 Lolalytics · Riot Live Client API</div>
+    </div>
 </body>
 </html>

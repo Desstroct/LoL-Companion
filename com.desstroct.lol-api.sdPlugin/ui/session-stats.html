@@ -1,20 +1,43 @@
 <!DOCTYPE html>
 <html>
 <head>
-	<meta charset="utf-8" />
-	<title>Session Stats</title>
-	<script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
+    <meta charset="utf-8" />
+    <title>Session Stats</title>
+    <script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
+    <style>
+        .tips-card { margin: 12px 0 4px; border-radius: 4px; overflow: hidden; border: 1px solid #333; }
+        .tips-card__header { background: #1c1c2e; padding: 6px 12px; font-size: 9px; font-weight: 800; letter-spacing: 1.2px; color: #C89B3C; text-transform: uppercase; }
+        .tips-card__body { padding: 8px 12px 6px; background: #1a1a1a; }
+        .tips-desc { font-size: 11px; color: #888; margin: 0 0 8px; line-height: 1.5; }
+        .tip-row { display: flex; gap: 8px; padding: 2px 0; }
+        .tip-row__label { flex-shrink: 0; width: 76px; font-size: 10px; font-weight: 700; color: #C89B3C; opacity: 0.85; }
+        .tip-row__text { font-size: 11px; color: #aaa; line-height: 1.4; }
+        .tips-card__footer { padding: 5px 12px; font-size: 10px; color: #555; background: #161616; border-top: 1px solid #2e2e2e; }
+    </style>
 </head>
 <body>
-	<sdpi-item label="Session Stats">
-		<span>Tracks your wins, losses, LP delta, and streaks across your current gaming session.</span>
-	</sdpi-item>
-	<sdpi-item label="Controls">
-		<span><b>Key press / Dial press:</b> Reset session.<br>
-		<b>Dial rotate:</b> Switch between Solo/Duo and Flex queues.</span>
-	</sdpi-item>
-	<sdpi-item label="How it works">
-		<span>Session starts when the plugin loads. LP delta is calculated from your rank when the session started vs now. Win/Loss record and streak are tracked from match history.</span>
-	</sdpi-item>
+    <div class="tips-card">
+        <div class="tips-card__header">⚡ Quick Tips</div>
+        <div class="tips-card__body">
+            <p class="tips-desc">Tracks your wins, losses, LP delta, and streaks from match history since the session started.</p>
+            <div class="tip-row">
+                <span class="tip-row__label">Dial rotate</span>
+                <span class="tip-row__text">Switch Solo/Duo ↔ Flex queue</span>
+            </div>
+            <div class="tip-row">
+                <span class="tip-row__label">Key / Press</span>
+                <span class="tip-row__text">Reset the current session</span>
+            </div>
+            <div class="tip-row">
+                <span class="tip-row__label">Green streak</span>
+                <span class="tip-row__text">Win streak in progress</span>
+            </div>
+            <div class="tip-row">
+                <span class="tip-row__label">Red streak</span>
+                <span class="tip-row__text">Loss streak in progress</span>
+            </div>
+        </div>
+        <div class="tips-card__footer">📡 League Client API · match history</div>
+    </div>
 </body>
 </html>

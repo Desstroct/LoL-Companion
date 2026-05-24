@@ -2,8 +2,18 @@
 <html>
 <head>
     <meta charset="utf-8" />
-    <title>Auto Rune Settings</title>
+    <title>Auto Rune</title>
     <script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
+    <style>
+        .tips-card { margin: 12px 0 4px; border-radius: 4px; overflow: hidden; border: 1px solid #333; }
+        .tips-card__header { background: #1c1c2e; padding: 6px 12px; font-size: 9px; font-weight: 800; letter-spacing: 1.2px; color: #C89B3C; text-transform: uppercase; }
+        .tips-card__body { padding: 8px 12px 6px; background: #1a1a1a; }
+        .tips-desc { font-size: 11px; color: #888; margin: 0 0 8px; line-height: 1.5; }
+        .tip-row { display: flex; gap: 8px; padding: 2px 0; }
+        .tip-row__label { flex-shrink: 0; width: 76px; font-size: 10px; font-weight: 700; color: #C89B3C; opacity: 0.85; }
+        .tip-row__text { font-size: 11px; color: #aaa; line-height: 1.4; }
+        .tips-card__footer { padding: 5px 12px; font-size: 10px; color: #555; background: #161616; border-top: 1px solid #2e2e2e; }
+    </style>
 </head>
 <body>
     <sdpi-item label="Your Role">
@@ -18,9 +28,7 @@
     </sdpi-item>
     <sdpi-item label="Mode">
         <sdpi-checkbox setting="autoApply" label="Automatic — apply runes when you lock in"></sdpi-checkbox>
-        <p style="font-size: 11px; color: #777; margin: 2px 0 0 0; padding: 0 4px;">
-            Unchecked = Manual mode: press the key to apply.
-        </p>
+        <p style="font-size: 11px; color: #666; margin: 3px 0 0; padding: 0 4px;">Unchecked = Manual: press key or dial to apply.</p>
     </sdpi-item>
     <sdpi-item label="Auto Spells">
         <sdpi-checkbox setting="autoSpells" label="Also set optimal summoner spells" default="true"></sdpi-checkbox>
@@ -28,18 +36,28 @@
     <sdpi-item label="Matchup">
         <sdpi-checkbox setting="matchup" label="Adapt runes &amp; spells to enemy laner" default="true"></sdpi-checkbox>
     </sdpi-item>
-    <sdpi-item label="Info">
-        <details>
-            <summary>How it works</summary>
-            <p style="font-size: 11px; color: #999; padding: 8px;">
-                During Champion Select, fetches the optimal rune page from Lolalytics.<br><br>
-                <b>Auto mode:</b> Runes applied automatically when you lock in. Key border turns green on success.<br>
-                <b>Manual mode:</b> Press the key/dial to apply runes when ready.<br><br>
-                <b>Dial rotate:</b> Switch between "Highest WR" and "Most Popular" builds.<br>
-                <b>Auto Spells:</b> Also sets the highest win-rate summoner spell combo.<br>
-                <b>Matchup:</b> Adapts runes to the enemy laner. Falls back to generic if &lt;50 games of data.
-            </p>
-        </details>
-    </sdpi-item>
+    <div class="tips-card">
+        <div class="tips-card__header">⚡ Quick Tips</div>
+        <div class="tips-card__body">
+            <p class="tips-desc">Fetches optimal runes from Lolalytics and applies them during Champion Select.</p>
+            <div class="tip-row">
+                <span class="tip-row__label">Dial rotate</span>
+                <span class="tip-row__text">Switch Most Popular ↔ Best WR build</span>
+            </div>
+            <div class="tip-row">
+                <span class="tip-row__label">Key / Touch</span>
+                <span class="tip-row__text">Apply runes now (Manual mode)</span>
+            </div>
+            <div class="tip-row">
+                <span class="tip-row__label">Green border</span>
+                <span class="tip-row__text">Runes applied successfully</span>
+            </div>
+            <div class="tip-row">
+                <span class="tip-row__label">Matchup</span>
+                <span class="tip-row__text">Adapts when enemy laner locks in</span>
+            </div>
+        </div>
+        <div class="tips-card__footer">📡 Lolalytics · League Client API</div>
+    </div>
 </body>
 </html>

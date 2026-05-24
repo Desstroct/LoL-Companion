@@ -33,7 +33,8 @@ interface BestItemState {
 	currentChampion: string | null;
 	currentLane: string | null;
 	currentStyle: "ap" | "ad" | null;
-	browseIndex: number; // -1 = auto (next item)
+	/** -1 = auto (next item), 0 = starting items, 1..N = build item at index N-1 */
+	browseIndex: number;
 }
 
 /**
@@ -41,7 +42,7 @@ interface BestItemState {
  *
  * Key display: item icon + name + cost
  * Dial display: item icon, name, cost, gold progress bar, BUY/SAVE status
- * Dial rotate: cycle through full recommended build
+ * Dial rotate: slot 0 = starting items, slots 1–N = full build items
  */
 @action({ UUID: "com.desstroct.lol-api.best-item" })
 export class BestItem extends SingletonAction {
@@ -79,18 +80,17 @@ export class BestItem extends SingletonAction {
 		if (!state.currentBuild || state.currentBuild.fullBuild.length === 0) return;
 
 		const len = state.currentBuild.fullBuild.length;
+		// Slot 0 = starting items, slots 1..len = build items
+		const totalSlots = len + 1;
 
 		if (state.browseIndex === -1) {
-			// First rotation: start at 0
-			state.browseIndex = ev.payload.ticks > 0 ? 0 : len - 1;
+			state.browseIndex = ev.payload.ticks > 0 ? 0 : totalSlots - 1;
 		} else {
 			state.browseIndex += ev.payload.ticks > 0 ? 1 : -1;
-			// Wrap around
-			if (state.browseIndex >= len) state.browseIndex = 0;
-			if (state.browseIndex < 0) state.browseIndex = len - 1;
+			if (state.browseIndex >= totalSlots) state.browseIndex = 0;
+			if (state.browseIndex < 0) state.browseIndex = totalSlots - 1;
 		}
 
-		// Trigger immediate update
 		this.updateAll().catch((e) => logger.error(`updateAll error: ${e}`));
 	}
 
@@ -255,7 +255,7 @@ export class BestItem extends SingletonAction {
 									s.browseIndex = -1;
 								}
 							}
-							prefetchItemIcons(build.fullBuild);
+							prefetchItemIcons([...build.startingItems, ...build.fullBuild]);
 						} else {
 							this.buildFailedUntil = Date.now() + 15_000; // retry in 15s
 							// Only show "No data" if there is no fallback build to render
@@ -286,16 +286,43 @@ export class BestItem extends SingletonAction {
 				? adaptBootsToEnemy(rawBuild, enemyType)
 				: rawBuild;
 
+			const styleLabel = state.currentStyle ? ` · ${state.currentStyle.toUpperCase()}` : "";
+
+			// ── Starting items view (slot 0) ──
+			if (state.browseIndex === 0) {
+				const startItems = state.currentBuild.startingItems;
+				if (startItems.length > 0) {
+					const firstName = dataDragon.getItemName(startItems[0]);
+					const firstIcon = await getItemIcon(startItems[0]);
+					const totalCost = startItems.reduce((sum, id) => sum + dataDragon.getItemCost(id), 0);
+					if (a.isDial()) {
+						const secondName = startItems.length > 1 ? dataDragon.getItemName(startItems[1]) : "";
+						await a.setFeedback({
+							item_icon: firstIcon ?? "",
+							title: `STARTING${styleLabel}`,
+							item_name: truncate(firstName, 18),
+							cost_text: startItems.length > 1 ? `+ ${truncate(secondName, 14)}` : "",
+							gold_bar: { value: 0, bar_fill_c: "#888888" },
+							status_text: `~${formatGold(totalCost)}g`,
+						});
+					} else {
+						const icons = await Promise.all(startItems.slice(0, 3).map((id) => getItemIcon(id)));
+						const names = startItems.slice(0, 3).map((id) => dataDragon.getItemName(id));
+						await a.setImage(composeStartingItemsKey(icons, names, totalCost));
+						await a.setTitle("");
+					}
+				}
+				continue;
+			}
+
 			let displayItemId: number;
 			let displayItemIdx = 0;
 			let displaySlotLabel: string;
 			let isNextToBuy: boolean;
 
-			const styleLabel = state.currentStyle ? ` · ${state.currentStyle.toUpperCase()}` : "";
-
-			if (state.browseIndex >= 0 && state.browseIndex < build.length) {
-				// ── Browse mode: show the item at browseIndex ──
-				displayItemIdx = state.browseIndex;
+			if (state.browseIndex >= 1 && state.browseIndex <= build.length) {
+				// ── Browse mode: slot N maps to build[N-1] ──
+				displayItemIdx = state.browseIndex - 1;
 				displayItemId = build[displayItemIdx];
 				displaySlotLabel = `Item ${displayItemIdx + 1}/${build.length}${styleLabel}`;
 				isNextToBuy = false;
@@ -312,7 +339,7 @@ export class BestItem extends SingletonAction {
 							item_name: "Complete!",
 							cost_text: `${formatGold(playerGold)}g`,
 							gold_bar: { value: 100, bar_fill_c: "#2ECC71" },
-							status_text: "Full build \u2713",
+							status_text: "Full build ✓",
 						});
 					} else {
 						await a.setImage(composeBuildCompleteKey(build.length));
@@ -322,6 +349,7 @@ export class BestItem extends SingletonAction {
 				}
 
 				displayItemId = build[nextIdx];
+				displayItemIdx = nextIdx;
 				displaySlotLabel = `NEXT (${nextIdx + 1}/${build.length})${styleLabel}`;
 				isNextToBuy = true;
 			}
@@ -339,11 +367,14 @@ export class BestItem extends SingletonAction {
 				? Math.min(100, Math.round((playerGold / itemCost) * 100))
 				: 100;
 
+			// Component names — shown in browse mode instead of redundant cost info
+			const componentStr = getComponentDisplay(displayItemId);
+
 			// Status text
 			let statusText: string;
 			let barColor: string;
 			if (owned) {
-				statusText = "Owned \u2713";
+				statusText = "Owned ✓";
 				barColor = "#2ECC71";
 			} else if (canAfford && isNextToBuy) {
 				statusText = "BUY NOW!";
@@ -353,7 +384,7 @@ export class BestItem extends SingletonAction {
 				statusText = `Need ${formatGold(needed)}g`;
 				barColor = "#F1C40F";
 			} else {
-				statusText = `${formatGold(itemCost)}g`;
+				statusText = componentStr || `${formatGold(itemCost)}g`;
 				barColor = "#888888";
 			}
 
@@ -372,7 +403,7 @@ export class BestItem extends SingletonAction {
 					status_text: statusText,
 				});
 			} else {
-				await a.setImage(composeItemKey(itemIcon, itemName, playerGold, itemCost, canAfford, isNextToBuy, owned, build, playerItemIds, displayItemIdx));
+				await a.setImage(composeItemKey(itemIcon, itemName, playerGold, itemCost, canAfford, isNextToBuy, owned, build, playerItemIds, displayItemIdx, componentStr));
 				await a.setTitle("");
 			}
 		}
@@ -464,8 +495,57 @@ function isItemOwned(itemId: number, playerItemIds: Set<number>): boolean {
 	return false;
 }
 
+/** Short string listing the component items for a given item (e.g., "Dirk + Long Sword"). */
+function getComponentDisplay(itemId: number): string {
+	const comps = dataDragon.getItemComponents(itemId);
+	if (comps.length === 0) return "";
+	return comps.slice(0, 2).map(id => truncate(dataDragon.getItemName(id), 11)).join(" + ");
+}
+
 function escapeXml(str: string): string {
 	return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function composeStartingItemsKey(
+	icons: (string | null)[],
+	names: string[],
+	totalCost: number,
+): string {
+	const S = 144;
+	const cr = 12;
+	const GOLD_C = '#C89B3C';
+	const BLUE = '#3498DB';
+
+	const count = Math.min(icons.length, 3);
+	const iconSize = count === 1 ? 80 : count === 2 ? 58 : 40;
+	const gap = 8;
+	const totalW = count * iconSize + (count - 1) * gap;
+	const startX = Math.round((S - totalW) / 2);
+	const iconY = 24;
+
+	let itemsSvg = '';
+	for (let i = 0; i < count; i++) {
+		const x = startX + i * (iconSize + gap);
+		if (icons[i]) {
+			itemsSvg += `<clipPath id="si${i}"><rect x="${x}" y="${iconY}" width="${iconSize}" height="${iconSize}" rx="6"/></clipPath>
+			<image href="${icons[i]}" x="${x}" y="${iconY}" width="${iconSize}" height="${iconSize}" clip-path="url(#si${i})"/>`;
+		} else {
+			itemsSvg += `<rect x="${x}" y="${iconY}" width="${iconSize}" height="${iconSize}" rx="6" fill="#1a2a3a"/>`;
+		}
+		const cx = x + Math.round(iconSize / 2);
+		const nameY = iconY + iconSize + 12;
+		itemsSvg += `<text x="${cx}" y="${nameY}" font-size="9" fill="#CCCCCC" text-anchor="middle" font-family="sans-serif">${escapeXml(truncate(names[i] ?? "", 10))}</text>`;
+	}
+
+	const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${S}" height="${S}">
+		<rect width="${S}" height="${S}" rx="${cr}" fill="#0A1428"/>
+		<rect x="3" y="3" width="${S - 6}" height="${S - 6}" rx="${cr - 2}" fill="none" stroke="${BLUE}" stroke-width="3"/>
+		<text x="${S / 2}" y="16" font-size="10" fill="${BLUE}" text-anchor="middle" font-family="sans-serif" font-weight="600">STARTING</text>
+		${itemsSvg}
+		<text x="${S / 2}" y="136" font-size="10" fill="${GOLD_C}" text-anchor="middle" font-family="sans-serif">~${formatGold(totalCost)}g</text>
+	</svg>`;
+
+	return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
 }
 
 function composeItemKey(
@@ -479,6 +559,7 @@ function composeItemKey(
 	build: number[],
 	playerItemIds: Set<number>,
 	currentIdx: number,
+	componentStr: string,
 ): string {
 	const S = 144;
 	const cr = 12;
@@ -502,7 +583,7 @@ function composeItemKey(
 	let statusText: string;
 	let statusColor: string;
 	if (owned) {
-		statusText = 'Owned \u2713';
+		statusText = 'Owned ✓';
 		statusColor = GREEN;
 	} else if (canAfford && isNextToBuy) {
 		statusText = 'BUY NOW!';
@@ -511,7 +592,7 @@ function composeItemKey(
 		statusText = `Need ${formatGold(itemCost - playerGold)}g`;
 		statusColor = GOLD_C;
 	} else {
-		statusText = `${formatGold(itemCost)}g`;
+		statusText = componentStr || `${formatGold(itemCost)}g`;
 		statusColor = '#AAAAAA';
 	}
 

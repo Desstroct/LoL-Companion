@@ -4,21 +4,44 @@
     <meta charset="utf-8" />
     <title>Objective Timer</title>
     <script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
+    <style>
+        .tips-card { margin: 12px 0 4px; border-radius: 4px; overflow: hidden; border: 1px solid #333; }
+        .tips-card__header { background: #1c1c2e; padding: 6px 12px; font-size: 9px; font-weight: 800; letter-spacing: 1.2px; color: #C89B3C; text-transform: uppercase; }
+        .tips-card__body { padding: 8px 12px 6px; background: #1a1a1a; }
+        .tips-desc { font-size: 11px; color: #888; margin: 0 0 8px; line-height: 1.5; }
+        .tip-row { display: flex; gap: 8px; padding: 2px 0; }
+        .tip-row__label { flex-shrink: 0; width: 76px; font-size: 10px; font-weight: 700; color: #C89B3C; opacity: 0.85; }
+        .tip-row__text { font-size: 11px; color: #aaa; line-height: 1.4; }
+        .tips-card__footer { padding: 5px 12px; font-size: 10px; color: #555; background: #161616; border-top: 1px solid #2e2e2e; }
+    </style>
 </head>
 <body>
-    <sdpi-item label="Info">
-        <details>
-            <summary>How it works</summary>
-            <p style="font-size: 11px; color: #999; padding: 8px;">
-                Tracks Dragon, Baron, and Rift Herald respawn timers in real-time.<br><br>
-                <b>Key:</b> Shows the most urgent objective countdown.<br>
-                <b>Dial:</b> Rotate to cycle between Dragon / Baron / Herald views.<br><br>
-                <b>Dragon:</b> 5 min respawn (Elder: 6 min). First spawn at 5:00.<br>
-                <b>Baron:</b> 6 min respawn. Spawns at 20:00.<br>
-                <b>Herald:</b> 4 min respawn. Spawns at 14:00 (max 2 heralds).<br><br>
-                Uses the Live Client Data API game events — fully Riot ToS compliant.
-            </p>
-        </details>
-    </sdpi-item>
+    <div class="tips-card">
+        <div class="tips-card__header">⚡ Quick Tips</div>
+        <div class="tips-card__body">
+            <p class="tips-desc">Tracks Dragon, Baron, and Herald respawn timers. Starts counting when an objective is killed.</p>
+            <div class="tip-row">
+                <span class="tip-row__label">Key</span>
+                <span class="tip-row__text">Most urgent objective countdown</span>
+            </div>
+            <div class="tip-row">
+                <span class="tip-row__label">Dial rotate</span>
+                <span class="tip-row__text">Cycle Dragon / Baron / Herald</span>
+            </div>
+            <div class="tip-row">
+                <span class="tip-row__label">Dragon</span>
+                <span class="tip-row__text">5 min respawn (Elder: 6 min) · spawns 5:00</span>
+            </div>
+            <div class="tip-row">
+                <span class="tip-row__label">Baron</span>
+                <span class="tip-row__text">6 min respawn · spawns 20:00</span>
+            </div>
+            <div class="tip-row">
+                <span class="tip-row__label">Herald</span>
+                <span class="tip-row__text">4 min respawn · spawns 14:00 (×2 max)</span>
+            </div>
+        </div>
+        <div class="tips-card__footer">📡 Riot Live Client API</div>
+    </div>
 </body>
 </html>
