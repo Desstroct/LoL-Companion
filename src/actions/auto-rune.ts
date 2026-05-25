@@ -22,6 +22,8 @@ import { runeData, RunePageData } from "../services/rune-data";
 import { ChampionStats } from "../services/champion-stats";
 import { findEnemyLaner } from "../services/champ-select-utils";
 import { getRuneIcon, getSpellIconById } from "../services/lol-icons";
+import { fetchPlayerTier } from "../services/lolalytics-tier";
+import { getChampionSpells } from "../services/spell-data";
 
 const logger = streamDeck.logger.createScope("AutoRune");
 
@@ -170,6 +172,8 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 	private pollInterval: ReturnType<typeof setInterval> | null = null;
 	/** Per-action instance state (supports multiple keys with different roles) */
 	private actionStates = new Map<string, AutoRuneState>();
+	/** Cached player tier for elo-aware rune recommendations */
+	private playerTier: string | null = null;
 
 	override onWillAppear(ev: WillAppearEvent<AutoRuneSettings>): void | Promise<void> {
 		this.startPolling();
@@ -196,6 +200,9 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 	/** Key press: apply the currently selected runes to the client */
 	override async onKeyDown(ev: KeyDownEvent<AutoRuneSettings>): Promise<void> {
 		const state = this.getState(ev.action.id);
+		// Manual click: force re-apply both runes and spells
+		state.applied = false;
+		state.spellsApplied = false;
 		await this.applyRunesForAction(ev.action, state, ev.payload.settings);
 	}
 
@@ -211,12 +218,18 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 	/** Dial press: apply runes */
 	override async onDialUp(ev: DialUpEvent<AutoRuneSettings>): Promise<void> {
 		const state = this.getState(ev.action.id);
+		// Manual press: force re-apply both runes and spells
+		state.applied = false;
+		state.spellsApplied = false;
 		await this.applyRunesForAction(ev.action, state, ev.payload.settings);
 	}
 
 	/** Touch tap: apply runes */
 	override async onTouchTap(ev: TouchTapEvent<AutoRuneSettings>): Promise<void> {
 		const state = this.getState(ev.action.id);
+		// Manual tap: force re-apply both runes and spells
+		state.applied = false;
+		state.spellsApplied = false;
 		await this.applyRunesForAction(ev.action, state, ev.payload.settings);
 	}
 
@@ -292,6 +305,7 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 				s.vsChampName = "";
 				s.hoveredEnemyName = "";
 			}
+			this.playerTier = null; // refresh tier next champ select
 			if (hadState) {
 				for (const a of this.actions) {
 					const s = (await a.getSettings()) as AutoRuneSettings;
@@ -333,6 +347,13 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 		);
 
 		const champAlias = ChampionStats.toLolalytics(champ.id);
+
+		// Fetch player tier once per champ select for elo-aware recommendations
+		if (this.playerTier === null) {
+			this.playerTier = await fetchPlayerTier();
+			logger.info(`Auto Rune elo filter: ${this.playerTier}`);
+		}
+		const tier = this.playerTier;
 
 		for (const a of this.actions) {
 			const s = (await a.getSettings()) as AutoRuneSettings;
@@ -423,22 +444,28 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 			const vsAlias = lockedEnemyAlias || undefined;
 
 			try {
-				const runes = await runeData.getRecommendedRunes(champAlias, lane, vsAlias);
+				const runes = await runeData.getRecommendedRunes(champAlias, lane, vsAlias, tier);
 
 				// If matchup data has too few games (<50), fall back to generic
 				if (vsAlias && runes.length > 0 && runes[0].games < 50) {
 					logger.info(`Matchup data for ${champ.name} vs ${state.vsChampName} has only ${runes[0].games} games, using generic`);
-					const genericRunes = await runeData.getRecommendedRunes(champAlias, lane);
+					const genericRunes = await runeData.getRecommendedRunes(champAlias, lane, undefined, tier);
 					state.lastRunes = genericRunes;
 					state.vsChampName = ""; // clear matchup label since we're using generic
 				} else {
 					state.lastRunes = runes;
 				}
 
-				// Use lane-based default spells (Lolalytics SSR endpoint is blocked by Cloudflare)
+				// Champion-specific spells from static Lolalytics data, with lane-aware fallback
 				if (state.spells.length === 0) {
-					state.spells = [getDefaultSpells(lane)];
-					logger.info(`Default spells for ${champ.name} ${lane}: ${state.spells[0].ids.join("+")}`);
+					const champSpells = getChampionSpells(champ.id, lane);
+					if (champSpells) {
+						state.spells = [{ ids: champSpells, winRate: 0, pickRate: 0, games: 0, source: "most_common" as const }];
+						logger.info(`Champion spells for ${champ.name} ${lane}: ${champSpells.join("+")}`);
+					} else {
+						state.spells = [getDefaultSpells(lane)];
+						logger.info(`Default spells for ${champ.name} ${lane}: ${state.spells[0].ids.join("+")}`);
+					}
 				}
 
 				if (state.lastRunes.length > 0) {

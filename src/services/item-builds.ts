@@ -41,9 +41,10 @@ export class ItemBuilds {
 	 * @param championAlias Lolalytics alias (e.g., "aatrox", "masteryi")
 	 * @param lane Lolalytics lane (e.g., "top", "jungle", "middle", "bottom", "support")
 	 * @param style When provided, picks the most-played build of that damage type instead of overall most-played
+	 * @param tier Lolalytics tier param (e.g. "emerald_plus", "gold_plus") — defaults to emerald_plus
 	 */
-	async getBuild(championAlias: string, lane: string, style?: "ap" | "ad"): Promise<ItemBuild | null> {
-		const key = style ? `${championAlias}:${lane}:${style}` : `${championAlias}:${lane}`;
+	async getBuild(championAlias: string, lane: string, style?: "ap" | "ad", tier = "emerald_plus"): Promise<ItemBuild | null> {
+		const key = style ? `${championAlias}:${lane}:${style}:${tier}` : `${championAlias}:${lane}:${tier}`;
 		const cached = await this.cache.get(key);
 
 		if (cached) {
@@ -57,7 +58,7 @@ export class ItemBuilds {
 		// ARAM uses queue=450 instead of ranked
 		const queueParam = lane === "aram" ? "&queue=450" : "&queue=ranked";
 		const apiLane = lane === "aram" ? "default" : lane;
-		const url = `${LOLALYTICS_API}/mega/?ep=build-itemset&v=1&patch=${patch}&c=${championAlias}&lane=${apiLane}&tier=emerald_plus${queueParam}&region=all`;
+		const url = `${LOLALYTICS_API}/mega/?ep=build-itemset&v=1&patch=${patch}&c=${championAlias}&lane=${apiLane}&tier=${tier}${queueParam}&region=all`;
 
 		const maxRetries = 2;
 

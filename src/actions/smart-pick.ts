@@ -19,6 +19,7 @@ import { dataDragon } from "../services/data-dragon";
 import { championStats, ChampionStats } from "../services/champion-stats";
 import { getChampionIcon, prefetchChampionIcons } from "../services/lol-icons";
 import { findEnemyLaner, getUnavailableAliases } from "../services/champ-select-utils";
+import { fetchPlayerTier } from "../services/lolalytics-tier";
 
 const logger = streamDeck.logger.createScope("SmartPick");
 
@@ -220,14 +221,8 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 
 		// Fetch the player's rank once per champ select for elo-aware recommendations
 		if (this.playerTier === null) {
-			try {
-				const ranked = await lcuApi.getCurrentRankedStats();
-				const solo = ranked?.queueMap?.RANKED_SOLO_5x5;
-				this.playerTier = solo?.tier ? lolalalyticsTier(solo.tier) : "emerald_plus";
-				logger.info(`Smart Pick elo filter: ${solo?.tier ?? "unranked"} -> ${this.playerTier}`);
-			} catch {
-				this.playerTier = "emerald_plus";
-			}
+			this.playerTier = await fetchPlayerTier();
+			logger.info(`Smart Pick elo filter: ${this.playerTier}`);
 		}
 
 		const localCell = session.localPlayerCellId;
@@ -352,23 +347,6 @@ function getTier(wr: number): string {
 	if (wr >= 52) return "[A]";
 	if (wr >= 50) return "[B]";
 	return "[C]";
-}
-
-/** Convert LCU rank tier to the Lolalytics tier URL parameter. */
-function lolalalyticsTier(lcuTier: string): string {
-	switch (lcuTier.toUpperCase()) {
-		case "IRON":       return "iron";
-		case "BRONZE":     return "bronze";
-		case "SILVER":     return "silver";
-		case "GOLD":       return "gold_plus";
-		case "PLATINUM":   return "platinum_plus";
-		case "EMERALD":    return "emerald_plus";
-		case "DIAMOND":    return "diamond_plus";
-		case "MASTER":
-		case "GRANDMASTER":
-		case "CHALLENGER": return "master_plus";
-		default:           return "emerald_plus";
-	}
 }
 
 /** Short display label shown in pick_info so the player knows which elo data is used. */

@@ -83,10 +83,10 @@ export class RuneData {
 	 * Returns up to 2 pages: most common and highest win rate.
 	 * @param vsChampionAlias  Kept for cache key separation but the JSON API returns generic runes only.
 	 */
-	async getRecommendedRunes(championAlias: string, lane: string, vsChampionAlias?: string): Promise<RunePageData[]> {
+	async getRecommendedRunes(championAlias: string, lane: string, vsChampionAlias?: string, tier = "emerald_plus"): Promise<RunePageData[]> {
 		const key = vsChampionAlias
-			? `${championAlias}:${lane}:vs:${vsChampionAlias}`
-			: `${championAlias}:${lane}`;
+			? `${championAlias}:${lane}:vs:${vsChampionAlias}:${tier}`
+			: `${championAlias}:${lane}:${tier}`;
 		const cached = await this.cache.get(key);
 
 		if (cached) {
@@ -94,7 +94,7 @@ export class RuneData {
 		}
 
 		// JSON API is the only working source (SSR is blocked by Cloudflare)
-		const data = await this.fetchFromApi(championAlias, lane);
+		const data = await this.fetchFromApi(championAlias, lane, tier);
 		if (data.length > 0) {
 			await this.cache.set(key, data);
 		}
@@ -109,14 +109,14 @@ export class RuneData {
 	/**
 	 * Fetch rune pages from the Lolalytics JSON API (`ep=rune`).
 	 */
-	private async fetchFromApi(championAlias: string, lane: string): Promise<RunePageData[]> {
+	private async fetchFromApi(championAlias: string, lane: string, tier = "emerald_plus"): Promise<RunePageData[]> {
 		const ddVersion = dataDragon.getVersion();
 		const patchParts = ddVersion.split(".");
 		const patch = `${patchParts[0]}.${patchParts[1]}`;
 
 		const queueParam = lane === "aram" ? "&queue=450" : "&queue=ranked";
 		const apiLane = lane === "aram" ? "default" : lane;
-		const url = `${LOLALYTICS_API}/mega/?ep=rune&v=1&patch=${patch}&c=${championAlias}&lane=${apiLane}&tier=emerald_plus${queueParam}&region=all`;
+		const url = `${LOLALYTICS_API}/mega/?ep=rune&v=1&patch=${patch}&c=${championAlias}&lane=${apiLane}&tier=${tier}${queueParam}&region=all`;
 
 		try {
 			logger.debug(`Fetching runes: ${url}`);

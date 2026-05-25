@@ -17,6 +17,7 @@ import { gameMode } from "../services/game-mode";
 import { gameClient } from "../services/game-client";
 import { dataDragon } from "../services/data-dragon";
 import { ChampionStats } from "../services/champion-stats";
+import { getSkillOrder } from "../services/skill-data";
 const logger = streamDeck.logger.createScope("SkillOrder");
 
 // ─── Types (previously from lolalytics-build.ts, inlined since SSR source is blocked) ───
@@ -263,23 +264,42 @@ export class SkillOrder extends SingletonAction<SkillOrderSettings> {
 						(s.role && s.role !== "auto" ? s.role : null) ?? me.assignedPosition ?? "top",
 				  );
 
-			// Skill order data source (Lolalytics SSR) is currently blocked by Cloudflare.
-			// TODO: Re-enable when a working API endpoint for skill data is found.
-			logger.warn(`Skill order data unavailable for ${champ.name} ${lane} — Lolalytics SSR blocked by Cloudflare`);
-			state.priority = [];
-			state.fullOrder = [];
-
-			if (a.isDial()) {
-				await a.setFeedback({
-					title: champ.name,
-					skill_order: "Unavailable",
-					skill_info: "Data source offline",
-					wr_bar: { value: 0 },
-				});
-			} else {
-				await a.setImage(this.composeUnavailableImage(champ.name));
-				await a.setTitle("");
+			// Look up skill order from static Lolalytics data
+			const skillEntry = getSkillOrder(champ.id);
+			if (!skillEntry) {
+				logger.warn(`No skill data for ${champ.name} (${champ.id})`);
+				if (a.isDial()) {
+					await a.setFeedback({
+						title: champ.name,
+						skill_order: "No data",
+						skill_info: "",
+						wr_bar: { value: 0 },
+					});
+				} else {
+					await a.setImage(this.composeUnavailableImage(champ.name));
+					await a.setTitle("");
+				}
+				continue;
 			}
+
+			// Convert static entry into SkillPriorityData + SkillOrderData
+			state.priority = [{
+				order: skillEntry.order,
+				winRate: skillEntry.wr,
+				pickRate: 0,
+				games: 0,
+				source: "most_common" as const,
+			}];
+			state.fullOrder = [{
+				sequence: skillEntry.packed,
+				winRate: skillEntry.wr,
+				pickRate: 0,
+				games: 0,
+				source: "most_common" as const,
+			}];
+			logger.info(`Skill order for ${champ.name} ${lane}: ${skillEntry.order} (${skillEntry.wr}% WR)`);
+
+			await this.renderAction(a, state);
 		}
 	}
 
@@ -313,13 +333,20 @@ export class SkillOrder extends SingletonAction<SkillOrderSettings> {
 		const gamesStr = prio.games >= 1000 ? `${(prio.games / 1000).toFixed(1)}k` : `${prio.games}`;
 		const barColor = prio.winRate >= 54 ? "#2ECC71" : prio.winRate >= 50 ? "#F1C40F" : "#E74C3C";
 
+		// Build info line — omit pick rate / games if unavailable (static data)
+		const infoParts: string[] = [];
+		if (prio.winRate > 0) infoParts.push(`${prio.winRate}% WR`);
+		if (prio.pickRate > 0) infoParts.push(`${prio.pickRate}% PR`);
+		if (prio.games > 0) infoParts.push(gamesStr);
+		const infoStr = infoParts.length > 0 ? infoParts.join(" · ") : "Lolalytics";
+
 		if (a.isDial()) {
 			const shortChamp = champName.length > 10 ? champName.slice(0, 9) + "…" : champName;
 			await a.setFeedback({
 				title: `${shortChamp} · ${label}`,
 				skill_order: state.detailView ? this.formatFullOrder(state) : orderStr,
-				skill_info: `${prio.winRate}% WR · ${prio.pickRate}% PR · ${gamesStr}`,
-				wr_bar: { value: prio.winRate, bar_fill_c: barColor },
+				skill_info: infoStr,
+				wr_bar: { value: prio.winRate > 0 ? prio.winRate : 50, bar_fill_c: barColor },
 			});
 		} else {
 			const orderData = state.fullOrder[state.selectedIndex] ?? null;
