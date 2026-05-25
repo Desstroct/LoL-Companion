@@ -96,6 +96,7 @@ export class SessionStats extends SingletonAction<SessionStatsSettings> {
 		this.getState(ev.action.id);
 		this.startPolling();
 		if (ev.action.isDial()) {
+			ev.action.setFeedbackLayout("layouts/session-stats.json");
 			return ev.action.setFeedback({
 				title: "Session Stats",
 				record_text: "",

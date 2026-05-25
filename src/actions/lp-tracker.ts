@@ -122,6 +122,7 @@ export class LpTracker extends SingletonAction<LpTrackerSettings> {
 		this.getState(ev.action.id);
 		this.startPolling();
 		if (ev.action.isDial()) {
+			ev.action.setFeedbackLayout("layouts/lp-tracker.json");
 			return ev.action.setFeedback({
 				rank_text: "LP Tracker",
 				lp_text: "",

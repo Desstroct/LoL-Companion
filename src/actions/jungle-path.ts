@@ -420,6 +420,7 @@ export class JunglePath extends SingletonAction<JunglePathSettings> {
 		this.startPolling();
 
 		if (ev.action.isDial()) {
+			ev.action.setFeedbackLayout("layouts/jungle-path.json");
 			this.getDialState(ev.action.id);
 			await ev.action.setFeedback({
 				champ_icon: "",

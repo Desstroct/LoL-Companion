@@ -85,6 +85,7 @@ export class LobbyScannerAction extends SingletonAction<LobbyScannerSettings> {
 		const label = slotLabel(slot);
 		this.startPolling();
 		if (ev.action.isDial()) {
+			ev.action.setFeedbackLayout("layouts/lobby-scanner.json");
 			this.getDialSlot(ev.action.id, slot);
 			return ev.action.setFeedback({
 				title: `${team} ${label}`,

@@ -150,6 +150,7 @@ export class ObjectiveTimer extends SingletonAction<ObjectiveTimerSettings> {
 		this.getState(ev.action.id);
 		this.startPolling();
 		if (ev.action.isDial()) {
+			ev.action.setFeedbackLayout("layouts/objective-timer.json");
 			return ev.action.setFeedback({
 				obj_icon: "🐉",
 				title: "Objective Timer",

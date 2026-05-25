@@ -89,6 +89,7 @@ export class SkillOrder extends SingletonAction<SkillOrderSettings> {
 	override onWillAppear(ev: WillAppearEvent<SkillOrderSettings>): void | Promise<void> {
 		this.startPolling();
 		if (ev.action.isDial()) {
+			ev.action.setFeedbackLayout("layouts/skill-order.json");
 			return ev.action.setFeedback({
 				title: "Skill Order",
 				skill_order: "Waiting...",

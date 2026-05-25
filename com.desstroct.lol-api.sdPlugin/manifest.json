@@ -307,29 +307,28 @@
 					"TitleAlignment": "middle"
 				}
 			]
-		}
-		,
+		},
 		{
-			"Name": "OTP",
-			"UUID": "com.desstroct.lol-api.otp",
-			"Icon": "imgs/actions/otp/icon",
-			"Tooltip": "One Trick Pony mode — shows best bans against your main champion's counters and matchup info vs enemy laner during champion select.",
-			"PropertyInspectorPath": "ui/otp.html",
+			"Name": "Tilt Guard",
+			"UUID": "com.desstroct.lol-api.tilt-guard",
+			"Icon": "imgs/actions/tilt-guard/icon",
+			"Tooltip": "Mental state monitor — tracks loss streaks, LP delta, game count, and KDA trends to detect tilt and recommend when to take a break.",
+			"PropertyInspectorPath": "ui/tilt-guard.html",
 			"Controllers": [
 				"Keypad",
 				"Encoder"
 			],
 			"Encoder": {
-				"layout": "layouts/otp.json",
+				"layout": "layouts/tilt-guard.json",
 				"TriggerDescription": {
-					"Rotate": "Cycle bans",
-					"Push": "Refresh",
-					"Touch": "Refresh"
+					"Rotate": "—",
+					"Push": "Reset session",
+					"Touch": "Reset session"
 				}
 			},
 			"States": [
 				{
-					"Image": "imgs/actions/otp/key",
+					"Image": "imgs/actions/tilt-guard/key",
 					"TitleAlignment": "middle"
 				}
 			]

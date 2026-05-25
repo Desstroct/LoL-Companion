@@ -68,6 +68,7 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 		this.startPolling();
 		const roleLabel = (this.cachedRole && this.cachedRole !== "auto") ? this.cachedRole.toUpperCase() : "AUTO";
 		if (ev.action.isDial()) {
+			ev.action.setFeedbackLayout("layouts/smart-pick.json");
 			this.getState(ev.action.id);
 			return ev.action.setFeedback({
 				champ_icon: "",

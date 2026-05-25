@@ -24,6 +24,7 @@ export class KdaTracker extends SingletonAction {
 	override onWillAppear(ev: WillAppearEvent): void | Promise<void> {
 		this.startPolling();
 		if (ev.action.isDial()) {
+			ev.action.setFeedbackLayout("layouts/kda-tracker.json");
 			return ev.action.setFeedback({
 				kda_line: "- / - / -",
 				cs_line: "",

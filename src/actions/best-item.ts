@@ -35,6 +35,8 @@ interface BestItemState {
 	currentStyle: "ap" | "ad" | null;
 	/** -1 = auto (next item), 0 = starting items, 1..N = build item at index N-1 */
 	browseIndex: number;
+	/** True once the auto-transition from slot 0 → auto has fired (prevents re-triggering) */
+	autoTransitioned: boolean;
 }
 
 /**
@@ -56,6 +58,7 @@ export class BestItem extends SingletonAction {
 	override onWillAppear(ev: WillAppearEvent): void | Promise<void> {
 		this.startPolling();
 		if (ev.action.isDial()) {
+			ev.action.setFeedbackLayout("layouts/best-item.json");
 			return ev.action.setFeedback({
 				title: "BEST ITEM",
 				item_name: "Waiting...",
@@ -80,15 +83,17 @@ export class BestItem extends SingletonAction {
 		if (!state.currentBuild || state.currentBuild.fullBuild.length === 0) return;
 
 		const len = state.currentBuild.fullBuild.length;
-		// Slot 0 = starting items, slots 1..len = build items
-		const totalSlots = len + 1;
-
+		const isSupport = state.currentLane === "support";
+		// Support: skip slot 0 (starting items are always the same)
+		// Non-support: slot 0 = starting items, slots 1..len = build items
+		const minSlot = isSupport ? 1 : 0;
 		if (state.browseIndex === -1) {
-			state.browseIndex = ev.payload.ticks > 0 ? 0 : totalSlots - 1;
+			// Exiting auto mode
+			state.browseIndex = ev.payload.ticks > 0 ? minSlot : len;
 		} else {
 			state.browseIndex += ev.payload.ticks > 0 ? 1 : -1;
-			if (state.browseIndex >= totalSlots) state.browseIndex = 0;
-			if (state.browseIndex < 0) state.browseIndex = totalSlots - 1;
+			if (state.browseIndex > len) state.browseIndex = minSlot;
+			if (state.browseIndex < minSlot) state.browseIndex = len;
 		}
 
 		this.updateAll().catch((e) => logger.error(`updateAll error: ${e}`));
@@ -97,7 +102,7 @@ export class BestItem extends SingletonAction {
 	private getState(actionId: string): BestItemState {
 		let s = this.actionStates.get(actionId);
 		if (!s) {
-			s = { currentBuild: null, currentChampion: null, currentLane: null, currentStyle: null, browseIndex: 0 };
+			s = { currentBuild: null, currentChampion: null, currentLane: null, currentStyle: null, browseIndex: 0, autoTransitioned: false };
 			this.actionStates.set(actionId, s);
 		}
 		return s;
@@ -141,6 +146,7 @@ export class BestItem extends SingletonAction {
 					s.currentLane = null;
 					s.currentBuild = null;
 					s.browseIndex = 0;
+					s.autoTransitioned = false;
 				}
 			}
 
@@ -219,6 +225,7 @@ export class BestItem extends SingletonAction {
 				// On style change or missing build, keep the existing build visible while re-fetching.
 				if (champChanged) {
 					state.currentBuild = null;
+					state.autoTransitioned = false;
 					// Support always starts on auto (next item) — starter is always the same
 					state.browseIndex = lane === "support" ? -1 : 0;
 				}
@@ -253,6 +260,7 @@ export class BestItem extends SingletonAction {
 							for (const s of this.actionStates.values()) {
 								if (s.currentChampion === champName && s.currentLane === lane) {
 									s.currentBuild = build;
+									s.autoTransitioned = false;
 									s.browseIndex = lane === "support" ? -1 : 0;
 								}
 							}
@@ -289,14 +297,12 @@ export class BestItem extends SingletonAction {
 
 			const styleLabel = state.currentStyle ? ` · ${state.currentStyle.toUpperCase()}` : "";
 
-			// ── Starting items view (slot 0) ──
-			// Auto-transition: once the player owns any starting or build item,
-			// switch to auto mode (next item to buy)
-			if (state.browseIndex === 0) {
+			// ── Starting items: auto-transition to build once player buys (one-shot) ──
+			if (state.browseIndex === 0 && !state.autoTransitioned) {
 				const hasAnyItem = me.items.length > 0 && me.items.some(i => i.itemID !== 0);
 				if (hasAnyItem) {
-					state.browseIndex = -1; // Switch to auto mode
-					// Fall through to auto mode rendering below
+					state.browseIndex = -1;
+					state.autoTransitioned = true;
 				}
 			}
 

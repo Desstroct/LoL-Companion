@@ -177,6 +177,7 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 		const roleLabel = role === "auto" ? "AUTO" : role.toUpperCase();
 		const mode = ev.payload.settings.autoApply === false ? "Manual" : "Auto";
 		if (ev.action.isDial()) {
+			ev.action.setFeedbackLayout("layouts/auto-rune.json");
 			return ev.action.setFeedback({
 				title: `${mode} Rune · ${roleLabel}`,
 				rune_name: "Waiting...",

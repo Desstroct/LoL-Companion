@@ -30,6 +30,7 @@ export class DeathTimer extends SingletonAction {
 	override onWillAppear(ev: WillAppearEvent): void | Promise<void> {
 		this.startPolling();
 		if (ev.action.isDial()) {
+			ev.action.setFeedbackLayout("layouts/death-timer.json");
 			return ev.action.setFeedback({
 				champ_icon: "",
 				status_text: "Death Timer",
