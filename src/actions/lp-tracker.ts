@@ -1,5 +1,6 @@
 import {
 	action,
+	DidReceiveSettingsEvent,
 	SingletonAction,
 	WillAppearEvent,
 	WillDisappearEvent,
@@ -30,6 +31,14 @@ const QUEUE_LABELS: Record<string, string> = {
 	RANKED_FLEX_SR: "Flex",
 	RANKED_TFT: "TFT",
 	RANKED_TFT_DOUBLE_UP: "TFT Duo",
+};
+
+/** Maps PI setting value → QUEUE_KEYS index */
+const QUEUE_SETTING_INDEX: Record<string, number> = {
+	solo: 0,
+	flex: 1,
+	tft: 2,
+	tft_duo: 3,
 };
 
 const TIER_SHORT: Record<string, string> = {
@@ -119,7 +128,9 @@ export class LpTracker extends SingletonAction<LpTrackerSettings> {
 	}
 
 	override onWillAppear(ev: WillAppearEvent<LpTrackerSettings>): void | Promise<void> {
-		this.getState(ev.action.id);
+		const state = this.getState(ev.action.id);
+		const q = ev.payload.settings.queue;
+		if (q && q in QUEUE_SETTING_INDEX) state.queueIndex = QUEUE_SETTING_INDEX[q];
 		this.startPolling();
 		if (ev.action.isDial()) {
 			ev.action.setFeedbackLayout("layouts/lp-tracker.json");
@@ -137,6 +148,16 @@ export class LpTracker extends SingletonAction<LpTrackerSettings> {
 	override onWillDisappear(ev: WillDisappearEvent<LpTrackerSettings>): void | Promise<void> {
 		this.actionStates.delete(ev.action.id);
 		if (this.actions.length === 0) this.stopPolling();
+	}
+
+	override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<LpTrackerSettings>): Promise<void> {
+		const q = ev.payload.settings.queue;
+		if (q && q in QUEUE_SETTING_INDEX) {
+			const state = this.getState(ev.action.id);
+			state.queueIndex = QUEUE_SETTING_INDEX[q];
+			state.lastDisplay = "";
+			await this.updateAll();
+		}
 	}
 
 	override async onKeyDown(ev: KeyDownEvent<LpTrackerSettings>): Promise<void> {

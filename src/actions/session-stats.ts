@@ -1,5 +1,6 @@
 import {
 	action,
+	DidReceiveSettingsEvent,
 	SingletonAction,
 	WillAppearEvent,
 	WillDisappearEvent,
@@ -24,6 +25,12 @@ const QUEUE_KEYS = ["RANKED_SOLO_5x5", "RANKED_FLEX_SR"] as const;
 const QUEUE_LABELS: Record<string, string> = {
 	RANKED_SOLO_5x5: "Solo/Duo",
 	RANKED_FLEX_SR: "Flex",
+};
+
+/** Maps PI setting value → QUEUE_KEYS index */
+const QUEUE_SETTING_INDEX: Record<string, number> = {
+	solo: 0,
+	flex: 1,
 };
 
 const TIER_SHORT: Record<string, string> = {
@@ -93,7 +100,9 @@ export class SessionStats extends SingletonAction<SessionStatsSettings> {
 	}
 
 	override onWillAppear(ev: WillAppearEvent<SessionStatsSettings>): void | Promise<void> {
-		this.getState(ev.action.id);
+		const state = this.getState(ev.action.id);
+		const q = ev.payload.settings.queue;
+		if (q && q in QUEUE_SETTING_INDEX) state.queueIndex = QUEUE_SETTING_INDEX[q];
 		this.startPolling();
 		if (ev.action.isDial()) {
 			ev.action.setFeedbackLayout("layouts/session-stats.json");
@@ -111,6 +120,16 @@ export class SessionStats extends SingletonAction<SessionStatsSettings> {
 	override onWillDisappear(ev: WillDisappearEvent<SessionStatsSettings>): void | Promise<void> {
 		this.actionStates.delete(ev.action.id);
 		if (this.actions.length === 0) this.stopPolling();
+	}
+
+	override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<SessionStatsSettings>): Promise<void> {
+		const q = ev.payload.settings.queue;
+		if (q && q in QUEUE_SETTING_INDEX) {
+			const state = this.getState(ev.action.id);
+			state.queueIndex = QUEUE_SETTING_INDEX[q];
+			state.lastDisplay = "";
+			await this.updateAll();
+		}
 	}
 
 	/** Key press: reset session */

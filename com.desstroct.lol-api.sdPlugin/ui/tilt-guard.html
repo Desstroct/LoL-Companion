@@ -3,60 +3,8 @@
 <head>
     <meta charset="utf-8" />
     <title>Tilt Guard</title>
+    <link rel="stylesheet" href="common.css" />
     <script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
-    <style>
-        .lol-panel {
-            background: #010A13;
-            border: 1px solid #1E2328;
-            border-image: linear-gradient(to bottom, #C8AA6E 0%, #7A5C29 100%) 1;
-            margin: 8px 0 10px;
-            padding: 0;
-        }
-        .lol-panel__header {
-            background: linear-gradient(to right, #1E2328, #010A13);
-            padding: 8px 14px;
-            border-bottom: 1px solid #32281E;
-            display: flex; align-items: center; gap: 10px;
-        }
-        .lol-panel__badge {
-            width: 28px; height: 28px;
-            background: linear-gradient(135deg, #C8AA6E, #785A28);
-            border-radius: 4px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 14px; font-weight: 900; color: #010A13;
-            flex-shrink: 0;
-        }
-        .lol-panel__title { font-size: 12px; font-weight: 700; color: #C8AA6E; letter-spacing: 1px; text-transform: uppercase; }
-        .lol-panel__subtitle { font-size: 10px; color: #5B5A56; margin-top: 1px; }
-        .lol-panel__body { padding: 10px 14px; }
-
-        .phases { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-        .phase {
-            background: #1E2328; border-radius: 3px; padding: 7px 9px;
-            border-left: 2px solid #32281E;
-        }
-        .phase--green { border-left-color: #2ECC71; }
-        .phase--yellow { border-left-color: #F1C40F; }
-        .phase--orange { border-left-color: #E67E22; }
-        .phase--red { border-left-color: #E74C3C; }
-        .phase__name { font-size: 9px; font-weight: 600; color: #5B5A56; text-transform: uppercase; letter-spacing: 0.5px; }
-        .phase__desc { font-size: 10px; color: #A09B8C; margin-top: 2px; }
-
-        .lol-sep { border: none; border-top: 1px solid #1E2328; margin: 8px 0; }
-
-        .ctrl-section { margin: 10px 0 4px; }
-        .ctrl-section__title { font-size: 9px; font-weight: 700; color: #5B5A56; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
-        .ctrl-row { display: flex; gap: 8px; padding: 3px 0; align-items: baseline; }
-        .ctrl-row__key { flex-shrink: 0; width: 74px; font-size: 10px; font-weight: 600; color: #C8AA6E; }
-        .ctrl-row__val { font-size: 10px; color: #A09B8C; line-height: 1.4; }
-
-        .hint { font-size: 10px; color: #32281E; margin: 2px 0 6px; padding: 0 4px; }
-        .lol-footer {
-            padding: 5px 14px; font-size: 9px; color: #32281E;
-            background: #010A13; border-top: 1px solid #1E2328;
-            text-align: right;
-        }
-    </style>
 </head>
 <body>
     <div class="lol-panel">

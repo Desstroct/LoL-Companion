@@ -3,19 +3,20 @@
 <head>
     <meta charset="utf-8" />
     <title>Game Status</title>
+    <link rel="stylesheet" href="common.css" />
     <script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
-    <style>
-        .tips-card { margin: 12px 0 4px; border-radius: 4px; overflow: hidden; border: 1px solid #333; }
-        .tips-card__header { background: #1c1c2e; padding: 6px 12px; font-size: 9px; font-weight: 800; letter-spacing: 1.2px; color: #C89B3C; text-transform: uppercase; }
-        .tips-card__body { padding: 8px 12px 6px; background: #1a1a1a; }
-        .tips-desc { font-size: 11px; color: #888; margin: 0 0 8px; line-height: 1.5; }
-        .tip-row { display: flex; gap: 8px; padding: 2px 0; }
-        .tip-row__label { flex-shrink: 0; width: 76px; font-size: 10px; font-weight: 700; color: #C89B3C; opacity: 0.85; }
-        .tip-row__text { font-size: 11px; color: #aaa; line-height: 1.4; }
-        .tips-card__footer { padding: 5px 12px; font-size: 10px; color: #555; background: #161616; border-top: 1px solid #2e2e2e; }
-    </style>
 </head>
 <body>
+    <div class="lol-panel">
+        <div class="lol-panel__header">
+            <div class="lol-panel__badge">GS</div>
+            <div>
+                <div class="lol-panel__title">Game Status</div>
+                <div class="lol-panel__subtitle">Client phase monitor</div>
+            </div>
+        </div>
+    </div>
+
     <sdpi-item label="OP.GG Region">
         <sdpi-select setting="region">
             <option value="euw">EUW</option>
@@ -36,20 +37,21 @@
             <option value="th">TH</option>
         </sdpi-select>
     </sdpi-item>
-    <div class="tips-card">
-        <div class="tips-card__header">⚡ Quick Tips</div>
-        <div class="tips-card__body">
-            <p class="tips-desc">Shows the current League client phase: Offline, Lobby, Queue, Champ Select, In Game, etc.</p>
-            <div class="tip-row">
-                <span class="tip-row__label">Key press</span>
-                <span class="tip-row__text">Open your OP.GG profile in browser</span>
-            </div>
-            <div class="tip-row">
-                <span class="tip-row__label">Region</span>
-                <span class="tip-row__text">Select your server for correct OP.GG link</span>
-            </div>
+
+    <hr class="lol-sep" />
+
+    <div class="ctrl-section">
+        <div class="ctrl-section__title">Controls</div>
+        <div class="ctrl-row">
+            <span class="ctrl-row__key">Key press</span>
+            <span class="ctrl-row__val">Open your OP.GG profile in browser</span>
         </div>
-        <div class="tips-card__footer">📡 League Client API · updates every 2s</div>
+        <div class="ctrl-row">
+            <span class="ctrl-row__key">Region</span>
+            <span class="ctrl-row__val">Select your server for correct OP.GG link</span>
+        </div>
     </div>
+
+    <div class="lol-footer">League Client API &middot; 2s refresh</div>
 </body>
 </html>

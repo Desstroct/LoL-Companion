@@ -3,19 +3,20 @@
 <head>
     <meta charset="utf-8" />
     <title>Lobby Scanner</title>
+    <link rel="stylesheet" href="common.css" />
     <script src="https://sdpi-components.dev/releases/v4/sdpi-components.js"></script>
-    <style>
-        .tips-card { margin: 12px 0 4px; border-radius: 4px; overflow: hidden; border: 1px solid #333; }
-        .tips-card__header { background: #1c1c2e; padding: 6px 12px; font-size: 9px; font-weight: 800; letter-spacing: 1.2px; color: #C89B3C; text-transform: uppercase; }
-        .tips-card__body { padding: 8px 12px 6px; background: #1a1a1a; }
-        .tips-desc { font-size: 11px; color: #888; margin: 0 0 8px; line-height: 1.5; }
-        .tip-row { display: flex; gap: 8px; padding: 2px 0; }
-        .tip-row__label { flex-shrink: 0; width: 76px; font-size: 10px; font-weight: 700; color: #C89B3C; opacity: 0.85; }
-        .tip-row__text { font-size: 11px; color: #aaa; line-height: 1.4; }
-        .tips-card__footer { padding: 5px 12px; font-size: 10px; color: #555; background: #161616; border-top: 1px solid #2e2e2e; }
-    </style>
 </head>
 <body>
+    <div class="lol-panel">
+        <div class="lol-panel__header">
+            <div class="lol-panel__badge">LS</div>
+            <div>
+                <div class="lol-panel__title">Lobby Scanner</div>
+                <div class="lol-panel__subtitle">Player rank &amp; win rate inspector</div>
+            </div>
+        </div>
+    </div>
+
     <sdpi-item label="Player Slot">
         <sdpi-select setting="slot" placeholder="Select a slot">
             <optgroup label="Allies">
@@ -34,24 +35,25 @@
             </optgroup>
         </sdpi-select>
     </sdpi-item>
-    <div class="tips-card">
-        <div class="tips-card__header">⚡ Quick Tips</div>
-        <div class="tips-card__body">
-            <p class="tips-desc">Shows champion, rank, and win rate for each player during Champion Select. Use multiple keys to monitor several players at once.</p>
-            <div class="tip-row">
-                <span class="tip-row__label">Dial rotate</span>
-                <span class="tip-row__text">Cycle through all 10 players</span>
-            </div>
-            <div class="tip-row">
-                <span class="tip-row__label">Key / Press</span>
-                <span class="tip-row__text">Refresh current player's stats</span>
-            </div>
-            <div class="tip-row">
-                <span class="tip-row__label">Tip</span>
-                <span class="tip-row__text">Add multiple keys, one per player slot</span>
-            </div>
+
+    <hr class="lol-sep" />
+
+    <div class="ctrl-section">
+        <div class="ctrl-section__title">Controls</div>
+        <div class="ctrl-row">
+            <span class="ctrl-row__key">Dial rotate</span>
+            <span class="ctrl-row__val">Cycle through all 10 players</span>
         </div>
-        <div class="tips-card__footer">📡 Lolalytics · League Client API</div>
+        <div class="ctrl-row">
+            <span class="ctrl-row__key">Key / Press</span>
+            <span class="ctrl-row__val">Refresh current player's stats</span>
+        </div>
+        <div class="ctrl-row">
+            <span class="ctrl-row__key">Tip</span>
+            <span class="ctrl-row__val">Add multiple keys, one per player slot</span>
+        </div>
     </div>
+
+    <div class="lol-footer">Lolalytics &middot; League Client API</div>
 </body>
 </html>
