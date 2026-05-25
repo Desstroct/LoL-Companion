@@ -55,6 +55,15 @@ function getDefaultSpells(lane: string): SummonerSpellCombo {
 	return { ids, winRate: 0, pickRate: 0, games: 0, source: "most_common", isDefault: true };
 }
 
+/** Human-readable spell name for logging. */
+const SPELL_NAME: Record<number, string> = {
+	1: "Cleanse", 3: "Exhaust", 4: "Flash", 6: "Ghost", 7: "Heal",
+	11: "Smite", 12: "TP", 13: "Clarity", 14: "Ignite", 21: "Barrier", 32: "Snowball",
+};
+function spellNames(ids: number[]): string {
+	return ids.map((id) => SPELL_NAME[id] ?? `?${id}`).join("+");
+}
+
 // ─── Image caches ───
 const PLUGIN_DIR = join(dirname(fileURLToPath(import.meta.url)), "..");
 const keystoneCache = new Map<number, string>(); // keystoneId → raw base64
@@ -238,7 +247,7 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 		if (!s) {
 			s = {
 				lastChampKey: "", lastRunes: [], selectedIndex: 0, applied: false,
-				spells: [], spellsApplied: false,
+				spells: [], spellsApplied: false, lastSpellLane: "",
 				lastEnemyKey: "", vsChampName: "", hoveredEnemyName: "",
 				runeFetchFailedUntil: 0,
 			};
@@ -290,6 +299,18 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 			return;
 		}
 
+		// Arena (2v2v2v2) — runes exist but Lolalytics has no Arena-specific data
+		if (gameMode.isArena()) {
+			for (const a of this.actions) {
+				if (a.isDial()) {
+					await a.setFeedback({ keystone_icon: "", title: "Auto Rune", rune_name: "N/A in Arena", rune_info: "", wr_bar: { value: 0 } });
+				} else {
+					await a.setImage(""); await a.setTitle("Runes\nN/A Arena");
+				}
+			}
+			return;
+		}
+
 		const phase = await lcuApi.getGameflowPhase();
 		if (phase !== "ChampSelect") {
 			let hadState = false;
@@ -301,6 +322,7 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 				s.applied = false;
 				s.spells = [];
 				s.spellsApplied = false;
+				s.lastSpellLane = "";
 				s.lastEnemyKey = "";
 				s.vsChampName = "";
 				s.hoveredEnemyName = "";
@@ -456,15 +478,21 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 					state.lastRunes = runes;
 				}
 
-				// Champion-specific spells from static Lolalytics data, with lane-aware fallback
-				if (state.spells.length === 0) {
+				// Champion-specific spells from static Lolalytics data, with lane-aware fallback.
+				// Re-fetch spells if lane changed (e.g. role swap during champ select).
+				if (state.spells.length === 0 || state.lastSpellLane !== lane) {
+					if (state.lastSpellLane && state.lastSpellLane !== lane) {
+						logger.info(`Lane changed ${state.lastSpellLane} → ${lane}, refreshing spells`);
+						state.spellsApplied = false;
+					}
+					state.lastSpellLane = lane;
 					const champSpells = getChampionSpells(champ.id, lane);
 					if (champSpells) {
 						state.spells = [{ ids: champSpells, winRate: 0, pickRate: 0, games: 0, source: "most_common" as const }];
-						logger.info(`Champion spells for ${champ.name} ${lane}: ${champSpells.join("+")}`);
+						logger.info(`Champion spells for ${champ.name} ${lane}: ${spellNames(champSpells)}`);
 					} else {
 						state.spells = [getDefaultSpells(lane)];
-						logger.info(`Default spells for ${champ.name} ${lane}: ${state.spells[0].ids.join("+")}`);
+						logger.info(`Default spells for ${champ.name} ${lane}: ${spellNames(state.spells[0].ids)}`);
 					}
 				}
 
@@ -663,18 +691,18 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 					// with non-standard spells (Ghost on Darius/Garen/Nasus, etc.)
 					// they would overwrite the player's preferred choice.
 					state.spellsApplied = true;
-					logger.debug(`Skipping default spell apply (${bestSpells.ids.join("+")}) — no champion-specific data available`);
+					logger.debug(`Skipping default spell apply (${spellNames(bestSpells.ids)}) — no champion-specific data`);
 				} else {
 					try {
 						const spellOk = await lcuApi.setSummonerSpells(bestSpells.ids[0], bestSpells.ids[1]);
 						if (spellOk) {
 							state.spellsApplied = true;
-							logger.info(`Applied summoner spells: ${bestSpells.ids.join("+")} (${bestSpells.winRate}% WR)`);
+							logger.info(`Applied summoner spells: ${spellNames(bestSpells.ids)}`);
 						} else {
-							logger.warn("setSummonerSpells returned false");
+							logger.warn(`setSummonerSpells failed for ${spellNames(bestSpells.ids)} — LCU rejected`);
 						}
 					} catch (e) {
-						logger.warn(`Failed to set summoner spells: ${e}`);
+						logger.warn(`Failed to set summoner spells ${spellNames(bestSpells.ids)}: ${e}`);
 					}
 				}
 			}
@@ -696,6 +724,8 @@ interface AutoRuneState {
 	spells: SummonerSpellCombo[];
 	/** Whether summoner spells have been applied */
 	spellsApplied: boolean;
+	/** Lane used to fetch current spell data — reset spells when lane changes */
+	lastSpellLane: string;
 	/** Lolalytics alias of the last *locked* enemy laner (drives matchup fetch) */
 	lastEnemyKey: string;
 	/** Display name of the locked enemy laner (used in matchup rune label) */
