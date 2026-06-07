@@ -3,41 +3,72 @@
 	"id": "smart-pick",
 	"items": [
 		{
-			"key": "champ_icon",
-			"type": "pixmap",
-			"rect": [4, 10, 72, 72]
-		},
-		{
 			"key": "title",
 			"type": "text",
-			"rect": [82, 0, 118, 22],
-			"font": { "size": 13, "weight": 600 },
-			"alignment": "left",
+			"rect": [0, 0, 200, 16],
+			"font": { "size": 11, "weight": 600 },
+			"alignment": "center",
 			"color": "#FF6666"
 		},
 		{
-			"key": "pick_name",
-			"type": "text",
-			"rect": [82, 22, 118, 26],
-			"font": { "size": 15, "weight": 700 },
-			"alignment": "left"
+			"key": "champ1_icon",
+			"type": "pixmap",
+			"rect": [10, 18, 48, 48]
 		},
 		{
-			"key": "pick_info",
+			"key": "champ1_name",
 			"type": "text",
-			"rect": [82, 48, 118, 20],
-			"font": { "size": 11 },
-			"alignment": "left",
-			"color": "#AAAAAA"
+			"rect": [0, 67, 68, 14],
+			"font": { "size": 10, "weight": 600 },
+			"alignment": "center"
 		},
 		{
-			"key": "score_bar",
-			"type": "bar",
-			"rect": [82, 74, 108, 16],
-			"range": { "min": 45, "max": 65 },
-			"value": 50,
-			"bar_fill_c": "#2ECC71",
-			"bar_bg_c": "#333333"
+			"key": "champ1_wr",
+			"type": "text",
+			"rect": [0, 82, 68, 16],
+			"font": { "size": 12, "weight": 700 },
+			"alignment": "center",
+			"color": "#2ECC71"
+		},
+		{
+			"key": "champ2_icon",
+			"type": "pixmap",
+			"rect": [76, 18, 48, 48]
+		},
+		{
+			"key": "champ2_name",
+			"type": "text",
+			"rect": [66, 67, 68, 14],
+			"font": { "size": 10, "weight": 600 },
+			"alignment": "center"
+		},
+		{
+			"key": "champ2_wr",
+			"type": "text",
+			"rect": [66, 82, 68, 16],
+			"font": { "size": 12, "weight": 700 },
+			"alignment": "center",
+			"color": "#2ECC71"
+		},
+		{
+			"key": "champ3_icon",
+			"type": "pixmap",
+			"rect": [142, 18, 48, 48]
+		},
+		{
+			"key": "champ3_name",
+			"type": "text",
+			"rect": [132, 67, 68, 14],
+			"font": { "size": 10, "weight": 600 },
+			"alignment": "center"
+		},
+		{
+			"key": "champ3_wr",
+			"type": "text",
+			"rect": [132, 82, 68, 16],
+			"font": { "size": 12, "weight": 700 },
+			"alignment": "center",
+			"color": "#2ECC71"
 		}
 	]
 }

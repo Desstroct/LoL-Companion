@@ -26,14 +26,19 @@ export interface ItemBuild {
 
 /**
  * Fetches and caches recommended item builds from Lolalytics.
- *
- * Scrapes the build page HTML, extracting item IDs from Lolalytics CDN
- * image URLs in the "Starting Items", "Core Build", and "Item 4/5/6" sections.
  */
 export class ItemBuilds {
 	/** Cache: "championAlias:lane" → { data, timestamp } */
 	private readonly CACHE_TTL = 30 * 60 * 1000; // 30 minutes
 	private cache = new DiskCache<ItemBuild>("item-builds.json", this.CACHE_TTL);
+
+	constructor() {
+		// Auto-invalidate cache when a new patch is detected
+		dataDragon.onVersionChange((oldV, newV) => {
+			logger.info(`Patch change detected (${oldV} → ${newV}), clearing item build cache`);
+			this.cache.clear().catch(() => {});
+		});
+	}
 
 	/**
 	 * Get the recommended item build for a champion on a lane.
@@ -44,73 +49,85 @@ export class ItemBuilds {
 	 * @param tier Lolalytics tier param (e.g. "emerald_plus", "gold_plus") — defaults to emerald_plus
 	 */
 	async getBuild(championAlias: string, lane: string, style?: "ap" | "ad", tier = "emerald_plus"): Promise<ItemBuild | null> {
-		const key = style ? `${championAlias}:${lane}:${style}:${tier}` : `${championAlias}:${lane}:${tier}`;
+		const patch = this.getCurrentPatch();
+		const key = style ? `${championAlias}:${lane}:${style}:${tier}:${patch}` : `${championAlias}:${lane}:${tier}:${patch}`;
 		const cached = await this.cache.get(key);
 
 		if (cached) {
 			return cached.data;
 		}
 
-		const ddVersion = dataDragon.getVersion();
-		const patchParts = ddVersion.split(".");
-		const patch = `${patchParts[0]}.${patchParts[1]}`;
+		// Try current patch first, then "30" (last 30 days) as fallback
+		// Early in a new patch, Lolalytics may not have enough data
+		const patchesToTry = [patch, "30"];
 
 		// ARAM uses queue=450 instead of ranked
 		const queueParam = lane === "aram" ? "&queue=450" : "&queue=ranked";
 		const apiLane = lane === "aram" ? "default" : lane;
-		const url = `${LOLALYTICS_API}/mega/?ep=build-itemset&v=1&patch=${patch}&c=${championAlias}&lane=${apiLane}&tier=${tier}${queueParam}&region=all`;
 
-		const maxRetries = 2;
+		for (const p of patchesToTry) {
+			const url = `${LOLALYTICS_API}/mega/?ep=build-itemset&v=1&patch=${p}&c=${championAlias}&lane=${apiLane}&tier=${tier}${queueParam}&region=all`;
 
-		for (let attempt = 0; attempt <= maxRetries; attempt++) {
-			try {
-				if (attempt > 0) {
-					const delay = 1000 * Math.pow(2, attempt - 1);
-					logger.debug(`Retry ${attempt}/${maxRetries} for ${championAlias} ${lane} build in ${delay}ms`);
-					await new Promise((r) => setTimeout(r, delay));
+			const maxRetries = 1;
+
+			for (let attempt = 0; attempt <= maxRetries; attempt++) {
+				try {
+					if (attempt > 0) {
+						await new Promise((r) => setTimeout(r, 1000));
+					}
+
+					logger.debug(`Fetching build (patch=${p}, attempt ${attempt + 1}): ${url}`);
+
+					const response = await throttledFetch(url, { signal: AbortSignal.timeout(10_000) });
+					if (!response.ok) {
+						logger.warn(`Lolalytics API returned ${response.status} for ${championAlias} ${lane} build (patch=${p})`);
+						continue;
+					}
+
+					const json = (await response.json()) as {
+						itemSets?: Record<string, [string, number, number][]>;
+						response?: { valid?: boolean };
+					};
+
+					if (!json?.itemSets) {
+						logger.warn(`Invalid API response for ${championAlias} ${lane} build (patch=${p})`);
+						continue;
+					}
+
+					const build = this.extractBuild(json.itemSets, style, lane);
+
+					if (!build || build.fullBuild.length === 0) {
+						logger.warn(`Parsed no build data for ${championAlias} ${lane} (patch=${p}, attempt ${attempt + 1})`);
+						continue;
+					}
+
+					if (p !== patch) {
+						logger.info(`Using patch=${p} fallback for ${championAlias} ${lane} build (current patch has no data)`);
+					}
+					logger.info(
+						`Parsed build for ${championAlias} ${lane}: ` +
+							`start=[${build.startingItems.join(",")}] ` +
+							`build=[${build.fullBuild.join(",")}]`,
+					);
+
+					await this.cache.set(key, build);
+					return build;
+				} catch (e) {
+					logger.error(`Failed to fetch build for ${championAlias} ${lane} (patch=${p}, attempt ${attempt + 1}): ${e}`);
 				}
-
-				logger.debug(`Fetching build (API): ${url}`);
-
-				const response = await throttledFetch(url, { signal: AbortSignal.timeout(10_000) });
-				if (!response.ok) {
-					logger.warn(`Lolalytics API returned ${response.status} for ${championAlias} ${lane} build`);
-					continue;
-				}
-
-				const json = (await response.json()) as {
-					itemSets?: Record<string, [string, number, number][]>;
-					response?: { valid?: boolean };
-				};
-
-				if (!json?.itemSets) {
-					logger.warn(`Invalid API response for ${championAlias} ${lane} build`);
-					continue;
-				}
-
-				const build = this.extractBuild(json.itemSets, style, lane);
-
-				if (!build || build.fullBuild.length === 0) {
-					logger.warn(`Parsed no build data for ${championAlias} ${lane} (attempt ${attempt + 1})`);
-					continue;
-				}
-
-				logger.info(
-					`Parsed build for ${championAlias} ${lane}: ` +
-						`start=[${build.startingItems.join(",")}] ` +
-						`build=[${build.fullBuild.join(",")}]`,
-				);
-
-				await this.cache.set(key, build);
-				return build;
-			} catch (e) {
-				logger.error(`Failed to fetch build for ${championAlias} ${lane} (attempt ${attempt + 1}): ${e}`);
 			}
 		}
 
-		logger.error(`All ${maxRetries + 1} attempts failed for ${championAlias} ${lane} build`);
+		logger.error(`All patch attempts failed for ${championAlias} ${lane} build`);
 		const fallback = await this.cache.getRaw(key);
 		return fallback?.data ?? null;
+	}
+
+	/** Extract major.minor patch from Data Dragon version (e.g. "16.11.1" → "16.11"). */
+	private getCurrentPatch(): string {
+		const ddVersion = dataDragon.getVersion();
+		const parts = ddVersion.split(".");
+		return parts.length >= 2 ? `${parts[0]}.${parts[1]}` : ddVersion;
 	}
 
 	// ─────────── Build extraction ───────────
@@ -385,28 +402,19 @@ export class ItemBuilds {
 
 	/**
 	 * Convert a Game Client champion name (e.g., "Master Yi") to Lolalytics alias.
+	 * Uses the O(1) cached name index in DataDragon.
 	 */
 	static toAlias(championName: string): string {
 		if (!championName) return "unknown";
-		// Normalize: strip accents/diacritics, lowercase, remove punctuation
-		const normalized = championName
+		// O(1) lookup via DataDragon's cached name index
+		const champ = dataDragon.getChampionByName(championName);
+		if (champ) return champ.id.toLowerCase().replace(/['\s.]/g, "");
+		// Fallback: strip accents/special chars and lowercase
+		return championName
 			.normalize("NFD")
-			.replace(/[\u0300-\u036f]/g, "")
+			.replace(/[̀-ͯ]/g, "")
 			.toLowerCase()
 			.replace(/['\s.]/g, "");
-		// Try DDragon lookup first (display name → DDragon ID → lowercase)
-		for (const champ of dataDragon.getAllChampions()) {
-			const ddName = champ.name
-				.normalize("NFD")
-				.replace(/[\u0300-\u036f]/g, "")
-				.toLowerCase()
-				.replace(/['\s.]/g, "");
-			if (ddName === normalized) {
-				return champ.id.toLowerCase().replace(/['\s.]/g, "");
-			}
-		}
-		// Fallback: strip special chars and lowercase
-		return normalized;
 	}
 
 	/**

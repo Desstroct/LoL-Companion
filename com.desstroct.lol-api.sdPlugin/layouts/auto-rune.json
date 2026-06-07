@@ -10,10 +10,18 @@
 		{
 			"key": "title",
 			"type": "text",
-			"rect": [82, 0, 118, 22],
+			"rect": [82, 0, 88, 22],
 			"font": { "size": 13, "weight": 600 },
 			"alignment": "left",
 			"color": "#9B59B6"
+		},
+		{
+			"key": "status_text",
+			"type": "text",
+			"rect": [170, 0, 30, 22],
+			"font": { "size": 12, "weight": 700 },
+			"alignment": "right",
+			"color": "#555555"
 		},
 		{
 			"key": "rune_name",

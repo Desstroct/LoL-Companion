@@ -14,6 +14,7 @@ import { lcuConnector } from "../services/lcu-connector";
 import { lcuApi } from "../services/lcu-api";
 import { dataDragon } from "../services/data-dragon";
 import { getRankedEmblemIcon } from "../services/lol-icons";
+import { tierToAbsoluteLp } from "../services/rank-utils";
 
 const logger = streamDeck.logger.createScope("SessionStats");
 
@@ -38,19 +39,6 @@ const TIER_SHORT: Record<string, string> = {
 	PLATINUM: "Plat", EMERALD: "Emerald", DIAMOND: "Dia",
 	MASTER: "Master", GRANDMASTER: "GM", CHALLENGER: "Chall",
 };
-
-/** Numeric rank value for LP delta calculations across tiers */
-function tierToLp(tier: string, div: string, lp: number): number {
-	const tierVals: Record<string, number> = {
-		IRON: 0, BRONZE: 400, SILVER: 800, GOLD: 1200,
-		PLATINUM: 1600, EMERALD: 2000, DIAMOND: 2400,
-		MASTER: 2800, GRANDMASTER: 2900, CHALLENGER: 3000,
-	};
-	const divVals: Record<string, number> = { IV: 0, III: 100, II: 200, I: 300 };
-	const base = tierVals[tier] ?? 0;
-	if (base >= 2800) return base + lp; // Master+ LP adds directly
-	return base + (divVals[div] ?? 0) + lp;
-}
 
 interface SessionState {
 	queueIndex: number;
@@ -238,7 +226,7 @@ export class SessionStats extends SingletonAction<SessionStatsSettings> {
 				continue;
 			}
 
-			const currentLp = tierToLp(entry.tier, entry.division, entry.leaguePoints ?? 0);
+			const currentLp = tierToAbsoluteLp(entry.tier, entry.division, entry.leaguePoints ?? 0);
 
 			// Capture baseline on first poll for this queue
 			if (!state.baselines.has(queueKey)) {

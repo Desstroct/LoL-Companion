@@ -13,7 +13,7 @@ import { itemBuilds, ItemBuilds } from "../services/item-builds";
 import type { ItemBuild } from "../services/item-builds";
 import { dataDragon } from "../services/data-dragon";
 import { getItemIcon, prefetchItemIcons } from "../services/lol-icons";
-import { fetchPlayerTier } from "../services/lolalytics-tier";
+import { getPlayerTier } from "../services/lolalytics-tier";
 
 const logger = streamDeck.logger.createScope("BestItem");
 
@@ -55,8 +55,6 @@ export class BestItem extends SingletonAction {
 	private buildPromise: Promise<ItemBuild | null> | null = null;
 	/** Cooldown after a failed build fetch (stop infinite retry spam) */
 	private buildFailedUntil = 0;
-	/** Cached player tier for elo-aware build recommendations */
-	private playerTier: string | null = null;
 
 	override onWillAppear(ev: WillAppearEvent): void | Promise<void> {
 		this.startPolling();
@@ -143,7 +141,6 @@ export class BestItem extends SingletonAction {
 		if (!allData) {
 			// Reset state for next game
 			this.buildFailedUntil = 0;
-			this.playerTier = null;
 			for (const s of this.actionStates.values()) {
 				if (s.currentChampion) {
 					s.currentChampion = null;
@@ -214,11 +211,8 @@ export class BestItem extends SingletonAction {
 		const enemies = allData.allPlayers.filter(p => p.team !== me.team);
 		const enemyType = detectEnemyDamageType(enemies);
 
-		// Fetch player tier once per game for elo-aware builds
-		if (this.playerTier === null) {
-			this.playerTier = await fetchPlayerTier();
-			logger.info(`Best Item elo filter: ${this.playerTier}`);
-		}
+		// Shared cached tier — consistent elo bracket across Smart Pick / Auto Rune / Best Item
+		const playerTier = await getPlayerTier();
 
 		for (const a of this.actions) {
 			const state = this.getState(a.id);
@@ -255,7 +249,7 @@ export class BestItem extends SingletonAction {
 					}
 
 					const alias = ItemBuilds.toAlias(champName);
-					this.buildPromise = itemBuilds.getBuild(alias, lane, detectedStyle ?? undefined, this.playerTier ?? undefined).catch((e) => {
+					this.buildPromise = itemBuilds.getBuild(alias, lane, detectedStyle ?? undefined, playerTier).catch((e) => {
 						logger.error(`Failed to fetch build: ${e}`);
 						return null;
 					});

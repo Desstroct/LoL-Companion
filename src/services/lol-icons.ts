@@ -1,5 +1,6 @@
 import streamDeck from "@elgato/streamdeck";
 import { dataDragon } from "./data-dragon";
+import type { DdChampion } from "../types/lol";
 
 const logger = streamDeck.logger.createScope("LoLIcons");
 
@@ -15,10 +16,33 @@ const NEGATIVE_TTL = 5 * 60 * 1000;
 
 // ────────────────── Generic fetch ──────────────────
 
+/** Concurrency limiter — max 3 parallel icon fetches to avoid burst CDN requests */
+let activeIconFetches = 0;
+const MAX_CONCURRENT_ICON_FETCHES = 3;
+const fetchQueue: Array<() => void> = [];
+
+function acquireFetchSlot(): Promise<void> {
+	if (activeIconFetches < MAX_CONCURRENT_ICON_FETCHES) {
+		activeIconFetches++;
+		return Promise.resolve();
+	}
+	return new Promise<void>((resolve) => fetchQueue.push(resolve));
+}
+
+function releaseFetchSlot(): void {
+	const next = fetchQueue.shift();
+	if (next) {
+		next(); // hand slot to next waiter (count stays the same)
+	} else {
+		activeIconFetches--;
+	}
+}
+
 /**
  * Fetch any image URL and return as base64 data URI. Cached in memory.
  * Failed fetches are negatively cached so they are not retried every tick.
  * Evicts oldest entries when cache exceeds ICON_CACHE_MAX.
+ * Limits to 3 concurrent network requests to avoid burst CDN traffic.
  */
 async function fetchIcon(cacheKey: string, url: string): Promise<string | null> {
 	const cached = iconCache.get(cacheKey);
@@ -31,6 +55,7 @@ async function fetchIcon(cacheKey: string, url: string): Promise<string | null> 
 			return cached.data;
 		}
 	}
+	await acquireFetchSlot();
 	try {
 		const response = await fetch(url);
 		if (!response.ok) {
@@ -51,6 +76,8 @@ async function fetchIcon(cacheKey: string, url: string): Promise<string | null> 
 		logger.error(`Icon fetch error: ${url} — ${e}`);
 		iconCache.set(cacheKey, { data: NEGATIVE_SENTINEL, timestamp: Date.now() });
 		return null;
+	} finally {
+		releaseFetchSlot();
 	}
 }
 
@@ -86,16 +113,10 @@ export async function getChampionIconByKey(key: string): Promise<string | null> 
  */
 export async function getChampionIconByName(name: string): Promise<string | null> {
 	if (!name) return null;
-	// Game Client API uses display names (may include accents); DDragon uses IDs
-	const lower = name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/['\s.]/g, "");
-	for (const champ of dataDragon.getAllChampions()) {
-		const ddLower = champ.id.toLowerCase().replace(/['\s.]/g, "");
-		const nameLower = champ.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/['\s.]/g, "");
-		if (ddLower === lower || nameLower === lower) {
-			return fetchIcon(`champ:${ddLower}`, dataDragon.getChampionImageUrl(champ.id));
-		}
-	}
-	return null;
+	const champ = resolveChampionByName(name);
+	if (!champ) return null;
+	const ddLower = champ.id.toLowerCase().replace(/['\s.]/g, "");
+	return fetchIcon(`champ:${ddLower}`, dataDragon.getChampionImageUrl(champ.id));
 }
 
 /**
@@ -127,18 +148,6 @@ export function prefetchItemIcons(itemIds: number[]): void {
 	}
 }
 
-/** Prefetch all objective icons — dragons, baron, herald (non-blocking). */
-export function prefetchObjectiveIcons(): void {
-	for (const type of Object.keys(DRAGON_ICON_URLS)) {
-		if (!iconCache.has(`dragon:${type}`)) {
-			getDragonIcon(type).catch(() => {});
-		}
-	}
-	if (!iconCache.has("baron")) getBaronIcon().catch(() => {});
-	if (!iconCache.has("herald")) getHeraldIcon().catch(() => {});
-	if (!iconCache.has("grubs")) getGrubsIcon().catch(() => {});
-}
-
 // ────────────────── Summoner spell icons ──────────────────
 
 /**
@@ -148,33 +157,6 @@ export async function getSpellIcon(spellKey: string): Promise<string | null> {
 	if (!spellKey || spellKey === "Unknown") return null;
 	return fetchIcon(`spell:${spellKey}`, dataDragon.getSpellImageUrl(spellKey));
 }
-
-/**
- * Get a summoner spell icon by display name (e.g., "Flash", "Ignite").
- * Resolves display name → DDragon key automatically.
- */
-export async function getSpellIconByDisplayName(displayName: string): Promise<string | null> {
-	const key = DISPLAY_TO_SPELL_KEY[displayName];
-	if (!key) {
-		logger.warn(`Unknown spell display name: ${displayName}`);
-		return null;
-	}
-	return getSpellIcon(key);
-}
-
-const DISPLAY_TO_SPELL_KEY: Record<string, string> = {
-	"Flash": "SummonerFlash",
-	"Ignite": "SummonerDot",
-	"Teleport": "SummonerTeleport",
-	"Heal": "SummonerHeal",
-	"Exhaust": "SummonerExhaust",
-	"Barrier": "SummonerBarrier",
-	"Smite": "SummonerSmite",
-	"Cleanse": "SummonerCleanse",
-	"Ghost": "SummonerGhost",
-	"Clarity": "SummonerMana",
-	"Mark": "SummonerSnowball",
-};
 
 const SPELL_NUMERIC_ID_TO_KEY: Record<number, string> = {
 	1: "SummonerCleanse",
@@ -209,81 +191,6 @@ export async function getItemIcon(itemId: number): Promise<string | null> {
 	return fetchIcon(`item:${itemId}`, url);
 }
 
-// ────────────────── Jungle objective icons ──────────────────
-
-// Community Dragon URLs for jungle objectives (correct path: /icons/ subfolder)
-const CD_ICONS = "https://raw.communitydragon.org/latest/game/assets/ux/minimap/icons";
-
-const DRAGON_ICON_URLS: Record<string, string> = {
-	Fire: `${CD_ICONS}/dragon_infernal.png`,
-	Water: `${CD_ICONS}/dragon_ocean.png`,
-	Air: `${CD_ICONS}/dragon_cloud.png`,
-	Earth: `${CD_ICONS}/dragon_mountain.png`,
-	Hextech: `${CD_ICONS}/dragon_hextech.png`,
-	Chemtech: `${CD_ICONS}/dragon_chemtech.png`,
-	Elder: `${CD_ICONS}/dragon_elder.png`,
-};
-
-const BARON_ICON_URL = `${CD_ICONS}/baron.png`;
-const HERALD_ICON_URL = `${CD_ICONS}/riftherald.png`;
-const GRUBS_ICON_URL = `${CD_ICONS}/grub.png`;
-
-/**
- * Get a dragon type icon (Infernal, Ocean, Cloud, Mountain, Hextech, Chemtech, Elder).
- */
-export async function getDragonIcon(dragonType: string): Promise<string | null> {
-	const url = DRAGON_ICON_URLS[dragonType];
-	if (!url) return null;
-	return fetchIcon(`dragon:${dragonType}`, url);
-}
-
-/** Get the Baron Nashor icon. */
-export async function getBaronIcon(): Promise<string | null> {
-	return fetchIcon("baron", BARON_ICON_URL);
-}
-
-/** Get the Rift Herald icon. */
-export async function getHeraldIcon(): Promise<string | null> {
-	return fetchIcon("herald", HERALD_ICON_URL);
-}
-
-/** Get the Voidgrubs (Horde) icon. */
-export async function getGrubsIcon(): Promise<string | null> {
-	return fetchIcon("grubs", GRUBS_ICON_URL);
-}
-
-// ────────────────── Jungle camp icons ──────────────────
-
-/** Community Dragon URLs for jungle camp minimap icons */
-const CAMP_ICON_URLS: Record<string, string> = {
-	blue: `${CD_ICONS}/blue.png`,
-	red: `${CD_ICONS}/red.png`,
-	gromp: `${CD_ICONS}/gromp.png`,
-	wolves: `${CD_ICONS}/wolf.png`,
-	raptors: `${CD_ICONS}/razorbeak.png`,
-	krugs: `${CD_ICONS}/krug.png`,
-	scuttle: `${CD_ICONS}/crab.png`,
-};
-
-/**
- * Get a jungle camp icon by camp name (blue, red, gromp, wolves, raptors, krugs, scuttle).
- */
-export async function getCampIcon(camp: string): Promise<string | null> {
-	const url = CAMP_ICON_URLS[camp];
-	if (!url) return null;
-	return fetchIcon(`camp:${camp}`, url);
-}
-
-// ────────────────── Profile icons ──────────────────
-
-/**
- * Get a summoner profile icon by ID.
- */
-export async function getProfileIcon(iconId: number): Promise<string | null> {
-	const url = `https://ddragon.leagueoflegends.com/cdn/${dataDragon.getVersion()}/img/profileicon/${iconId}.png`;
-	return fetchIcon(`profile:${iconId}`, url);
-}
-
 /**
  * Get a ranked tier emblem icon (e.g. GOLD, PLATINUM, DIAMOND).
  * Uses Community Dragon ranked crest images.
@@ -297,14 +204,40 @@ export async function getRankedEmblemIcon(tier: string): Promise<string | null> 
 
 // ────────────────── Internal helpers ──────────────────
 
+/**
+ * Lazy-built lookup map: normalized name/id → DdChampion.
+ * Rebuilt when DataDragon version changes (patch day) or on first access.
+ * Turns O(n) champion lookups into O(1) — called on every icon request.
+ */
+let champLookup: Map<string, DdChampion> | null = null;
+let champLookupVersion = "";
+
+/** Strip accents, lowercase, remove apostrophes/spaces/dots. */
+function normalizeStr(s: string): string {
+	return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/['\s.]/g, "");
+}
+
+function getChampLookup(): Map<string, DdChampion> {
+	const currentVersion = dataDragon.getVersion();
+	if (champLookup && champLookupVersion === currentVersion) return champLookup;
+
+	champLookup = new Map();
+	champLookupVersion = currentVersion;
+	for (const champ of dataDragon.getAllChampions()) {
+		// Index by both DDragon id ("Aatrox") and display name ("Aatrox")
+		// For most champs these match, but e.g. "MonkeyKing" vs "Wukong"
+		champLookup.set(normalizeStr(champ.id), champ);
+		champLookup.set(normalizeStr(champ.name), champ);
+	}
+	return champLookup;
+}
+
+function resolveChampionByName(name: string): DdChampion | undefined {
+	return getChampLookup().get(normalizeStr(name));
+}
+
 function resolveDataDragonId(alias: string): string | null {
 	if (!alias) return null;
-	const lowerAlias = alias.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/['\s.]/g, "");
-	for (const champ of dataDragon.getAllChampions()) {
-		const ddLower = champ.id.toLowerCase().replace(/['\s.]/g, "");
-		if (ddLower === lowerAlias) {
-			return champ.id;
-		}
-	}
-	return null;
+	const champ = getChampLookup().get(normalizeStr(alias));
+	return champ?.id ?? null;
 }

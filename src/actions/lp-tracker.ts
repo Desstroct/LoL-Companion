@@ -14,6 +14,7 @@ import { getRankedEmblemIcon } from "../services/lol-icons";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { tierToAbsoluteLp } from "../services/rank-utils";
 
 const logger = streamDeck.logger.createScope("LpTracker");
 
@@ -319,19 +320,6 @@ export class LpTracker extends SingletonAction<LpTrackerSettings> {
 			}
 		}
 	}
-}
-
-/** Convert tier + division + LP to an absolute LP value for accurate delta tracking */
-function tierToAbsoluteLp(tier: string, div: string, lp: number): number {
-	const tierVals: Record<string, number> = {
-		IRON: 0, BRONZE: 400, SILVER: 800, GOLD: 1200,
-		PLATINUM: 1600, EMERALD: 2000, DIAMOND: 2400,
-		MASTER: 2800, GRANDMASTER: 2900, CHALLENGER: 3000,
-	};
-	const divVals: Record<string, number> = { IV: 0, III: 100, II: 200, I: 300 };
-	const base = tierVals[tier] ?? 0;
-	if (base >= 2800) return base + lp; // Master+ LP adds directly
-	return base + (divVals[div] ?? 0) + lp;
 }
 
 type LpTrackerSettings = {

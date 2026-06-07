@@ -19,6 +19,8 @@ export class DataDragon {
 	private runeIcons: Map<number, string> = new Map();
 	private initialized = false;
 	private versionCheckTimer: ReturnType<typeof setInterval> | null = null;
+	/** Listeners notified when the DDragon version changes (patch day). */
+	private versionChangeListeners: Array<(oldVersion: string, newVersion: string) => void> = [];
 
 	/** How often to check for a new Data Dragon version (30 minutes). */
 	private static readonly VERSION_CHECK_INTERVAL = 30 * 60 * 1000;
@@ -28,6 +30,15 @@ export class DataDragon {
 	 */
 	isReady(): boolean {
 		return this.initialized;
+	}
+
+	/**
+	 * Register a listener that fires when DDragon detects a new patch.
+	 * Used by services that cache patch-specific data (runes, items, counters)
+	 * so they can invalidate stale entries immediately.
+	 */
+	onVersionChange(listener: (oldVersion: string, newVersion: string) => void): void {
+		this.versionChangeListeners.push(listener);
 	}
 
 	/**
@@ -129,16 +140,22 @@ export class DataDragon {
 				throw new Error("Champion data empty after fetch");
 			}
 
-			// Reload rune icons for the new version
-			await this.loadRunes();
+			// Load rune icons into a temporary map (not the live one)
+			const tmpRuneIcons = await this.loadRunesInto(latest);
 
 			// Atomic swap — old maps are GC'd
 			this.champions = tmpChampions;
 			this.championsByKey = tmpChampionsByKey;
 			this.summonerSpells = tmpSpells;
 			this.items = tmpItems;
+			if (tmpRuneIcons) this.runeIcons = tmpRuneIcons;
 
 			logger.info(`Data Dragon refreshed: ${this.champions.size} champions, ${this.summonerSpells.size} spells, ${this.items.size} items`);
+
+			// Notify services to invalidate patch-specific caches
+			for (const listener of this.versionChangeListeners) {
+				try { listener(oldVersion!, latest); } catch { /* swallow */ }
+			}
 		} catch (e) {
 			// Rollback version — keep old data intact
 			logger.error(`Data Dragon refresh failed, keeping ${oldVersion}: ${e}`);
@@ -169,9 +186,26 @@ export class DataDragon {
 
 	/**
 	 * Get champion data by display name (e.g., "Lee Sin", "Aatrox").
-	 * Case-insensitive search.
+	 * Case-insensitive, accent-insensitive lookup via a lazy-built cache.
+	 * O(1) after the first call per patch \u2014 the map is rebuilt when DDragon
+	 * detects a new version.
 	 */
-	private normalizeChampionName(name: string): string {
+	private championsByName: Map<string, DdChampion> | null = null;
+	private championsByNameVersion = "";
+
+	private ensureNameIndex(): Map<string, DdChampion> {
+		const v = this.getVersion();
+		if (this.championsByName && this.championsByNameVersion === v) return this.championsByName;
+		this.championsByName = new Map();
+		this.championsByNameVersion = v;
+		for (const champ of this.champions.values()) {
+			this.championsByName.set(DataDragon.normalizeName(champ.name), champ);
+			this.championsByName.set(champ.id.toLowerCase(), champ);
+		}
+		return this.championsByName;
+	}
+
+	private static normalizeName(name: string): string {
 		return name
 			.normalize("NFD")
 			.replace(/[\u0300-\u036f]/g, "")
@@ -180,16 +214,7 @@ export class DataDragon {
 	}
 
 	getChampionByName(name: string): DdChampion | undefined {
-		const lower = this.normalizeChampionName(name);
-		for (const champ of this.champions.values()) {
-			if (
-				this.normalizeChampionName(champ.name) === lower ||
-				champ.id.toLowerCase() === lower
-			) {
-				return champ;
-			}
-		}
-		return undefined;
+		return this.ensureNameIndex().get(DataDragon.normalizeName(name));
 	}
 
 	/**
@@ -312,17 +337,30 @@ export class DataDragon {
 	}
 
 	private async loadRunes(): Promise<void> {
-		const url = `${DD_BASE}/cdn/${this.getVersion()}/data/en_US/runesReforged.json`;
+		const icons = await this.loadRunesInto(this.getVersion());
+		if (icons) {
+			this.runeIcons = icons;
+		}
+	}
+
+	/**
+	 * Fetch rune data for a specific version into a NEW map (doesn't touch this.runeIcons).
+	 * Returns null if the fetch fails, so callers can skip the swap.
+	 */
+	private async loadRunesInto(version: string): Promise<Map<number, string> | null> {
+		const url = `${DD_BASE}/cdn/${version}/data/en_US/runesReforged.json`;
 		const data = await this.fetchJson<DdRuneTree[]>(url);
-		if (!data) return;
+		if (!data) return null;
+		const icons = new Map<number, string>();
 		for (const tree of data) {
 			for (const slot of tree.slots) {
 				for (const rune of slot.runes) {
-					this.runeIcons.set(rune.id, rune.icon);
+					icons.set(rune.id, rune.icon);
 				}
 			}
 		}
-		logger.debug(`Loaded ${this.runeIcons.size} rune icons from DDragon`);
+		logger.debug(`Loaded ${icons.size} rune icons from DDragon (v${version})`);
+		return icons;
 	}
 
 	private async fetchJson<T>(url: string): Promise<T | null> {

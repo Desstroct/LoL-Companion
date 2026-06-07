@@ -19,7 +19,7 @@ import { dataDragon } from "../services/data-dragon";
 import { championStats, ChampionStats } from "../services/champion-stats";
 import { getChampionIcon, prefetchChampionIcons } from "../services/lol-icons";
 import { findEnemyLaner, getUnavailableAliases } from "../services/champ-select-utils";
-import { fetchPlayerTier } from "../services/lolalytics-tier";
+import { getPlayerTier } from "../services/lolalytics-tier";
 
 const logger = streamDeck.logger.createScope("SmartPick");
 
@@ -53,7 +53,6 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 	private pollInterval: ReturnType<typeof setInterval> | null = null;
 	private actionStates = new Map<string, SmartPickState>();
 	private cachedRole?: string;
-	private playerTier: string | null = null;
 
 	override async onWillAppear(ev: WillAppearEvent<SmartPickSettings>): Promise<void> {
 		if (!this.cachedRole) {
@@ -72,11 +71,10 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 			ev.action.setFeedbackLayout("layouts/smart-pick.json");
 			this.getState(ev.action.id);
 			return ev.action.setFeedback({
-				champ_icon: "",
 				title: `Smart Pick · ${roleLabel}`,
-				pick_name: "Waiting...",
-				pick_info: "",
-				score_bar: { value: 0 },
+				champ1_icon: "", champ1_name: "", champ1_wr: "",
+				champ2_icon: "", champ2_name: "Waiting...", champ2_wr: "",
+				champ3_icon: "", champ3_name: "", champ3_wr: "",
 			});
 		}
 		return ev.action.setTitle(`Smart\n${roleLabel}`);
@@ -101,7 +99,9 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 	override async onDialRotate(ev: DialRotateEvent<SmartPickSettings>): Promise<void> {
 		const state = this.getState(ev.action.id);
 		if (state.lastPicks.length === 0) return;
-		state.viewIndex = ((state.viewIndex + ev.payload.ticks) + state.lastPicks.length * 100) % state.lastPicks.length;
+		// Scroll by 1 champion at a time, clamped so 3 picks are always visible
+		const maxStart = Math.max(0, state.lastPicks.length - 3);
+		state.viewIndex = Math.max(0, Math.min(state.viewIndex + ev.payload.ticks, maxStart));
 		await this.renderDialPick(ev.action, state);
 	}
 
@@ -129,18 +129,38 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 		state: SmartPickState,
 	): Promise<void> {
 		if (!a.isDial()) return;
-		const pick = state.lastPicks[state.viewIndex];
-		if (!pick) return;
+		if (state.lastPicks.length === 0) return;
 
-		const barColor = pick.score >= 54 ? "#2ECC71" : pick.score >= 50 ? "#F1C40F" : "#E74C3C";
-		const champIcon = await getChampionIcon(pick.alias);
+		const startIdx = state.viewIndex;
+		const total = state.lastPicks.length;
+
+		// Page indicator: "1-3 / 10"
+		const endIdx = Math.min(startIdx + 3, total);
+		const pageLabel = `${startIdx + 1}-${endIdx} / ${total}`;
+		const titleStr = `${state.lastInfo}  ${pageLabel}`;
+
+		// Resolve up to 3 visible picks
+		const slots = await Promise.all(
+			[0, 1, 2].map(async (col) => {
+				const idx = startIdx + col;
+				if (idx >= total) return { icon: "", name: "", wr: "" as string | { value: string; color: string } };
+				const pick = state.lastPicks[idx];
+				const wrColor = pick.score >= 54 ? "#2ECC71" : pick.score >= 50 ? "#F1C40F" : "#E74C3C";
+				const icon = await getChampionIcon(pick.alias);
+				const shortName = pick.name.length > 9 ? pick.name.slice(0, 8) + "…" : pick.name;
+				return {
+					icon: icon ?? "",
+					name: shortName,
+					wr: { value: `${getTier(pick.score)} ${pick.score.toFixed(1)}%`, color: wrColor } as string | { value: string; color: string },
+				};
+			}),
+		);
 
 		await a.setFeedback({
-			champ_icon: champIcon ?? "",
-			title: state.lastInfo,
-			pick_name: `#${state.viewIndex + 1} ${pick.name} ${getTier(pick.score)}`,
-			pick_info: pick.details,
-			score_bar: { value: pick.score, bar_fill_c: barColor },
+			title: titleStr,
+			champ1_icon: slots[0].icon, champ1_name: slots[0].name, champ1_wr: slots[0].wr,
+			champ2_icon: slots[1].icon, champ2_name: slots[1].name, champ2_wr: slots[1].wr,
+			champ3_icon: slots[2].icon, champ3_name: slots[2].name, champ3_wr: slots[2].wr,
 		});
 	}
 
@@ -158,10 +178,12 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 	}
 
 	private async updateSmartPick(): Promise<void> {
+		const emptySlots = { champ1_icon: "", champ1_name: "", champ1_wr: "", champ2_icon: "", champ2_wr: "", champ3_icon: "", champ3_name: "", champ3_wr: "" };
+
 		if (!lcuConnector.isConnected()) {
 			for (const a of this.actions) {
 				if (a.isDial()) {
-					await a.setFeedback({ champ_icon: "", title: "Smart Pick", pick_name: "Offline", pick_info: "", score_bar: { value: 0 } });
+					await a.setFeedback({ ...emptySlots, title: "Smart Pick", champ2_name: "Offline" });
 				} else {
 					await a.setImage(""); await a.setTitle("Smart\nOffline");
 				}
@@ -172,7 +194,7 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 		if (gameMode.isTFT()) {
 			for (const a of this.actions) {
 				if (a.isDial()) {
-					await a.setFeedback({ champ_icon: "", title: "Smart Pick", pick_name: "N/A in TFT", pick_info: "", score_bar: { value: 0 } });
+					await a.setFeedback({ ...emptySlots, title: "Smart Pick", champ2_name: "N/A in TFT" });
 				} else {
 					await a.setImage(""); await a.setTitle("Pick\nN/A TFT");
 				}
@@ -183,7 +205,7 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 		if (gameMode.isARAM()) {
 			for (const a of this.actions) {
 				if (a.isDial()) {
-					await a.setFeedback({ champ_icon: "", title: "Smart Pick", pick_name: "N/A in ARAM", pick_info: "", score_bar: { value: 0 } });
+					await a.setFeedback({ ...emptySlots, title: "Smart Pick", champ2_name: "N/A in ARAM" });
 				} else {
 					await a.setImage(""); await a.setTitle("Pick\nN/A ARAM");
 				}
@@ -193,7 +215,6 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 
 		const phase = await lcuApi.getGameflowPhase();
 		if (phase !== "ChampSelect") {
-			this.playerTier = null;
 			for (const s of this.actionStates.values()) {
 				s.lastHash = "";
 				s.lastPicks = [];
@@ -202,11 +223,10 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 			for (const a of this.actions) {
 				if (a.isDial()) {
 					await a.setFeedback({
-						champ_icon: "",
 						title: `Smart Pick · ${roleLabel}`,
-						pick_name: "Waiting...",
-						pick_info: "Rotate dial to browse picks",
-						score_bar: { value: 0 },
+						champ1_icon: "", champ1_name: "", champ1_wr: "",
+						champ2_icon: "", champ2_name: "Waiting...", champ2_wr: "",
+						champ3_icon: "", champ3_name: "", champ3_wr: "",
 					});
 				} else {
 					await a.setImage("");
@@ -219,11 +239,8 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 		const session = await lcuApi.getChampSelectSession();
 		if (!session) return;
 
-		// Fetch the player's rank once per champ select for elo-aware recommendations
-		if (this.playerTier === null) {
-			this.playerTier = await fetchPlayerTier();
-			logger.info(`Smart Pick elo filter: ${this.playerTier}`);
-		}
+		// Shared cached tier — consistent elo bracket across Smart Pick / Auto Rune / Best Item
+		const tier = await getPlayerTier();
 
 		const localCell = session.localPlayerCellId;
 		const me = session.myTeam.find((p) => p.cellId === localCell);
@@ -234,7 +251,7 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 				?? "top";
 			const lane = ChampionStats.toLolalyticsLane(role);
 			const state = this.getState(a.id);
-			await this.updatePicks(a, session, role, lane, state, this.playerTier ?? "emerald_plus");
+			await this.updatePicks(a, session, role, lane, state, tier);
 		}
 	}
 
@@ -271,7 +288,12 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 
 			if (lockedEnemyChamps.length === 0) {
 				if (a.isDial()) {
-					await a.setFeedback({ title: titleStr, pick_name: "Waiting for picks...", pick_info: "", champ_icon: "", score_bar: { value: 0 } });
+					await a.setFeedback({
+						title: titleStr,
+						champ1_icon: "", champ1_name: "", champ1_wr: "",
+						champ2_icon: "", champ2_name: "Waiting…", champ2_wr: "",
+						champ3_icon: "", champ3_name: "", champ3_wr: "",
+					});
 				} else {
 					await a.setTitle(`Smart\nWaiting...`);
 				}
@@ -289,7 +311,12 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 		}
 
 		if (a.isDial()) {
-			await a.setFeedback({ title: titleStr, pick_name: "Searching...", pick_info: "", champ_icon: "", score_bar: { value: 0 } });
+			await a.setFeedback({
+				title: titleStr,
+				champ1_icon: "", champ1_name: "", champ1_wr: "",
+				champ2_icon: "", champ2_name: "Searching…", champ2_wr: "",
+				champ3_icon: "", champ3_name: "", champ3_wr: "",
+			});
 		} else {
 			await a.setTitle(`Smart\nSearching...`);
 		}
@@ -314,11 +341,16 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 			state.lastInfo = titleStr;
 			state.lastHash = hash;
 
-			prefetchChampionIcons(picks.slice(0, 5).map((p) => p.alias));
+			prefetchChampionIcons(picks.slice(0, 9).map((p) => p.alias));
 
 			if (picks.length === 0) {
 				if (a.isDial()) {
-					await a.setFeedback({ title: titleStr, pick_name: "No data", pick_info: "", champ_icon: "", score_bar: { value: 0 } });
+					await a.setFeedback({
+						title: titleStr,
+						champ1_icon: "", champ1_name: "", champ1_wr: "",
+						champ2_icon: "", champ2_name: "No data", champ2_wr: "",
+						champ3_icon: "", champ3_name: "", champ3_wr: "",
+					});
 				} else {
 					await a.setTitle(`Smart\nNo data`);
 				}
@@ -334,7 +366,12 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 		} catch (e) {
 			logger.error(`Smart Pick error: ${e}`);
 			if (a.isDial()) {
-				await a.setFeedback({ title: titleStr, pick_name: "Error", pick_info: "", champ_icon: "", score_bar: { value: 0 } });
+				await a.setFeedback({
+					title: titleStr,
+					champ1_icon: "", champ1_name: "", champ1_wr: "",
+					champ2_icon: "", champ2_name: "Error", champ2_wr: "",
+					champ3_icon: "", champ3_name: "", champ3_wr: "",
+				});
 			} else {
 				await a.setTitle(`Smart\nError`);
 			}

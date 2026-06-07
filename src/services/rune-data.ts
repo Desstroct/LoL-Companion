@@ -78,15 +78,24 @@ export class RuneData {
 	private readonly CACHE_TTL = 30 * 60 * 1000; // 30 min
 	private cache = new DiskCache<RunePageData[]>("rune-data.json", this.CACHE_TTL);
 
+	constructor() {
+		// Auto-invalidate cache when a new patch is detected
+		dataDragon.onVersionChange((oldV, newV) => {
+			logger.info(`Patch change detected (${oldV} → ${newV}), clearing rune cache`);
+			this.cache.clear().catch(() => {});
+		});
+	}
+
 	/**
 	 * Get recommended rune pages for a champion + lane.
 	 * Returns up to 2 pages: most common and highest win rate.
 	 * @param vsChampionAlias  Kept for cache key separation but the JSON API returns generic runes only.
 	 */
 	async getRecommendedRunes(championAlias: string, lane: string, vsChampionAlias?: string, tier = "emerald_plus"): Promise<RunePageData[]> {
+		const patch = this.getCurrentPatch();
 		const key = vsChampionAlias
-			? `${championAlias}:${lane}:vs:${vsChampionAlias}:${tier}`
-			: `${championAlias}:${lane}:${tier}`;
+			? `${championAlias}:${lane}:vs:${vsChampionAlias}:${tier}:${patch}`
+			: `${championAlias}:${lane}:${tier}:${patch}`;
 		const cached = await this.cache.get(key);
 
 		if (cached) {
@@ -101,6 +110,13 @@ export class RuneData {
 		return data;
 	}
 
+	/** Extract major.minor patch from Data Dragon version (e.g. "16.11.1" → "16.11"). */
+	private getCurrentPatch(): string {
+		const ddVersion = dataDragon.getVersion();
+		const parts = ddVersion.split(".");
+		return parts.length >= 2 ? `${parts[0]}.${parts[1]}` : ddVersion;
+	}
+
 	/** Flush cache to disk (call on shutdown). */
 	async flushCache(): Promise<void> {
 		await this.cache.flush();
@@ -110,46 +126,54 @@ export class RuneData {
 	 * Fetch rune pages from the Lolalytics JSON API (`ep=rune`).
 	 */
 	private async fetchFromApi(championAlias: string, lane: string, tier = "emerald_plus"): Promise<RunePageData[]> {
-		const ddVersion = dataDragon.getVersion();
-		const patchParts = ddVersion.split(".");
-		const patch = `${patchParts[0]}.${patchParts[1]}`;
+		const currentPatch = this.getCurrentPatch();
+		// Try current patch first, then "30" (last 30 days) as fallback
+		// Early in a new patch, Lolalytics may not have enough data
+		const patchesToTry = [currentPatch, "30"];
 
 		const queueParam = lane === "aram" ? "&queue=450" : "&queue=ranked";
 		const apiLane = lane === "aram" ? "default" : lane;
-		const url = `${LOLALYTICS_API}/mega/?ep=rune&v=1&patch=${patch}&c=${championAlias}&lane=${apiLane}&tier=${tier}${queueParam}&region=all`;
 
-		try {
-			logger.debug(`Fetching runes: ${url}`);
+		for (const patch of patchesToTry) {
+			const url = `${LOLALYTICS_API}/mega/?ep=rune&v=1&patch=${patch}&c=${championAlias}&lane=${apiLane}&tier=${tier}${queueParam}&region=all`;
 
-			const response = await throttledFetch(url, { signal: AbortSignal.timeout(10_000) });
-			if (!response.ok) {
-				logger.warn(`Lolalytics API returned ${response.status} for rune data`);
-				return [];
+			try {
+				logger.debug(`Fetching runes (patch=${patch}): ${url}`);
+
+				const response = await throttledFetch(url, { signal: AbortSignal.timeout(10_000) });
+				if (!response.ok) {
+					logger.warn(`Lolalytics API returned ${response.status} for rune data (patch=${patch})`);
+					continue;
+				}
+
+				const json = (await response.json()) as RuneApiResponse;
+
+				if (!json?.summary?.runes) {
+					logger.warn(`Invalid rune API response for ${championAlias} ${lane} (patch=${patch})`);
+					continue;
+				}
+
+				const data = this.parseApiRunes(json.summary.runes);
+
+				if (data.length > 0) {
+					if (patch !== currentPatch) {
+						logger.info(`Using patch=${patch} fallback for ${championAlias} ${lane} runes (current patch has no data)`);
+					}
+					logger.info(
+						`Parsed ${data.length} rune page(s) for ${championAlias} ${lane}: ` +
+							data.map((d) => `${d.source} ${d.keystoneName} ${d.winRate}%`).join(", "),
+					);
+					return data;
+				}
+
+				logger.warn(`No rune data found for ${championAlias} ${lane} (patch=${patch})`);
+			} catch (e) {
+				logger.error(`Rune fetch failed for ${championAlias} ${lane} (patch=${patch}): ${e}`);
 			}
-
-			const json = (await response.json()) as RuneApiResponse;
-
-			if (!json?.summary?.runes) {
-				logger.warn(`Invalid rune API response for ${championAlias} ${lane}`);
-				return [];
-			}
-
-			const data = this.parseApiRunes(json.summary.runes);
-
-			if (data.length > 0) {
-				logger.info(
-					`Parsed ${data.length} rune page(s) for ${championAlias} ${lane}: ` +
-						data.map((d) => `${d.source} ${d.keystoneName} ${d.winRate}%`).join(", "),
-				);
-				return data;
-			}
-
-			logger.warn(`No rune data found for ${championAlias} ${lane}`);
-			return [];
-		} catch (e) {
-			logger.error(`Rune fetch failed for ${championAlias} ${lane}: ${e}`);
-			return [];
 		}
+
+		logger.warn(`All patch attempts failed for ${championAlias} ${lane} runes`);
+		return [];
 	}
 
 	// ─────────── API response parsing ───────────

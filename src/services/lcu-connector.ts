@@ -14,8 +14,11 @@ const logger = streamDeck.logger.createScope("LcuConnector");
  */
 export class LcuConnector {
 	private credentials: LcuCredentials | null = null;
-	private pollInterval: ReturnType<typeof setInterval> | null = null;
+	private pollInterval: ReturnType<typeof setTimeout> | null = null;
 	private listeners: Array<(creds: LcuCredentials | null) => void> = [];
+	/** Consecutive failed discovery attempts — drives backoff when LCU is not running */
+	private consecutiveFailures = 0;
+	private baseIntervalMs = 3000;
 
 	/**
 	 * Returns the current LCU credentials, or null if not connected.
@@ -43,15 +46,30 @@ export class LcuConnector {
 	 */
 	startPolling(intervalMs = 3000): void {
 		if (this.pollInterval) return;
+		this.baseIntervalMs = intervalMs;
 
 		// Check immediately
 		this.discover().catch((e) => logger.error(`LCU discover error: ${e}`));
 
-		this.pollInterval = setInterval(() => {
-			this.discover().catch((e) => logger.error(`LCU discover error: ${e}`));
-		}, intervalMs);
-
+		this.schedulePoll();
 		logger.info("Started LCU polling");
+	}
+
+	/**
+	 * Schedule the next poll with backoff when disconnected.
+	 * Connected: base interval (3s, cheap HTTP ping).
+	 * Disconnected: ramps from 3s → 6s → 9s, capped at 15s (avoids expensive PowerShell spawns).
+	 */
+	private schedulePoll(): void {
+		const delay = this.credentials
+			? this.baseIntervalMs
+			: Math.min(this.baseIntervalMs * (1 + this.consecutiveFailures), 15_000);
+
+		this.pollInterval = setTimeout(() => {
+			this.discover()
+				.catch((e) => logger.error(`LCU discover error: ${e}`))
+				.finally(() => this.schedulePoll());
+		}, delay);
 	}
 
 	/**
@@ -59,7 +77,7 @@ export class LcuConnector {
 	 */
 	stopPolling(): void {
 		if (this.pollInterval) {
-			clearInterval(this.pollInterval);
+			clearTimeout(this.pollInterval);
 			this.pollInterval = null;
 		}
 	}
@@ -73,39 +91,49 @@ export class LcuConnector {
 		// Fast path: if we already have credentials, verify with HTTP ping
 		if (this.credentials) {
 			const alive = await this.pingLcu();
-			if (alive) return; // Still connected, skip expensive process scan
+			if (alive) {
+				this.consecutiveFailures = 0;
+				return; // Still connected, skip expensive process scan
+			}
 
 			// Ping failed — client likely closed
 			this.credentials = null;
+			this.consecutiveFailures = 0; // reset — will ramp from scratch
 			logger.info("LCU client lost (ping failed)");
 			this.notifyListeners();
 			return;
 		}
 
-		// Slow path: no credentials yet, discover from process/lockfile
-		try {
-			const creds = await this.discoverFromProcess();
-			if (creds) {
-				this.credentials = creds;
-				logger.info(`LCU discovered on port ${creds.port}`);
-				this.notifyListeners();
-				return;
-			}
-		} catch {
-			// Process discovery failed, try lockfile
-		}
-
+		// Slow path: no credentials yet, try lockfile first (cheap file read)
 		try {
 			const creds = await this.discoverFromLockfile();
 			if (creds) {
 				this.credentials = creds;
+				this.consecutiveFailures = 0;
 				logger.info(`LCU discovered from lockfile on port ${creds.port}`);
 				this.notifyListeners();
 				return;
 			}
 		} catch {
-			// Lockfile discovery failed too
+			// Lockfile discovery failed, try process scan
 		}
+
+		// Expensive path: spawn PowerShell to scan processes
+		try {
+			const creds = await this.discoverFromProcess();
+			if (creds) {
+				this.credentials = creds;
+				this.consecutiveFailures = 0;
+				logger.info(`LCU discovered on port ${creds.port}`);
+				this.notifyListeners();
+				return;
+			}
+		} catch {
+			// Process discovery also failed
+		}
+
+		// Neither method found the client — increase backoff
+		this.consecutiveFailures = Math.min(this.consecutiveFailures + 1, 4);
 	}
 
 	/** Agent for LCU ping (self-signed cert) */

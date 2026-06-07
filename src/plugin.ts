@@ -58,17 +58,15 @@ import { AutoRune } from "./actions/auto-rune";
 import { BestItem } from "./actions/best-item";
 import { DeathTimer } from "./actions/death-timer";
 import { LpTracker } from "./actions/lp-tracker";
-import { JunglePath } from "./actions/jungle-path";
 import { SkillOrder } from "./actions/skill-order";
 import { SessionStats } from "./actions/session-stats";
-import { ObjectiveTimer } from "./actions/objective-timer";
-import { TiltGuard } from "./actions/tilt-guard";
 import { lcuConnector } from "./services/lcu-connector";
 import { gameMode } from "./services/game-mode";
 import { dataDragon } from "./services/data-dragon";
 import { championStats } from "./services/champion-stats";
 import { itemBuilds } from "./services/item-builds";
 import { runeData } from "./services/rune-data";
+import { invalidatePlayerTier } from "./services/lolalytics-tier";
 
 streamDeck.logger.setLevel("info");
 
@@ -116,6 +114,14 @@ async function init() {
 	// Start centralised game-mode detection (LoL vs TFT vs ARAM etc.)
 	gameMode.start();
 
+	// Invalidate player tier cache when a game ends so the next champ select
+	// picks up any rank change (promotion/demotion) from the finished game.
+	gameMode.onChange((_mode, phase) => {
+		if (phase === "EndOfGame" || phase === "None") {
+			invalidatePlayerTier();
+		}
+	});
+
 	lcuConnector.onConnectionChange((creds) => {
 		if (creds) {
 			logger.info(`League Client connected (port ${creds.port})`);
@@ -137,11 +143,8 @@ streamDeck.actions.registerAction(new AutoRune());
 streamDeck.actions.registerAction(new BestItem());
 streamDeck.actions.registerAction(new DeathTimer());
 streamDeck.actions.registerAction(new LpTracker());
-streamDeck.actions.registerAction(new JunglePath());
 streamDeck.actions.registerAction(new SkillOrder());
 streamDeck.actions.registerAction(new SessionStats());
-streamDeck.actions.registerAction(new ObjectiveTimer());
-streamDeck.actions.registerAction(new TiltGuard());
 
 // Connect to Stream Deck and initialize
 streamDeck.connect().then(() => {

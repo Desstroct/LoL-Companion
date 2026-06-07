@@ -11,7 +11,7 @@ import {
 	type KeyAction,
 } from "@elgato/streamdeck";
 import streamDeck from "@elgato/streamdeck";
-import { readFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { lcuConnector } from "../services/lcu-connector";
@@ -22,7 +22,7 @@ import { runeData, RunePageData } from "../services/rune-data";
 import { ChampionStats } from "../services/champion-stats";
 import { findEnemyLaner } from "../services/champ-select-utils";
 import { getRuneIcon, getSpellIconById } from "../services/lol-icons";
-import { fetchPlayerTier } from "../services/lolalytics-tier";
+import { getPlayerTier } from "../services/lolalytics-tier";
 import { getChampionSpells } from "../services/spell-data";
 
 const logger = streamDeck.logger.createScope("AutoRune");
@@ -76,7 +76,7 @@ async function getKeystoneBase64(keystoneId: number): Promise<string | null> {
 	// Primary: local bundled PNG (fast, no network)
 	try {
 		const imgPath = join(PLUGIN_DIR, "imgs", "actions", "auto-rune", "keystones", `${keystoneId}@2x.png`);
-		const b64 = readFileSync(imgPath).toString("base64");
+		const b64 = (await readFile(imgPath)).toString("base64");
 		keystoneCache.set(keystoneId, b64);
 		return b64;
 	} catch {
@@ -93,11 +93,11 @@ async function getKeystoneBase64(keystoneId: number): Promise<string | null> {
 }
 
 /** Load a rune tree style icon from disk as raw base64 (cached) */
-function getTreeBase64(treeStyleId: number): string | null {
+async function getTreeBase64(treeStyleId: number): Promise<string | null> {
 	if (treeCache.has(treeStyleId)) return treeCache.get(treeStyleId)!;
 	try {
 		const imgPath = join(PLUGIN_DIR, "imgs", "actions", "auto-rune", "trees", `${treeStyleId}@2x.png`);
-		const b64 = readFileSync(imgPath).toString("base64");
+		const b64 = (await readFile(imgPath)).toString("base64");
 		treeCache.set(treeStyleId, b64);
 		return b64;
 	} catch {
@@ -123,10 +123,10 @@ async function composeRuneImage(keystoneId: number, subStyleId: number, applied:
 
 	const ksB64 = await getKeystoneBase64(keystoneId);
 	if (!ksB64) return null;
-	const treeB64 = getTreeBase64(subStyleId);
+	const treeB64 = await getTreeBase64(subStyleId);
 
 	const S = 144; // @2x key size
-	const br = 3; // border width
+	const br = applied ? 5 : 3; // thicker border when applied
 	const cr = 14; // corner radius
 	const pad = 14; // inner padding for keystone
 	const ksSize = S - pad * 2; // keystone icon area
@@ -147,19 +147,28 @@ async function composeRuneImage(keystoneId: number, subStyleId: number, applied:
 
 	const borderColor = applied ? GREEN : GOLD;
 	const glowColor = applied ? GREEN : GOLD;
-	const glowOpacity = applied ? "0.28" : "0.22";
+	const glowOpacity = applied ? "0.45" : "0.22";
+	const glowRadius = applied ? 68 : 55;
+
+	// Green checkmark badge (top-right) when applied
+	const checkBadge = applied
+		? `<circle cx="120" cy="24" r="16" fill="${GREEN}"/>
+		   <circle cx="120" cy="24" r="16" fill="none" stroke="#1a7a3a" stroke-width="1.5"/>
+		   <path d="M111 24 l5 5 l10 -10" stroke="white" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`
+		: "";
 
 	const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${S}" height="${S}">
 		<rect width="${S}" height="${S}" rx="${cr}" fill="${DARK_BLUE}"/>
 		<defs><radialGradient id="g" cx="50%" cy="50%" r="50%">
 			<stop offset="0%" stop-color="${glowColor}" stop-opacity="${glowOpacity}"/>
-			<stop offset="55%" stop-color="${glowColor}" stop-opacity="0.07"/>
+			<stop offset="55%" stop-color="${glowColor}" stop-opacity="0.10"/>
 			<stop offset="100%" stop-color="${glowColor}" stop-opacity="0"/>
 		</radialGradient></defs>
-		<circle cx="72" cy="72" r="55" fill="url(#g)"/>
+		<circle cx="72" cy="72" r="${glowRadius}" fill="url(#g)"/>
 		<rect x="${br}" y="${br}" width="${S - br * 2}" height="${S - br * 2}" rx="${cr - br}" stroke="${borderColor}" stroke-width="${br}" fill="none"/>
 		<image href="data:image/png;base64,${ksB64}" x="${pad}" y="${pad}" width="${ksSize}" height="${ksSize}"/>
 		${treeBadge}
+		${checkBadge}
 	</svg>`;
 
 	const dataUri = `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
@@ -181,18 +190,17 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 	private pollInterval: ReturnType<typeof setInterval> | null = null;
 	/** Per-action instance state (supports multiple keys with different roles) */
 	private actionStates = new Map<string, AutoRuneState>();
-	/** Cached player tier for elo-aware rune recommendations */
-	private playerTier: string | null = null;
 
 	override onWillAppear(ev: WillAppearEvent<AutoRuneSettings>): void | Promise<void> {
 		this.startPolling();
 		const role = ev.payload.settings.role ?? "auto";
 		const roleLabel = role === "auto" ? "AUTO" : role.toUpperCase();
-		const mode = ev.payload.settings.autoApply === false ? "Manual" : "Auto";
+		const mode = ev.payload.settings.autoApply ? "Auto" : "Manual";
 		if (ev.action.isDial()) {
 			ev.action.setFeedbackLayout("layouts/auto-rune.json");
 			return ev.action.setFeedback({
 				title: `${mode} Rune · ${roleLabel}`,
+				status_text: "",
 				rune_name: "Waiting...",
 				rune_info: "",
 				wr_bar: { value: 0 },
@@ -327,18 +335,18 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 				s.vsChampName = "";
 				s.hoveredEnemyName = "";
 			}
-			this.playerTier = null; // refresh tier next champ select
 			if (hadState) {
 				for (const a of this.actions) {
 					const s = (await a.getSettings()) as AutoRuneSettings;
 					const role = s.role ?? "auto";
 					const roleLabel = role === "auto" ? "AUTO" : role.toUpperCase();
-					const mode = s.autoApply === false ? "Manual" : "Auto";
+					const mode = s.autoApply ? "Auto" : "Manual";
 					if (a.isDial()) {
 						await a.setFeedback({
 							keystone_icon: "",
-							title: `${mode} Rune · ${roleLabel}`,
-							rune_name: "Waiting...",
+							title: { value: `${mode} Rune · ${roleLabel}`, color: "#9B59B6" },
+							status_text: "",
+							rune_name: { value: "Waiting...", color: "#FFFFFF" },
 							rune_info: "",
 							wr_bar: { value: 0 },
 						});
@@ -363,19 +371,18 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 		const champ = dataDragon.getChampionByKey(champKey);
 		if (!champ) return;
 
+		// Flatten once — reused for both our lock check and enemy lock check below
+		const allActions = session.actions.flat();
+
 		// Check if our pick is locked (completed), not just hovered
-		const isLocked = session.actions.flat().some(
+		const isLocked = allActions.some(
 			(act) => act.actorCellId === localCell && act.type === "pick" && act.completed && act.championId > 0,
 		);
 
 		const champAlias = ChampionStats.toLolalytics(champ.id);
 
-		// Fetch player tier once per champ select for elo-aware recommendations
-		if (this.playerTier === null) {
-			this.playerTier = await fetchPlayerTier();
-			logger.info(`Auto Rune elo filter: ${this.playerTier}`);
-		}
-		const tier = this.playerTier;
+		// Shared cached tier — consistent elo bracket across Smart Pick / Auto Rune / Best Item
+		const tier = await getPlayerTier();
 
 		for (const a of this.actions) {
 			const s = (await a.getSettings()) as AutoRuneSettings;
@@ -394,7 +401,7 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 
 			// Only trigger matchup fetch once enemy laner has locked their pick
 			const isEnemyLocked = enemyInfo
-				? session.actions.flat().some(
+				? allActions.some(
 					(act) => act.actorCellId === enemyInfo.player.cellId
 						&& act.type === "pick"
 						&& act.completed
@@ -450,8 +457,9 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 				: "";
 			if (a.isDial()) {
 				await a.setFeedback({
-					title: `${champ.name}${vsLabel}`,
-					rune_name: "Searching...",
+					title: { value: `${champ.name}${vsLabel}`, color: "#9B59B6" },
+					status_text: "",
+					rune_name: { value: "Searching...", color: "#FFFFFF" },
 					rune_info: "",
 					wr_bar: { value: 0 },
 				});
@@ -525,14 +533,15 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 		const rune = state.lastRunes[state.selectedIndex];
 		const champ = state.lastChampKey ? dataDragon.getChampionByKey(state.lastChampKey) : null;
 		const champName = champ?.name ?? "?";
-		const mode = settings.autoApply === false ? "Manual" : "Auto";
+		const mode = settings.autoApply ? "Auto" : "Manual";
 
 		if (!rune) {
 			if (a.isDial()) {
 				await a.setFeedback({
 					keystone_icon: "",
-					title: `${champName} · ${mode}`,
-					rune_name: "No data",
+					title: { value: `${champName} · ${mode}`, color: "#9B59B6" },
+					status_text: "",
+					rune_name: { value: "No data", color: "#FFFFFF" },
 					rune_info: "",
 					wr_bar: { value: 0 },
 				});
@@ -544,7 +553,8 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 		}
 
 		const label = rune.source === "highest_wr" ? "Best WR" : "Popular";
-		const appliedMark = state.applied && state.spellsApplied ? " ✅" : state.applied ? " ✓" : "";
+		const fullyApplied = state.applied && state.spellsApplied;
+		const appliedMark = fullyApplied ? " ✅" : state.applied ? " ✓" : "";
 		const gamesStr = rune.games >= 1000 ? `${(rune.games / 1000).toFixed(1)}k` : `${rune.games}`;
 		const barColor = state.applied ? GREEN
 			: rune.winRate >= 54 ? "#2ECC71"
@@ -572,17 +582,24 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 				: ` v ${displayVsName}${hoverSuffix}`)
 			: "";
 		if (a.isDial()) {
+			// Dial title + rune name turn green when applied for clear visual feedback
+			const titleColor = state.applied ? GREEN : "#9B59B6";
+			const nameColor = state.applied ? GREEN : "#FFFFFF";
+			const statusLabel = fullyApplied ? "✓" : state.applied ? "✓" : "";
+			const statusColor = fullyApplied ? GREEN : state.applied ? "#F1C40F" : "#555555";
+
 			await a.setFeedback({
 				keystone_icon: keystoneImg ?? "",
-				title: `${shortChamp}${shortVs} · ${label}${appliedMark}`,
-				rune_name: rune.keystoneName,
+				title: { value: `${shortChamp}${shortVs} · ${label}`, color: titleColor },
+				status_text: { value: statusLabel, color: statusColor },
+				rune_name: { value: rune.keystoneName, color: nameColor },
 				rune_info: `${rune.winRate}% WR · ${gamesStr} games · ${mode}${isMatchupActive ? " (matchup)" : ""}`,
 				wr_bar: { value: rune.winRate, bar_fill_c: barColor },
 				spell1_icon: spell1Icon ?? "",
 				spell2_icon: spell2Icon ?? "",
 			});
 		} else {
-			// Set key image: primary keystone + secondary tree badge, green border when applied
+			// Set key image: primary keystone + secondary tree badge, green border + checkmark when applied
 			const composedImg = await composeRuneImage(keystoneId, rune.subStyleId, state.applied);
 			if (composedImg) {
 				await a.setImage(composedImg);

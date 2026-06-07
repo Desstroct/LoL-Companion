@@ -51,6 +51,31 @@ function getDamageType(champ: { tags: string[] }): "ap" | "ad" | "mixed" {
 
 const LOLALYTICS_API = "https://a1.lolalytics.com";
 
+/** Normalize lane name to a canonical form for comparison. */
+const LANE_NORMALIZE: Record<string, string> = {
+	mid: "middle", middle: "middle",
+	top: "top",
+	jungle: "jungle", jng: "jungle",
+	bot: "bottom", bottom: "bottom", adc: "bottom",
+	sup: "support", support: "support", utility: "support",
+};
+function normalizeLane(l: string): string {
+	return LANE_NORMALIZE[l.toLowerCase()] ?? l.toLowerCase();
+}
+
+/**
+ * Known flex-lane groupings: champions commonly played in multiple roles.
+ * Used to avoid filtering out viable off-role picks in counter suggestions.
+ */
+const FLEX_GROUPS: ReadonlyArray<readonly [string, string]> = [
+	["top", "jungle"],      // Many bruisers/fighters flex
+	["top", "middle"],      // Some AP/melee mids flex top
+	["middle", "bottom"],   // Some mages flex bot (APC)
+	["middle", "support"],  // Some mages flex support
+	["bottom", "middle"],   // Some ADCs flex mid
+	["support", "middle"],  // Some support mages flex mid
+];
+
 export interface MatchupData {
 	/** Champion alias as used in Lolalytics URLs (lowercase, no spaces) */
 	alias: string;
@@ -74,6 +99,14 @@ export class ChampionStats {
 	/** Cache: "championKey:lane" → { data, timestamp } */
 	private readonly CACHE_TTL = 30 * 60 * 1000; // 30 minutes
 	private cache = new DiskCache<MatchupData[]>("champion-stats.json", this.CACHE_TTL);
+
+	constructor() {
+		// Auto-invalidate cache when a new patch is detected
+		dataDragon.onVersionChange((oldV, newV) => {
+			logger.info(`Patch change detected (${oldV} → ${newV}), clearing matchup cache`);
+			this.cache.clear().catch(() => {});
+		});
+	}
 
 	/**
 	 * Get counters (opponents that beat this champion) for a given lane.
@@ -269,19 +302,19 @@ export class ChampionStats {
 	 * @param lane - Lolalytics lane string (e.g. "top", "middle", "support")
 	 */
 	private async getMatchups(championAlias: string, lane: string, tier = "emerald_plus"): Promise<MatchupData[]> {
-		const key = `${championAlias}:${lane}:${tier}`;
-		const cached = await this.cache.get(key);
-
-		if (cached) {
-			return cached.data;
-		}
-
-		// Extract major.minor patch from Data Dragon version (e.g. "16.3.1" → "16.3")
+		// Extract major.minor patch from Data Dragon version (e.g. "16.11.1" → "16.11")
 		const ddVersion = dataDragon.getVersion();
 		const patchParts = ddVersion.split(".");
 		if (patchParts.length < 2) {
 			logger.error(`Invalid Data Dragon version format: ${ddVersion}`);
 			return [];
+		}
+
+		const key = `${championAlias}:${lane}:${tier}:${patchParts[0]}.${patchParts[1]}`;
+		const cached = await this.cache.get(key);
+
+		if (cached) {
+			return cached.data;
 		}
 		const currentPatch = `${patchParts[0]}.${patchParts[1]}`;
 
@@ -352,8 +385,8 @@ export class ChampionStats {
 		// Lane fallback: if no data for the requested lane, try "default" (champion's primary lane)
 		if (lane !== "default") {
 			for (const patch of patchesToTry) {
-				// Brief delay between fallback attempts to avoid hammering a failing API
-				await new Promise((r) => setTimeout(r, 1000));
+				// Brief delay between fallback attempts (throttledFetch handles rate limiting)
+				await new Promise((r) => setTimeout(r, 250));
 				const fallbackUrl = `${LOLALYTICS_API}/mega/?ep=counter&p=d&v=1&patch=${patch}&c=${championAlias}&lane=default&tier=${tier}&queue=ranked&region=all`;
 				try {
 					logger.debug(`Trying default lane fallback for ${championAlias} (patch=${patch})`);
@@ -392,36 +425,13 @@ export class ChampionStats {
 	 * Uses the champion's defaultLane from Lolalytics + a table of known flex picks.
 	 */
 	private isViableInLane(defaultLane: string, _alias: string, targetLane: string): boolean {
-		// Normalize lane names
-		const normalize = (l: string) => {
-			const map: Record<string, string> = {
-				mid: "middle", middle: "middle",
-				top: "top",
-				jungle: "jungle", jng: "jungle",
-				bot: "bottom", bottom: "bottom", adc: "bottom",
-				sup: "support", support: "support", utility: "support",
-			};
-			return map[l.toLowerCase()] ?? l.toLowerCase();
-		};
+		const champLane = normalizeLane(defaultLane);
+		const myLane = normalizeLane(targetLane);
 
-		const champLane = normalize(defaultLane);
-		const myLane = normalize(targetLane);
-
-		// Direct match: champion's primary lane matches the player's lane
 		if (champLane === myLane) return true;
 
-		// Known flex-lane groupings (champions commonly played in multiple roles)
-		const flexGroups: string[][] = [
-			["top", "jungle"],      // Many bruisers/fighters flex
-			["top", "middle"],      // Some AP/melee mids flex top
-			["middle", "bottom"],   // Some mages flex bot (APC)
-			["middle", "support"],  // Some mages flex support
-			["bottom", "middle"],   // Some ADCs flex mid
-			["support", "middle"],  // Some support mages flex mid
-		];
-
-		for (const group of flexGroups) {
-			if (group.includes(champLane) && group.includes(myLane)) {
+		for (const [a, b] of FLEX_GROUPS) {
+			if ((champLane === a && myLane === b) || (champLane === b && myLane === a)) {
 				return true;
 			}
 		}
