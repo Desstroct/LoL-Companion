@@ -22,7 +22,6 @@ import { runeData, RunePageData } from "../services/rune-data";
 import { ChampionStats } from "../services/champion-stats";
 import { findEnemyLaner } from "../services/champ-select-utils";
 import { getRuneIcon, getSpellIconById } from "../services/lol-icons";
-import { getPlayerTier } from "../services/lolalytics-tier";
 import { getChampionSpells } from "../services/spell-data";
 
 const logger = streamDeck.logger.createScope("AutoRune");
@@ -381,9 +380,6 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 
 		const champAlias = ChampionStats.toLolalytics(champ.id);
 
-		// Shared cached tier — consistent elo bracket across Smart Pick / Auto Rune / Best Item
-		const tier = await getPlayerTier();
-
 		for (const a of this.actions) {
 			const s = (await a.getSettings()) as AutoRuneSettings;
 			const state = this.getState(a.id);
@@ -474,12 +470,12 @@ export class AutoRune extends SingletonAction<AutoRuneSettings> {
 			const vsAlias = lockedEnemyAlias || undefined;
 
 			try {
-				const runes = await runeData.getRecommendedRunes(champAlias, lane, vsAlias, tier);
+				const runes = await runeData.getRecommendedRunes(champAlias, lane, vsAlias);
 
 				// If matchup data has too few games (<50), fall back to generic
 				if (vsAlias && runes.length > 0 && runes[0].games < 50) {
 					logger.info(`Matchup data for ${champ.name} vs ${state.vsChampName} has only ${runes[0].games} games, using generic`);
-					const genericRunes = await runeData.getRecommendedRunes(champAlias, lane, undefined, tier);
+					const genericRunes = await runeData.getRecommendedRunes(champAlias, lane);
 					state.lastRunes = genericRunes;
 					state.vsChampName = ""; // clear matchup label since we're using generic
 				} else {

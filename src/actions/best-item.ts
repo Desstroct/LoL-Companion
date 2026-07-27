@@ -13,20 +13,17 @@ import { itemBuilds, ItemBuilds } from "../services/item-builds";
 import type { ItemBuild } from "../services/item-builds";
 import { dataDragon } from "../services/data-dragon";
 import { getItemIcon, prefetchItemIcons } from "../services/lol-icons";
-import { getPlayerTier } from "../services/lolalytics-tier";
 
 const logger = streamDeck.logger.createScope("BestItem");
 
-/** Tier-2 boots IDs — if any is owned, consider the "boots" slot filled */
-const TIER2_BOOTS = new Set([
-	3006, // Berserker's Greaves
-	3009, // Boots of Swiftness
-	3020, // Sorcerer's Shoes
-	3047, // Plated Steelcaps
-	3111, // Mercury's Treads
-	3117, // Mobility Boots
-	3158, // Ionian Boots of Lucidity
-]);
+/**
+ * Get the set of tier-2 boots IDs from DDragon.
+ * Dynamic — automatically picks up new boots (Gluttonous Greaves, Ghostcrawlers, etc.)
+ * without code changes when a new patch adds or removes boots items.
+ */
+function getTier2Boots(): Set<number> {
+	return dataDragon.getTier2BootsIds();
+}
 
 /** Per-action instance state for BestItem */
 interface BestItemState {
@@ -211,9 +208,6 @@ export class BestItem extends SingletonAction {
 		const enemies = allData.allPlayers.filter(p => p.team !== me.team);
 		const enemyType = detectEnemyDamageType(enemies);
 
-		// Shared cached tier — consistent elo bracket across Smart Pick / Auto Rune / Best Item
-		const playerTier = await getPlayerTier();
-
 		for (const a of this.actions) {
 			const state = this.getState(a.id);
 
@@ -249,7 +243,7 @@ export class BestItem extends SingletonAction {
 					}
 
 					const alias = ItemBuilds.toAlias(champName);
-					this.buildPromise = itemBuilds.getBuild(alias, lane, detectedStyle ?? undefined, playerTier).catch((e) => {
+					this.buildPromise = itemBuilds.getBuild(alias, lane, detectedStyle ?? undefined).catch((e) => {
 						logger.error(`Failed to fetch build: ${e}`);
 						return null;
 					});
@@ -294,7 +288,7 @@ export class BestItem extends SingletonAction {
 
 			// Adapt boots to enemy damage type when player hasn't bought boots yet
 			const rawBuild = state.currentBuild.fullBuild;
-			const playerHasBoots = rawBuild.some(id => playerItemIds.has(id) && TIER2_BOOTS.has(id));
+			const playerHasBoots = rawBuild.some(id => playerItemIds.has(id) && getTier2Boots().has(id));
 			const build = (!playerHasBoots && enemyType)
 				? adaptBootsToEnemy(rawBuild, enemyType)
 				: rawBuild;
@@ -463,7 +457,7 @@ function detectEnemyDamageType(enemies: GamePlayer[]): "ap" | "ad" | null {
 /** Swap the boots slot to counter the enemy's dominant damage type. */
 function adaptBootsToEnemy(fullBuild: number[], enemyType: "ap" | "ad"): number[] {
 	const adapted = [...fullBuild];
-	const bootsIdx = adapted.findIndex(id => TIER2_BOOTS.has(id));
+	const bootsIdx = adapted.findIndex(id => getTier2Boots().has(id));
 	if (bootsIdx === -1) return adapted;
 	adapted[bootsIdx] = enemyType === "ap" ? 3111 : 3047; // Mercury's Treads or Plated Steelcaps
 	return adapted;
@@ -508,8 +502,8 @@ function detectBuildStyle(
 
 function isItemOwned(itemId: number, playerItemIds: Set<number>): boolean {
 	if (playerItemIds.has(itemId)) return true;
-	if (TIER2_BOOTS.has(itemId)) {
-		for (const bootId of TIER2_BOOTS) {
+	if (getTier2Boots().has(itemId)) {
+		for (const bootId of getTier2Boots()) {
 			if (playerItemIds.has(bootId)) return true;
 		}
 	}

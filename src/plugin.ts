@@ -66,7 +66,6 @@ import { dataDragon } from "./services/data-dragon";
 import { championStats } from "./services/champion-stats";
 import { itemBuilds } from "./services/item-builds";
 import { runeData } from "./services/rune-data";
-import { invalidatePlayerTier } from "./services/lolalytics-tier";
 
 streamDeck.logger.setLevel("info");
 
@@ -114,13 +113,6 @@ async function init() {
 	// Start centralised game-mode detection (LoL vs TFT vs ARAM etc.)
 	gameMode.start();
 
-	// Invalidate player tier cache when a game ends so the next champ select
-	// picks up any rank change (promotion/demotion) from the finished game.
-	gameMode.onChange((_mode, phase) => {
-		if (phase === "EndOfGame" || phase === "None") {
-			invalidatePlayerTier();
-		}
-	});
 
 	lcuConnector.onConnectionChange((creds) => {
 		if (creds) {

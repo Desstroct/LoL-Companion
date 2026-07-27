@@ -19,7 +19,6 @@ import { dataDragon } from "../services/data-dragon";
 import { championStats, ChampionStats } from "../services/champion-stats";
 import { getChampionIcon, prefetchChampionIcons } from "../services/lol-icons";
 import { findEnemyLaner, getUnavailableAliases } from "../services/champ-select-utils";
-import { getPlayerTier } from "../services/lolalytics-tier";
 
 const logger = streamDeck.logger.createScope("SmartPick");
 
@@ -68,7 +67,7 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 		this.startPolling();
 		const roleLabel = (this.cachedRole && this.cachedRole !== "auto") ? this.cachedRole.toUpperCase() : "AUTO";
 		if (ev.action.isDial()) {
-			ev.action.setFeedbackLayout("layouts/smart-pick.json");
+			await ev.action.setFeedbackLayout("layouts/smart-pick.json");
 			this.getState(ev.action.id);
 			return ev.action.setFeedback({
 				title: `Smart Pick · ${roleLabel}`,
@@ -178,7 +177,7 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 	}
 
 	private async updateSmartPick(): Promise<void> {
-		const emptySlots = { champ1_icon: "", champ1_name: "", champ1_wr: "", champ2_icon: "", champ2_wr: "", champ3_icon: "", champ3_name: "", champ3_wr: "" };
+		const emptySlots = { champ1_icon: "", champ1_name: "", champ1_wr: "", champ2_icon: "", champ2_name: "", champ2_wr: "", champ3_icon: "", champ3_name: "", champ3_wr: "" };
 
 		if (!lcuConnector.isConnected()) {
 			for (const a of this.actions) {
@@ -239,9 +238,6 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 		const session = await lcuApi.getChampSelectSession();
 		if (!session) return;
 
-		// Shared cached tier — consistent elo bracket across Smart Pick / Auto Rune / Best Item
-		const tier = await getPlayerTier();
-
 		const localCell = session.localPlayerCellId;
 		const me = session.myTeam.find((p) => p.cellId === localCell);
 
@@ -251,7 +247,7 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 				?? "top";
 			const lane = ChampionStats.toLolalyticsLane(role);
 			const state = this.getState(a.id);
-			await this.updatePicks(a, session, role, lane, state, tier);
+			await this.updatePicks(a, session, role, lane, state);
 		}
 	}
 
@@ -261,7 +257,6 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 		role: string,
 		lane: string,
 		state: SmartPickState,
-		tier: string,
 	): Promise<void> {
 		const roleLabel = role.toUpperCase();
 		const titleStr = `Smart · ${roleLabel}`;
@@ -303,8 +298,7 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 			enemyAliases = lockedEnemyChamps.map((c) => ChampionStats.toLolalytics(c.id));
 		}
 
-		// Hash covers enemies + ally composition + tier — refetch whenever any changes
-		const hash = `smart:${enemyAliases.join(",")}:${allyChampionKeys.sort().join(",")}:${tier}`;
+		const hash = `smart:${enemyAliases.join(",")}:${allyChampionKeys.sort().join(",")}`;
 		if (hash === state.lastHash) {
 			if (a.isDial()) await this.renderDialPick(a, state);
 			return;
@@ -327,17 +321,12 @@ export class SmartPick extends SingletonAction<SmartPickSettings> {
 				enemyAliases,
 				lane,
 				allyChampionKeys.length > 0 ? allyChampionKeys : undefined,
-				tier,
 			);
 
 			const unavailable = getUnavailableAliases(session);
 			const picks = allPicks.filter((p) => !unavailable.has(p.alias));
 
-			const tierLabel = tierDisplayLabel(tier);
-			state.lastPicks = picks.map((p) => ({
-				...p,
-				details: `${p.details} · ${tierLabel}`,
-			}));
+			state.lastPicks = picks;
 			state.lastInfo = titleStr;
 			state.lastHash = hash;
 
@@ -386,17 +375,3 @@ function getTier(wr: number): string {
 	return "[C]";
 }
 
-/** Short display label shown in pick_info so the player knows which elo data is used. */
-function tierDisplayLabel(tier: string): string {
-	const labels: Record<string, string> = {
-		iron:          "Iron",
-		bronze:        "Brnz",
-		silver:        "Silv",
-		gold_plus:     "G+",
-		platinum_plus: "P+",
-		emerald_plus:  "E+",
-		diamond_plus:  "D+",
-		master_plus:   "M+",
-	};
-	return labels[tier] ?? "E+";
-}

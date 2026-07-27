@@ -284,6 +284,46 @@ export class DataDragon {
 	}
 
 	/**
+	 * Check if an item is a completed boots item (has "Boots" tag, costs > 500g, purchasable).
+	 * Tier-1 boots (plain Boots, 300g) are excluded.
+	 */
+	isTier2Boots(itemId: number): boolean {
+		const item = this.items.get(String(itemId));
+		if (!item) return false;
+		return item.tags.includes("Boots") && item.gold.purchasable && item.gold.total > 500 && item.gold.total <= 1500;
+	}
+
+	/**
+	 * Get all tier-2 boots item IDs from DDragon data.
+	 * Dynamic — picks up new boots on patch day without code changes.
+	 */
+	private tier2BootsCache: Set<number> | null = null;
+	private tier2BootsCacheVersion = "";
+
+	getTier2BootsIds(): Set<number> {
+		const v = this.getVersion();
+		if (this.tier2BootsCache && this.tier2BootsCacheVersion === v) return this.tier2BootsCache;
+		this.tier2BootsCache = new Set<number>();
+		this.tier2BootsCacheVersion = v;
+		for (const [id] of this.items) {
+			const numId = Number(id);
+			if (!isNaN(numId) && numId < 200000 && this.isTier2Boots(numId)) {
+				this.tier2BootsCache.add(numId);
+			}
+		}
+		return this.tier2BootsCache;
+	}
+
+	/**
+	 * Check if an item is any boots item (tier 1 or tier 2).
+	 */
+	isBootsItem(itemId: number): boolean {
+		const item = this.items.get(String(itemId));
+		if (!item) return false;
+		return item.tags.includes("Boots") && item.gold.purchasable && itemId < 200000;
+	}
+
+	/**
 	 * Get item image URL.
 	 */
 	getItemImageUrl(itemId: number): string {

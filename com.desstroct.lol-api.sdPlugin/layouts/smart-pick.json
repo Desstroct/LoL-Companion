@@ -13,19 +13,20 @@
 		{
 			"key": "champ1_icon",
 			"type": "pixmap",
-			"rect": [10, 18, 48, 48]
+			"rect": [9, 18, 48, 48]
 		},
 		{
 			"key": "champ1_name",
 			"type": "text",
-			"rect": [0, 67, 68, 14],
+			"rect": [0, 67, 66, 14],
 			"font": { "size": 10, "weight": 600 },
-			"alignment": "center"
+			"alignment": "center",
+			"color": "#FFFFFF"
 		},
 		{
 			"key": "champ1_wr",
 			"type": "text",
-			"rect": [0, 82, 68, 16],
+			"rect": [0, 82, 66, 16],
 			"font": { "size": 12, "weight": 700 },
 			"alignment": "center",
 			"color": "#2ECC71"
@@ -38,14 +39,15 @@
 		{
 			"key": "champ2_name",
 			"type": "text",
-			"rect": [66, 67, 68, 14],
+			"rect": [66, 67, 67, 14],
 			"font": { "size": 10, "weight": 600 },
-			"alignment": "center"
+			"alignment": "center",
+			"color": "#FFFFFF"
 		},
 		{
 			"key": "champ2_wr",
 			"type": "text",
-			"rect": [66, 82, 68, 16],
+			"rect": [66, 82, 67, 16],
 			"font": { "size": 12, "weight": 700 },
 			"alignment": "center",
 			"color": "#2ECC71"
@@ -58,14 +60,15 @@
 		{
 			"key": "champ3_name",
 			"type": "text",
-			"rect": [132, 67, 68, 14],
+			"rect": [133, 67, 67, 14],
 			"font": { "size": 10, "weight": 600 },
-			"alignment": "center"
+			"alignment": "center",
+			"color": "#FFFFFF"
 		},
 		{
 			"key": "champ3_wr",
 			"type": "text",
-			"rect": [132, 82, 68, 16],
+			"rect": [133, 82, 67, 16],
 			"font": { "size": 12, "weight": 700 },
 			"alignment": "center",
 			"color": "#2ECC71"

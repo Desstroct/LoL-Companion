@@ -152,6 +152,10 @@ export class ItemBuilds {
 	 * Pick the most-played build entry matching a specific style.
 	 * Falls back to most-played overall if no matching entry found.
 	 */
+	/**
+	 * Pick the highest-WR build entry matching a specific style (AP/AD).
+	 * Falls back to overall best WR if no matching entry found.
+	 */
 	private getBestSetForStyle(
 		entries: [string, number, number][] | undefined,
 		expectedLen: number,
@@ -161,21 +165,26 @@ export class ItemBuilds {
 
 		const candidates = [...entries]
 			.filter(([, games]) => games >= 5)
-			.map(([ids, games]) => ({
+			.map(([ids, games, wins]) => ({
 				items: ids.split("_").map(Number).filter((n) => !isNaN(n) && n > 0),
 				games,
+				wr: games > 0 ? wins / games : 0,
 			}))
 			.filter((e) => e.items.length >= Math.max(expectedLen - 1, 4));
 
+		// Scale minimum games to filter noise while allowing WR sorting
+		const maxGames = candidates.length > 0 ? Math.max(...candidates.map((e) => e.games)) : 0;
+		const minGames = Math.max(50, Math.min(500, Math.round(maxGames * 0.05)));
+
 		const matching = candidates
-			.filter((e) => this.classifyBuildStyle(e.items) === style)
-			.sort((a, b) => b.games - a.games);
+			.filter((e) => this.classifyBuildStyle(e.items) === style && e.games >= minGames)
+			.sort((a, b) => b.wr - a.wr || b.games - a.games);
 
 		if (matching.length > 0 && matching[0].items.length >= expectedLen) {
 			return matching[0].items;
 		}
 
-		// No style-specific entry — fall back to most-played
+		// No style-specific entry — fall back to overall best WR
 		return this.getBestSet(entries, expectedLen);
 	}
 
@@ -214,11 +223,13 @@ export class ItemBuilds {
 	 * Logic priority:
 	 * 1. API startSet (if Lolalytics ever exposes it)
 	 * 2. Jungle lane → jungle pet + HP pot
-	 * 3. Support lane → Spellthief's (AP) or Relic Shield (tank/AD)
+	 * 3. Support lane → support starter item
 	 * 4. Tear build detection → Tear + 2 HP pots
 	 * 5. Dark Seal detection → Dark Seal + HP pot
-	 * 6. Item tag-based inference (AP → Doran's Ring, tank → Doran's Shield)
-	 * 7. Lane-based default (bottom → Blade, middle → Ring/Blade, top → Blade/Shield)
+	 * 6. Lane + build style detection using DDragon tags
+	 *
+	 * Starting items are detected dynamically from DDragon so new Doran's items
+	 * (e.g. Doran's Bow, Doran's Helm) are picked up automatically on patch day.
 	 */
 	private extractStartingItems(
 		sets: Record<string, [string, number, number][]>,
@@ -239,7 +250,7 @@ export class ItemBuilds {
 		// ── Support lane: starter is always the same, not very useful to show ──
 		// Keep a basic fallback if the user manually scrolls to slot 0
 		if (lane === "support") {
-			return [3850, 2003]; // Spellthief's Edge + HP pot (generic)
+			return [3865, 2003]; // World Atlas + HP pot (current support starter)
 		}
 
 		// ── Tear build detection ──
@@ -271,39 +282,54 @@ export class ItemBuilds {
 
 			// Jungle items in build (shouldn't reach here if lane=jungle, but safety net)
 			if (this.isJungleItem(firstItem)) return [1103, 2003];
-
-			// Classify by item tags
-			const buildStyle = this.classifyBuildStyle(fullBuild);
-			if (buildStyle === "ap") {
-				return [1056, 2003]; // Doran's Ring + HP pot
-			}
 		}
 
-		// ── Lane-based defaults ──
+		// ── Detect build style and pick the best Doran's item ──
+		const buildStyle = this.classifyBuildStyle(fullBuild);
+		const starter = this.pickStarterItem(lane, buildStyle, fullBuild);
+		return [starter, 2003];
+	}
+
+	/**
+	 * Pick the best starting item ID based on lane, build style, and build path.
+	 *
+	 * For ADC/bottom: Doran's Bow (1086) is only recommended when the build
+	 * contains attack speed items (excluding boots). Champions like Jhin or MF
+	 * who build pure AD/crit/lethality get Doran's Blade (1055) instead.
+	 */
+	private pickStarterItem(lane?: string, buildStyle?: "ap" | "ad" | "generic", fullBuild?: number[]): number {
+		// ── Bottom/ADC: Doran's Bow only for AS-focused builds ──
 		if (lane === "bottom" || lane === "adc") {
-			return [1055, 2003]; // Doran's Blade + HP pot
-		}
-		if (lane === "middle") {
-			// Middle can be AP or AD — check build style
-			const buildStyle = this.classifyBuildStyle(fullBuild);
-			if (buildStyle === "ap") return [1056, 2003]; // Doran's Ring + HP pot
-			return [1055, 2003]; // Doran's Blade + HP pot
-		}
-		if (lane === "top") {
-			// Top lane: check if tank/bruiser
-			const buildStyle = this.classifyBuildStyle(fullBuild);
-			if (buildStyle === "ap") return [1056, 2003]; // Doran's Ring + HP pot
-			// Check if tank build (has tank items)
-			const hasTankItems = fullBuild.some(id => {
-				const tags = dataDragon.getItem(String(id))?.tags ?? [];
-				return tags.includes("Health") && tags.includes("Armor");
-			});
-			if (hasTankItems) return [1054, 2003]; // Doran's Shield + HP pot
-			return [1055, 2003]; // Doran's Blade + HP pot
+			const bow = dataDragon.getItem("1086");
+			if (bow && bow.gold.purchasable && bow.tags.includes("AttackSpeed") && fullBuild) {
+				// Only use Doran's Bow if the build has non-boots attack speed items
+				// (e.g., Phantom Dancer, Runaan's, RFC). Champions like Jhin who
+				// build pure AD/crit without AS items prefer Doran's Blade.
+				const hasAsItems = fullBuild.some(id => {
+					if (dataDragon.isBootsItem(id)) return false;
+					const tags = dataDragon.getItem(String(id))?.tags ?? [];
+					return tags.includes("AttackSpeed");
+				});
+				if (hasAsItems) return 1086; // Doran's Bow
+			}
+			return 1055; // Doran's Blade
 		}
 
-		// ── Fallback: Doran's Blade + HP pot ──
-		return [1055, 2003];
+		// ── AP builds: Doran's Ring ──
+		if (buildStyle === "ap") return 1056;
+
+		// ── Top lane ──
+		if (lane === "top") {
+			return 1055; // Doran's Blade (safe default for AD/bruiser/tank)
+		}
+
+		// ── Middle lane (AD — AP case already handled above) ──
+		if (lane === "middle") {
+			return 1055; // Doran's Blade
+		}
+
+		// ── Fallback: Doran's Blade ──
+		return 1055;
 	}
 
 	/** Check if an item is a jungle starter/pet. */
@@ -313,23 +339,52 @@ export class ItemBuilds {
 	}
 
 	/**
-	 * Pick the most-played entry from a set and return its item IDs.
+	 * Pick the best entry from a set by highest win rate, with a minimum
+	 * games threshold that scales with total data available.
+	 *
+	 * Lolalytics website defaults to "Highest Win Build" view, so sorting
+	 * by WR makes the plugin's recommendations match what users see there.
+	 * Falls back to most-played if no entry meets the WR threshold.
 	 */
 	private getBestSet(entries: [string, number, number][] | undefined, expectedLen: number): number[] {
 		if (!entries || entries.length === 0) return [];
 
-		const sorted = [...entries]
-			.map(([ids, games]) => ({ ids, games }))
-			.filter((e) => e.games >= 5)
-			.sort((a, b) => b.games - a.games);
+		const parsed = [...entries]
+			.map(([ids, games, wins]) => ({
+				ids,
+				games,
+				wr: games > 0 ? wins / games : 0,
+			}))
+			.filter((e) => e.games >= 5);
 
-		for (const entry of sorted) {
+		if (parsed.length === 0) return [];
+
+		// Determine minimum games threshold: 5% of the most-played entry's games,
+		// clamped to [50, 500]. This filters out noisy low-sample entries while
+		// still allowing WR sorting among statistically meaningful builds.
+		const maxGames = Math.max(...parsed.map((e) => e.games));
+		const minGames = Math.max(50, Math.min(500, Math.round(maxGames * 0.05)));
+
+		// Try highest WR with minimum games threshold
+		const wrSorted = parsed
+			.filter((e) => e.games >= minGames)
+			.sort((a, b) => b.wr - a.wr || b.games - a.games);
+
+		for (const entry of wrSorted) {
 			const items = entry.ids.split("_").map(Number).filter((n) => !isNaN(n) && n > 0);
 			if (items.length >= expectedLen) return items;
 		}
 
-		if (sorted.length > 0) {
-			return sorted[0].ids.split("_").map(Number).filter((n) => !isNaN(n) && n > 0);
+		// Fallback: most-played (no minimum games threshold beyond 5)
+		const gamesSorted = parsed.sort((a, b) => b.games - a.games);
+
+		for (const entry of gamesSorted) {
+			const items = entry.ids.split("_").map(Number).filter((n) => !isNaN(n) && n > 0);
+			if (items.length >= expectedLen) return items;
+		}
+
+		if (gamesSorted.length > 0) {
+			return gamesSorted[0].ids.split("_").map(Number).filter((n) => !isNaN(n) && n > 0);
 		}
 
 		return [];
@@ -377,13 +432,9 @@ export class ItemBuilds {
 		return result;
 	}
 
-	/** Check if an item ID is a boots item. */
+	/** Check if an item ID is a boots item (uses DDragon tags, future-proof). */
 	private isBootsItem(itemId: number): boolean {
-		return (
-			(itemId >= 3006 && itemId <= 3020) ||
-			itemId === 3047 || itemId === 3111 ||
-			itemId === 3117 || itemId === 3158 || itemId === 3009
-		);
+		return dataDragon.isBootsItem(itemId);
 	}
 
 	/**
