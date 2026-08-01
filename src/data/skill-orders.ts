@@ -1,5 +1,5 @@
 /**
- * Static skill order data extracted from Lolalytics (patch 16.10).
+ * Static skill order data extracted from Lolalytics (patch 16.10, Locke added 16.15).
  *
  * Format per champion:
  *   order  — 3-letter skill max priority (e.g. "QEW" = max Q, then E, then W)
@@ -99,6 +99,7 @@ export const SKILL_ORDERS: Record<string, SkillOrderEntry> = {
 	lissandra:     { order: "QWE", packed: 123114121242233, wr: 52.63 },
 	lucian:        { order: "QEW", packed: 132114131343322, wr: 50.67 },
 	lulu:          { order: "EWQ", packed: 312334323242211, wr: 51.52 },
+	locke:         { order: "QWE", packed: 132114121242233, wr: 56.37 },
 	lux:           { order: "EQW", packed: 312334313141122, wr: 50.36 },
 	malphite:      { order: "QEW", packed: 132114131343322, wr: 52.91 },
 	malzahar:      { order: "EQW", packed: 321334313141122, wr: 51.99 },

@@ -1,5 +1,5 @@
 /**
- * Static summoner spell data extracted from Lolalytics (patch 16.10).
+ * Static summoner spell data extracted from Lolalytics (patch 16.10, Locke added 16.15).
  *
  * Each entry is a 2-element tuple of summoner spell IDs representing the
  * most common spell combo for that champion on their default (most-played) lane.
@@ -86,6 +86,7 @@ export const SUMMONER_SPELLS: Record<string, [number, number]> = {
 	leona:          [4, 14],  // Flash+Ignite
 	lillia:         [4, 11],  // Flash+Smite
 	lissandra:      [4, 12],  // Flash+TP
+	locke:          [4, 14],  // Flash+Ignite
 	lucian:         [4, 21],  // Flash+Barrier
 	lulu:           [4, 7],   // Flash+Heal
 	lux:            [4, 7],   // Flash+Heal
