@@ -456,10 +456,12 @@ function detectEnemyDamageType(enemies: GamePlayer[]): "ap" | "ad" | null {
 
 /** Swap the boots slot to counter the enemy's dominant damage type. */
 function adaptBootsToEnemy(fullBuild: number[], enemyType: "ap" | "ad"): number[] {
+	const defBoots = dataDragon.getDefensiveBootsId(enemyType === "ap" ? "ap" : "ad");
+	if (!defBoots) return fullBuild;
 	const adapted = [...fullBuild];
 	const bootsIdx = adapted.findIndex(id => getTier2Boots().has(id));
 	if (bootsIdx === -1) return adapted;
-	adapted[bootsIdx] = enemyType === "ap" ? 3111 : 3047; // Mercury's Treads or Plated Steelcaps
+	adapted[bootsIdx] = defBoots;
 	return adapted;
 }
 

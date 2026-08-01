@@ -301,6 +301,7 @@ export interface DdItem {
 	plaintext: string;
 	image: DdImage;
 	tags: string[];
+	stats: Record<string, number>;
 	into?: string[];
 	from?: string[];
 	maps: Record<string, boolean>;

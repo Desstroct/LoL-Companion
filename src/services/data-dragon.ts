@@ -315,6 +315,27 @@ export class DataDragon {
 	}
 
 	/**
+	 * Find the best defensive boots for a damage type.
+	 * Anti-AP: highest FlatSpellBlockMod among boots with "SpellBlock" tag.
+	 * Anti-AD: highest FlatArmorMod among boots with "Armor" tag.
+	 */
+	getDefensiveBootsId(against: "ap" | "ad"): number | null {
+		const tag = against === "ap" ? "SpellBlock" : "Armor";
+		const stat = against === "ap" ? "FlatSpellBlockMod" : "FlatArmorMod";
+		let bestId: number | null = null;
+		let bestStat = 0;
+		for (const [id, item] of this.items) {
+			const numId = Number(id);
+			if (isNaN(numId) || numId >= 200000) continue;
+			if (!item.tags.includes("Boots") || !item.tags.includes(tag)) continue;
+			if (!item.gold.purchasable || item.gold.total <= 500 || item.gold.total > 1500) continue;
+			const val = item.stats[stat] ?? 0;
+			if (val > bestStat) { bestStat = val; bestId = numId; }
+		}
+		return bestId;
+	}
+
+	/**
 	 * Check if an item is any boots item (tier 1 or tier 2).
 	 */
 	isBootsItem(itemId: number): boolean {
